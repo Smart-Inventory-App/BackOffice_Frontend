@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Package, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import logo from "../../assets/logo.png";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -19,7 +20,8 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-line bg-white p-5 md:flex">
-        <div className="mb-8 px-2">
+        <div className="mb-8 flex flex-col items-center px-2 text-center">
+          <img src={logo} alt="Smart Inventory" className="mb-2 h-14 w-auto object-contain" />
           <div className="text-xl font-bold">
             <span className="text-primary">Smart</span>
             <span className="text-primaryDark">Inventory</span>
@@ -50,9 +52,16 @@ export default function AdminShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="mt-4 border-t border-line pt-4">
-          <div className="px-2 pb-3">
+          <div className="px-2 pb-3 text-center">
             <p className="text-xs uppercase tracking-wide text-muted">Sesión</p>
-            <p className="mt-1 truncate text-sm font-medium">{admin?.email}</p>
+            <p className="mt-1 truncate text-sm font-medium" title={admin?.email}>
+              {admin?.email}
+            </p>
+            {admin?.full_name && (
+              <p className="truncate text-xs text-muted" title={admin.full_name}>
+                {admin.full_name}
+              </p>
+            )}
           </div>
           <button
             onClick={() => setShowLogout(true)}

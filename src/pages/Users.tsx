@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { AppUser } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import { truncate } from "@/lib/format";
 
 export default function Users() {
   const qc = useQueryClient();
@@ -56,28 +57,40 @@ export default function Users() {
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-5 py-3">Email</th>
-                <th className="px-5 py-3">Nombre</th>
-                <th className="px-5 py-3">Productos</th>
-                <th className="px-5 py-3">Estado</th>
-                <th className="px-5 py-3 text-right">Acciones</th>
+                <th className="px-5 py-3 text-center">Nombre</th>
+                <th className="px-5 py-3 text-center">Usuario</th>
+                <th className="px-5 py-3 text-center">Productos</th>
+                <th className="px-5 py-3 text-center">Registrado</th>
+                <th className="px-5 py-3 text-center">Estado</th>
+                <th className="px-5 py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {(data ?? []).map((u) => (
                 <tr key={u.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
                   <td className="px-5 py-3 font-medium">
-                    <Link to={`/usuarios/${u.id}`} className="text-primaryDark hover:underline">
-                      {u.email ?? u.id}
+                    <Link
+                      to={`/usuarios/${u.id}`}
+                      className="text-primaryDark hover:underline"
+                      title={u.email ?? u.id}
+                    >
+                      {truncate(u.email ?? u.id)}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-muted">
-                    {[u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "—"}
+                  <td className="px-5 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
+                    {truncate([u.first_name, u.last_name].filter(Boolean).join(" ") || "")}
                   </td>
-                  <td className="px-5 py-3">{u.product_count}</td>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-3 text-center text-muted" title={u.username ?? ""}>
+                    {truncate(u.username)}
+                  </td>
+                  <td className="px-5 py-3 text-center">{u.product_count}</td>
+                  <td className="px-5 py-3 text-center text-muted">
+                    {u.created_at ? u.created_at.slice(0, 10) : "—"}
+                  </td>
+                  <td className="px-5 py-3 text-center">
                     {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-center">
                     <button
                       onClick={() => toggle.mutate(u)}
                       disabled={toggle.isPending}
@@ -94,7 +107,7 @@ export default function Users() {
               ))}
               {data && data.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center text-muted">
+                  <td colSpan={7} className="px-5 py-10 text-center text-muted">
                     No se encontraron usuarios.
                   </td>
                 </tr>
