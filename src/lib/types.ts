@@ -12,6 +12,15 @@ export interface Paginated<T> {
   total: number;
 }
 
+export interface AuditEntry {
+  id: number;
+  user_id: string;
+  changed_by: string;
+  is_active: boolean;
+  reason: string | null;
+  created_at: string | null;
+}
+
 export interface CategoryCount {
   label: string;
   count: number;
