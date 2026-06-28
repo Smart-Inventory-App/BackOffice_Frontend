@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AdminProduct } from "@/lib/types";
+import type { AdminProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
 import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
+import { PAGE_SIZE } from "@/lib/constants";
+import Pagination from "@/components/Pagination";
 
 function isExpiringSoon(date: string | null): boolean {
   if (!date) return false;
@@ -22,16 +24,23 @@ export default function Products() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [onlyImage, setOnlyImage] = useState(false);
+  const [page, setPage] = useState(0);
   const [toDelete, setToDelete] = useState<AdminProduct | null>(null);
 
+  useEffect(() => setPage(0), [search, onlyImage]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["products", search, onlyImage],
+    queryKey: ["products", search, onlyImage, page],
     queryFn: async () => {
-      const params: Record<string, string | boolean> = {};
+      const params: Record<string, string | number | boolean> = {
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      };
       if (search) params.search = search;
       if (onlyImage) params.only_with_image = true;
-      return (await api.get<AdminProduct[]>("/admin/products/", { params })).data;
+      return (await api.get<Paginated<AdminProduct>>("/admin/products/", { params })).data;
     },
+    placeholderData: keepPreviousData,
   });
 
   const del = useMutation({
@@ -41,6 +50,9 @@ export default function Products() {
       setToDelete(null);
     },
   });
+
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <div>
@@ -62,70 +74,73 @@ export default function Products() {
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3 text-center">Imagen</th>
-                <th className="px-5 py-3">Producto</th>
-                <th className="px-5 py-3 text-center">Categoría</th>
-                <th className="px-5 py-3 text-center">Stock</th>
-                <th className="px-5 py-3 text-center">Vencimiento</th>
-                <th className="px-5 py-3 text-center">Dueño</th>
-                <th className="px-5 py-3 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data ?? []).map((p) => (
-                <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                  <td className="px-5 py-3">
-                    <div className="flex justify-center">
-                      <ProductImage url={p.imagen_url} alt={p.nombre} />
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
-                    {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
-                  </td>
-                  <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
-                  <td className="px-5 py-3 text-center">
-                    {p.stock <= 1 ? <Badge tone="off">{p.stock}</Badge> : p.stock}
-                  </td>
-                  <td className="px-5 py-3 text-center">
-                    {p.vencimiento ? (
-                      isExpired(p.vencimiento) ? (
-                        <Badge tone="off">{p.vencimiento}</Badge>
-                      ) : isExpiringSoon(p.vencimiento) ? (
-                        <Badge tone="warn">{p.vencimiento}</Badge>
+        <Card className="p-0">
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-white">
+                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-5 py-3 text-center">Imagen</th>
+                  <th className="px-5 py-3">Producto</th>
+                  <th className="px-5 py-3 text-center">Categoría</th>
+                  <th className="px-5 py-3 text-center">Stock</th>
+                  <th className="px-5 py-3 text-center">Vencimiento</th>
+                  <th className="px-5 py-3 text-center">Dueño</th>
+                  <th className="px-5 py-3 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
+                    <td className="px-5 py-3">
+                      <div className="flex justify-center">
+                        <ProductImage url={p.imagen_url} alt={p.nombre} />
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
+                      {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
+                    </td>
+                    <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
+                    <td className="px-5 py-3 text-center">
+                      {p.stock <= 1 ? <Badge tone="off">{p.stock}</Badge> : p.stock}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {p.vencimiento ? (
+                        isExpired(p.vencimiento) ? (
+                          <Badge tone="off">{p.vencimiento}</Badge>
+                        ) : isExpiringSoon(p.vencimiento) ? (
+                          <Badge tone="warn">{p.vencimiento}</Badge>
+                        ) : (
+                          <span className="text-muted">{p.vencimiento}</span>
+                        )
                       ) : (
-                        <span className="text-muted">{p.vencimiento}</span>
-                      )
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-center text-muted" title={p.owner.email ?? p.owner.user_id}>
-                    {truncate(p.owner.email ?? p.owner.user_id)}
-                  </td>
-                  <td className="px-5 py-3 text-center">
-                    <button
-                      onClick={() => setToDelete(p)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
-                    >
-                      <Trash2 size={14} /> Eliminar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {data && data.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-muted">
-                    No se encontraron productos.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-center text-muted" title={p.owner.email ?? p.owner.user_id}>
+                      {truncate(p.owner.email ?? p.owner.user_id)}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      <button
+                        onClick={() => setToDelete(p)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+                      >
+                        <Trash2 size={14} /> Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                      No se encontraron productos.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </Card>
       )}
 

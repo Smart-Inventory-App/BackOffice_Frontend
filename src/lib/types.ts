@@ -3,7 +3,13 @@ export interface Admin {
   email: string;
   full_name: string | null;
   is_active: boolean;
+  password_set: boolean;
   created_at: string | null;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  total: number;
 }
 
 export interface CategoryCount {

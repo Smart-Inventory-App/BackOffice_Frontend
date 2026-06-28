@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Package, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Package, LogOut, UserPlus } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
 import logo from "../../assets/logo.png";
 
 const NAV = [
@@ -15,13 +16,44 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const { admin, logout } = useAuth();
   const [showLogout, setShowLogout] = useState(false);
 
+  const [showAddAdmin, setShowAddAdmin] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addOk, setAddOk] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
+
+  const resetAddForm = () => {
+    setNewEmail("");
+    setNewName("");
+    setAddError(null);
+    setAddOk(null);
+  };
+
+  const onAddAdmin = async (e: FormEvent) => {
+    e.preventDefault();
+    setAddError(null);
+    setAddOk(null);
+    setAdding(true);
+    try {
+      await api.post("/admin/auth/admins", { email: newEmail, full_name: newName || null });
+      setAddOk("Administrador agregado. Definirá su contraseña al iniciar sesión por primera vez.");
+      setNewEmail("");
+      setNewName("");
+    } catch (err: any) {
+      setAddError(err?.response?.data?.detail ?? "No se pudo agregar el administrador.");
+    } finally {
+      setAdding(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-line bg-white p-5 md:flex">
         <div className="mb-8 flex flex-col items-center px-2 text-center">
-          <img src={logo} alt="Smart Inventory" className="mb-2 h-14 w-auto object-contain" />
+          <img src={logo} alt="Smart Inventory" className="mb-2 h-28 w-auto object-contain" />
           <div className="text-xl font-bold">
             <span className="text-primary">Smart</span>
             <span className="text-primaryDark">Inventory</span>
@@ -64,6 +96,12 @@ export default function AdminShell({ children }: { children: ReactNode }) {
             )}
           </div>
           <button
+            onClick={() => { resetAddForm(); setShowAddAdmin(true); }}
+            className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 px-3 py-2 text-sm font-medium text-primaryDark transition hover:bg-primary/10"
+          >
+            <UserPlus size={16} /> Agregar administrador
+          </button>
+          <button
             onClick={() => setShowLogout(true)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/40 px-3 py-2 text-sm font-medium text-danger transition hover:bg-danger/10"
           >
@@ -90,6 +128,69 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       <main className="flex-1 px-4 py-6 pt-16 md:ml-64 md:px-10 md:py-10 md:pt-10">
         {children}
       </main>
+
+      {showAddAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold">Agregar administrador</h3>
+            <p className="mt-1 text-sm text-muted">
+              Ingresá el email y el nombre. El nuevo administrador definirá su contraseña
+              al iniciar sesión por primera vez.
+            </p>
+            <form onSubmit={onAddAdmin} className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Email</label>
+                <input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  placeholder="nuevo@admin.com"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  placeholder="Nombre Apellido"
+                />
+              </div>
+
+              {addError && (
+                <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+                  {addError}
+                </div>
+              )}
+              {addOk && (
+                <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primaryDark">
+                  {addOk}
+                </div>
+              )}
+
+              <div className="mt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAdmin(false)}
+                  className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={adding || !newEmail.trim()}
+                  className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {adding ? "Agregando…" : "Agregar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showLogout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

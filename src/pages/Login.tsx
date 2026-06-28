@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
 
 export default function Login() {
   const { admin, login } = useAuth();
   const navigate = useNavigate();
+  const [step, setStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +14,32 @@ export default function Login() {
 
   if (admin) return <Navigate to="/" replace />;
 
-  const onSubmit = async (e: FormEvent) => {
+  const onEmailSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const { data } = await api.post<{ is_admin: boolean; password_set: boolean }>(
+        "/admin/auth/check",
+        { email },
+      );
+      if (!data.is_admin) {
+        setError("Este email no está autorizado como administrador.");
+        return;
+      }
+      if (!data.password_set) {
+        navigate("/set-password", { state: { email } });
+        return;
+      }
+      setStep("password");
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? "No se pudo verificar el email.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onPasswordSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -20,7 +47,7 @@ export default function Login() {
       await login(email, password);
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "No se pudo iniciar sesión");
+      setError(err?.response?.data?.detail ?? "No se pudo iniciar sesión.");
     } finally {
       setLoading(false);
     }
@@ -37,45 +64,74 @@ export default function Login() {
           <p className="mt-1 text-sm text-muted">Panel de administración (Backoffice)</p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-              className="w-full rounded-xl border border-line px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="admin@smartinventory.com"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-xl border border-line px-4 py-2.5 text-sm outline-none focus:border-primary"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
-              {error}
+        {step === "email" ? (
+          <form onSubmit={onEmailSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-ink">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+                className="w-full rounded-xl border border-line px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="admin@smartinventory.com"
+              />
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            {loading ? "Ingresando…" : "Iniciar sesión"}
-          </button>
-        </form>
+            {error && (
+              <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              {loading ? "Verificando…" : "Continuar"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={onPasswordSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-ink">Email</label>
+              <div className="flex items-center justify-between rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm">
+                <span className="truncate text-muted" title={email}>{email}</span>
+                <button
+                  type="button"
+                  onClick={() => { setStep("email"); setPassword(""); setError(null); }}
+                  className="ml-2 shrink-0 text-xs font-medium text-primaryDark hover:underline"
+                >
+                  Cambiar
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-ink">Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoFocus
+                className="w-full rounded-xl border border-line px-4 py-2.5 text-sm outline-none focus:border-primary"
+                placeholder="••••••••"
+              />
+            </div>
+            {error && (
+              <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            >
+              {loading ? "Ingresando…" : "Iniciar sesión"}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

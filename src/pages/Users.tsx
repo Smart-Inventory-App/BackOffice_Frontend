@@ -1,24 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { AppUser } from "@/lib/types";
+import type { AppUser, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
 import { truncate } from "@/lib/format";
+import { PAGE_SIZE } from "@/lib/constants";
+import Pagination from "@/components/Pagination";
 
 export default function Users() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"" | "active" | "inactive">("");
+  const [page, setPage] = useState(0);
+
+  useEffect(() => setPage(0), [search, status]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["users", search, status],
+    queryKey: ["users", search, status, page],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number> = {
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      };
       if (search) params.search = search;
       if (status) params.status_filter = status;
-      return (await api.get<AppUser[]>("/admin/users/", { params })).data;
+      return (await api.get<Paginated<AppUser>>("/admin/users/", { params })).data;
     },
+    placeholderData: keepPreviousData,
   });
 
   const toggle = useMutation({
@@ -26,6 +35,9 @@ export default function Users() {
       (await api.patch(`/admin/users/${u.id}/status`, { is_active: !u.is_active })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
+
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <div>
@@ -52,68 +64,71 @@ export default function Users() {
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3">Email</th>
-                <th className="px-5 py-3 text-center">Nombre</th>
-                <th className="px-5 py-3 text-center">Usuario</th>
-                <th className="px-5 py-3 text-center">Productos</th>
-                <th className="px-5 py-3 text-center">Registrado</th>
-                <th className="px-5 py-3 text-center">Estado</th>
-                <th className="px-5 py-3 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data ?? []).map((u) => (
-                <tr key={u.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                  <td className="px-5 py-3 font-medium">
-                    <Link
-                      to={`/usuarios/${u.id}`}
-                      className="text-primaryDark hover:underline"
-                      title={u.email ?? u.id}
-                    >
-                      {truncate(u.email ?? u.id)}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
-                    {truncate([u.first_name, u.last_name].filter(Boolean).join(" ") || "")}
-                  </td>
-                  <td className="px-5 py-3 text-center text-muted" title={u.username ?? ""}>
-                    {truncate(u.username)}
-                  </td>
-                  <td className="px-5 py-3 text-center">{u.product_count}</td>
-                  <td className="px-5 py-3 text-center text-muted">
-                    {u.created_at ? u.created_at.slice(0, 10) : "—"}
-                  </td>
-                  <td className="px-5 py-3 text-center">
-                    {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
-                  </td>
-                  <td className="px-5 py-3 text-center">
-                    <button
-                      onClick={() => toggle.mutate(u)}
-                      disabled={toggle.isPending}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
-                        u.is_active
-                          ? "border border-danger/40 text-danger hover:bg-danger/10"
-                          : "border border-primary/40 text-primaryDark hover:bg-primary/10"
-                      }`}
-                    >
-                      {u.is_active ? "Deshabilitar" : "Habilitar"}
-                    </button>
-                  </td>
+        <Card className="p-0">
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-white">
+                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-5 py-3">Email</th>
+                  <th className="px-5 py-3 text-center">Nombre</th>
+                  <th className="px-5 py-3 text-center">Usuario</th>
+                  <th className="px-5 py-3 text-center">Productos</th>
+                  <th className="px-5 py-3 text-center">Registrado</th>
+                  <th className="px-5 py-3 text-center">Estado</th>
+                  <th className="px-5 py-3 text-center">Acciones</th>
                 </tr>
-              ))}
-              {data && data.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-muted">
-                    No se encontraron usuarios.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((u) => (
+                  <tr key={u.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
+                    <td className="px-5 py-3 font-medium">
+                      <Link
+                        to={`/usuarios/${u.id}`}
+                        className="text-primaryDark hover:underline"
+                        title={u.email ?? u.id}
+                      >
+                        {truncate(u.email ?? u.id)}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
+                      {truncate([u.first_name, u.last_name].filter(Boolean).join(" ") || "")}
+                    </td>
+                    <td className="px-5 py-3 text-center text-muted" title={u.username ?? ""}>
+                      {truncate(u.username)}
+                    </td>
+                    <td className="px-5 py-3 text-center">{u.product_count}</td>
+                    <td className="px-5 py-3 text-center text-muted">
+                      {u.created_at ? u.created_at.slice(0, 10) : "—"}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      <button
+                        onClick={() => toggle.mutate(u)}
+                        disabled={toggle.isPending}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
+                          u.is_active
+                            ? "border border-danger/40 text-danger hover:bg-danger/10"
+                            : "border border-primary/40 text-primaryDark hover:bg-primary/10"
+                        }`}
+                      >
+                        {u.is_active ? "Deshabilitar" : "Habilitar"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                      No se encontraron usuarios.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </Card>
       )}
     </div>

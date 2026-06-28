@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import AdminShell from "./components/AdminShell";
 import Login from "./pages/Login";
+import SetPassword from "./pages/SetPassword";
 import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import UserDetail from "./pages/UserDetail";
@@ -22,6 +23,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/set-password" element={<SetPassword />} />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/usuarios" element={<Protected><Users /></Protected>} />
       <Route path="/usuarios/:id" element={<Protected><UserDetail /></Protected>} />
