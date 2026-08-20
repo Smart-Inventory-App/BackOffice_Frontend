@@ -1,20 +1,27 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Package, LogOut, UserPlus } from "lucide-react";
+import { LayoutDashboard, Users, Package, LogOut, UserPlus, Upload, Eye, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import logo from "../../assets/logo.png";
 
-const NAV = [
+const ADMIN_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/usuarios", label: "Usuarios", icon: Users },
   { to: "/productos", label: "Productos", icon: Package },
 ];
 
+const USER_NAV = [
+  { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/productos", label: "Productos", icon: Package },
+  { to: "/cargar", label: "Cargar", icon: Upload },
+];
+
 export default function AdminShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  const { admin, logout } = useAuth();
+  const { admin, logout, viewAsUser, setViewAsUser, effectiveIsAdmin } = useAuth();
   const [showLogout, setShowLogout] = useState(false);
+  const NAV = effectiveIsAdmin ? ADMIN_NAV : USER_NAV;
 
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -94,13 +101,36 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                 {admin.full_name}
               </p>
             )}
+            {admin?.is_admin && viewAsUser && (
+              <p className="mt-1 inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                Viendo como usuario
+              </p>
+            )}
           </div>
-          <button
-            onClick={() => { resetAddForm(); setShowAddAdmin(true); }}
-            className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 px-3 py-2 text-sm font-medium text-primaryDark transition hover:bg-primary/10"
-          >
-            <UserPlus size={16} /> Agregar administrador
-          </button>
+          {admin?.is_admin && (
+            <button
+              onClick={() => setViewAsUser(!viewAsUser)}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
+            >
+              {viewAsUser ? (
+                <>
+                  <ShieldCheck size={16} /> Ver como admin
+                </>
+              ) : (
+                <>
+                  <Eye size={16} /> Ver como usuario
+                </>
+              )}
+            </button>
+          )}
+          {effectiveIsAdmin && (
+            <button
+              onClick={() => { resetAddForm(); setShowAddAdmin(true); }}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 px-3 py-2 text-sm font-medium text-primaryDark transition hover:bg-primary/10"
+            >
+              <UserPlus size={16} /> Agregar administrador
+            </button>
+          )}
           <button
             onClick={() => setShowLogout(true)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/40 px-3 py-2 text-sm font-medium text-danger transition hover:bg-danger/10"

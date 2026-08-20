@@ -1,10 +1,9 @@
 export interface Admin {
-  id: number;
+  id: string;
   email: string;
   full_name: string | null;
+  is_admin: boolean;
   is_active: boolean;
-  password_set: boolean;
-  created_at: string | null;
 }
 
 export interface Paginated<T> {
@@ -56,6 +55,7 @@ export interface AppUser {
   id: string;
   email: string | null;
   is_active: boolean;
+  is_admin: boolean;
   created_at: string | null;
   username: string | null;
   first_name: string | null;
@@ -84,4 +84,71 @@ export interface AdminProduct {
 
 export interface AppUserDetail extends AppUser {
   products: AdminProduct[];
+}
+
+export interface MyStats {
+  total_products: number;
+  products_with_image: number;
+  low_stock_products: number;
+  expiring_soon_products: number;
+  expired_products: number;
+  products_by_category: CategoryCount[];
+}
+
+export interface MyProduct {
+  id: number;
+  nombre: string;
+  marca: string | null;
+  categoria: string;
+  stock: number;
+  vencimiento: string | null;
+  descripcion: string | null;
+  imagen_url: string | null;
+  ubicacion: string | null;
+  created_at: string | null;
+  merged?: boolean;
+}
+
+export interface ProductSuggestion {
+  nombre: string;
+  marca: string | null;
+  categoria: string;
+  ubicacion: string | null;
+}
+
+export interface MyDefaults {
+  last_categoria: string | null;
+  last_ubicacion: string | null;
+}
+
+export interface BulkProductRow {
+  row_number: number;
+  nombre: string;
+  marca: string | null;
+  categoria: string;
+  stock: number;
+  vencimiento: string | null;
+  descripcion: string | null;
+  imagen_url: string | null;
+  ubicacion: string | null;
+}
+
+export interface BulkParsedRow {
+  row_number: number;
+  data: BulkProductRow | null;
+  valid: boolean;
+  errors: string[];
+  action: "create" | "merge" | null;
+  existing_stock: number | null;
+}
+
+export interface BulkParseResponse {
+  rows: BulkParsedRow[];
+}
+
+export interface BulkCommitResult {
+  created: number;
+  merged: number;
+  failed: number;
+  errors: string[];
 }

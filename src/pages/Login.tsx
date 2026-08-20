@@ -19,15 +19,15 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      const { data } = await api.post<{ is_admin: boolean; password_set: boolean }>(
+      const { data } = await api.post<{ exists: boolean; is_admin: boolean; password_set: boolean }>(
         "/admin/auth/check",
         { email },
       );
-      if (!data.is_admin) {
-        setError("Este email no está autorizado como administrador.");
+      if (!data.exists) {
+        setError("No existe una cuenta con ese email.");
         return;
       }
-      if (!data.password_set) {
+      if (data.is_admin && !data.password_set) {
         navigate("/set-password", { state: { email } });
         return;
       }

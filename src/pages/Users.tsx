@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { History } from "lucide-react";
+import { History, ShieldOff } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import type { AppUser, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
 import { truncate } from "@/lib/format";
@@ -12,12 +13,15 @@ import AuditModal from "@/components/AuditModal";
 
 export default function Users() {
   const qc = useQueryClient();
+  const { admin } = useAuth();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"" | "active" | "inactive">("");
   const [page, setPage] = useState(0);
   const [toDisable, setToDisable] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
   const [auditUser, setAuditUser] = useState<AppUser | null>(null);
+  const [toRemoveAdmin, setToRemoveAdmin] = useState<AppUser | null>(null);
+  const [removeAdminError, setRemoveAdminError] = useState<string | null>(null);
 
   useEffect(() => setPage(0), [search, status]);
 
@@ -42,6 +46,18 @@ export default function Users() {
       qc.invalidateQueries({ queryKey: ["users"] });
       setToDisable(null);
       setReason("");
+    },
+  });
+
+  const removeAdminMutation = useMutation({
+    mutationFn: async (user: AppUser) => (await api.delete(`/admin/users/${user.id}/admin`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      setToRemoveAdmin(null);
+      setRemoveAdminError(null);
+    },
+    onError: (err: any) => {
+      setRemoveAdminError(err?.response?.data?.detail ?? "No se pudo quitar el rol de administrador.");
     },
   });
 
@@ -108,6 +124,11 @@ export default function Users() {
                       >
                         {truncate(u.email ?? u.id)}
                       </Link>
+                      {u.is_admin && (
+                        <span className="ml-2 inline-block">
+                          <Badge tone="ok">Admin</Badge>
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
                       {truncate([u.first_name, u.last_name].filter(Boolean).join(" ") || "")}
@@ -123,17 +144,28 @@ export default function Users() {
                       {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
                     </td>
                     <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => onToggle(u)}
-                        disabled={setStatusMutation.isPending}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
-                          u.is_active
-                            ? "border border-danger/40 text-danger hover:bg-danger/10"
-                            : "border border-primary/40 text-primaryDark hover:bg-primary/10"
-                        }`}
-                      >
-                        {u.is_active ? "Deshabilitar" : "Habilitar"}
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => onToggle(u)}
+                          disabled={setStatusMutation.isPending}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
+                            u.is_active
+                              ? "border border-danger/40 text-danger hover:bg-danger/10"
+                              : "border border-primary/40 text-primaryDark hover:bg-primary/10"
+                          }`}
+                        >
+                          {u.is_active ? "Deshabilitar" : "Habilitar"}
+                        </button>
+                        {u.is_admin && u.email !== admin?.email && (
+                          <button
+                            onClick={() => { setRemoveAdminError(null); setToRemoveAdmin(u); }}
+                            title="Quitar rol de administrador"
+                            className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-danger"
+                          >
+                            <ShieldOff size={14} /> Quitar admin
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button
@@ -189,6 +221,41 @@ export default function Users() {
                 className="flex-1 rounded-xl bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
               >
                 {setStatusMutation.isPending ? "Deshabilitando…" : "Deshabilitar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toRemoveAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold">Quitar administrador</h3>
+            <p className="mt-2 text-sm text-muted">
+              ¿Seguro que querés quitarle el rol de administrador a{" "}
+              <span className="font-medium text-ink" title={toRemoveAdmin.email ?? toRemoveAdmin.id}>
+                {truncate(toRemoveAdmin.email ?? toRemoveAdmin.id)}
+              </span>
+              ? Va a seguir teniendo su cuenta de usuario normal.
+            </p>
+            {removeAdminError && (
+              <div className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+                {removeAdminError}
+              </div>
+            )}
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => { setToRemoveAdmin(null); setRemoveAdminError(null); }}
+                className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => removeAdminMutation.mutate(toRemoveAdmin)}
+                disabled={removeAdminMutation.isPending}
+                className="flex-1 rounded-xl bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+              >
+                {removeAdminMutation.isPending ? "Quitando…" : "Quitar admin"}
               </button>
             </div>
           </div>
