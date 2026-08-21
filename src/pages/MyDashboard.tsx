@@ -39,7 +39,7 @@ export default function MyDashboard() {
                 <XAxis dataKey="label" fontSize={11} stroke="#6E6E6E" />
                 <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
                 <Tooltip />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <Bar dataKey="count" name="Cantidad" radius={[6, 6, 0, 0]}>
                   {data.products_by_category.map((_, i) => (
                     <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                   ))}

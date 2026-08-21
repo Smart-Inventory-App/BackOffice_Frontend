@@ -10,6 +10,9 @@ import UserDetail from "./pages/UserDetail";
 import Products from "./pages/Products";
 import MyProducts from "./pages/MyProducts";
 import Cargar from "./pages/Cargar";
+import Alertas from "./pages/Alertas";
+import Auditoria from "./pages/Auditoria";
+import Perfil from "./pages/Perfil";
 
 function Protected({ children }: { children: JSX.Element }) {
   const { admin, loading } = useAuth();
@@ -56,6 +59,9 @@ export default function App() {
         }
       />
       <Route path="/cargar" element={<Protected><Cargar /></Protected>} />
+      <Route path="/alertas" element={<Protected><Alertas /></Protected>} />
+      <Route path="/perfil" element={<Protected><Perfil /></Protected>} />
+      <Route path="/auditoria" element={<AdminOnly><Auditoria /></AdminOnly>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

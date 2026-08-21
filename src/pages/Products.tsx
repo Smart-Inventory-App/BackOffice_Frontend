@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import type { AdminProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
 import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
+
+type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
 function isExpiringSoon(date: string | null): boolean {
   if (!date) return false;
@@ -24,24 +27,73 @@ export default function Products() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [onlyImage, setOnlyImage] = useState(false);
+  const [categoria, setCategoria] = useState("");
+  const [ownerId, setOwnerId] = useState("");
+  const [vencido, setVencido] = useState<"" | "si" | "no">("");
+  const [bajoStock, setBajoStock] = useState(false);
+  const [sortBy, setSortBy] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [toDelete, setToDelete] = useState<AdminProduct | null>(null);
 
-  useEffect(() => setPage(0), [search, onlyImage]);
+  useEffect(() => setPage(0), [search, onlyImage, categoria, ownerId, vencido, bajoStock]);
+
+  const { data: filterOptions } = useQuery({
+    queryKey: ["products-filter-options", ownerId],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (ownerId) params.user_id = ownerId;
+      const { data } = await api.get<{
+        categorias: string[];
+        owners: { user_id: string; email: string | null }[];
+      }>("/admin/products/filters/options", { params });
+      return data;
+    },
+  });
+
+  useEffect(() => {
+    if (categoria && filterOptions && !filterOptions.categorias.includes(categoria)) {
+      setCategoria("");
+    }
+  }, [ownerId, filterOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const buildFilterParams = (): Record<string, string | number | boolean> => {
+    const params: Record<string, string | number | boolean> = {};
+    if (search) params.search = search;
+    if (onlyImage) params.only_with_image = true;
+    if (categoria) params.categoria = categoria;
+    if (ownerId) params.user_id = ownerId;
+    if (vencido) params.vencido = vencido === "si";
+    if (bajoStock) params.bajo_stock = true;
+    if (sortBy) {
+      params.sort_by = sortBy;
+      params.sort_dir = sortDir;
+    }
+    return params;
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["products", search, onlyImage, page],
+    queryKey: ["products", search, onlyImage, categoria, ownerId, vencido, bajoStock, sortBy, sortDir, page],
     queryFn: async () => {
-      const params: Record<string, string | number | boolean> = {
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      };
-      if (search) params.search = search;
-      if (onlyImage) params.only_with_image = true;
+      const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<AdminProduct>>("/admin/products/", { params })).data;
     },
     placeholderData: keepPreviousData,
   });
+
+  const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  const exportProducts = async (format: "csv" | "xlsx") => {
+    setExporting(format);
+    try {
+      await downloadFile(
+        "/admin/products/export",
+        { ...buildFilterParams(), format },
+        `productos.${format}`,
+      );
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const del = useMutation({
     mutationFn: async (id: number) => api.delete(`/admin/products/${id}`),
@@ -51,20 +103,100 @@ export default function Products() {
     },
   });
 
+  const toggleSort = (field: SortField) => {
+    if (sortBy !== field) {
+      setSortBy(field);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortBy(null);
+    }
+  };
+
+  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(field)}
+      className="inline-flex items-center gap-1 hover:text-primaryDark"
+    >
+      {label}
+      {sortBy === field &&
+        (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+    </button>
+  );
+
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
   return (
     <div>
-      <PageHeader title="Productos" subtitle="Datos e imágenes cargados por los usuarios de la app" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader title="Productos" subtitle="Datos e imágenes cargados por los usuarios de la app" />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => exportProducts("csv")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => exportProducts("xlsx")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
+          </button>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o marca…"
-          className="flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+          className="min-w-[200px] flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
         />
+        <select
+          value={categoria}
+          onChange={(e) => setCategoria(e.target.value)}
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Todas las categorías</option>
+          {(filterOptions?.categorias ?? []).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={ownerId}
+          onChange={(e) => setOwnerId(e.target.value)}
+          className="max-w-[220px] rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Todos los usuarios</option>
+          {(filterOptions?.owners ?? []).map((o) => (
+            <option key={o.user_id} value={o.user_id} title={o.email ?? o.user_id}>
+              {o.email ?? o.user_id}
+            </option>
+          ))}
+        </select>
+        <select
+          value={vencido}
+          onChange={(e) => setVencido(e.target.value as any)}
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Vencimiento: todos</option>
+          <option value="si">Vencidos</option>
+          <option value="no">No vencidos</option>
+        </select>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
+          Bajo stock
+        </label>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={onlyImage} onChange={(e) => setOnlyImage(e.target.checked)} />
           Solo con imagen
@@ -80,10 +212,18 @@ export default function Products() {
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-5 py-3 text-center">Imagen</th>
-                  <th className="px-5 py-3">Producto</th>
-                  <th className="px-5 py-3 text-center">Categoría</th>
-                  <th className="px-5 py-3 text-center">Stock</th>
-                  <th className="px-5 py-3 text-center">Vencimiento</th>
+                  <th className="px-5 py-3">
+                    <SortHeader field="nombre" label="Producto" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="categoria" label="Categoría" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="stock" label="Stock" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="vencimiento" label="Vencimiento" />
+                  </th>
                   <th className="px-5 py-3 text-center">Dueño</th>
                   <th className="px-5 py-3 text-center">Acciones</th>
                 </tr>

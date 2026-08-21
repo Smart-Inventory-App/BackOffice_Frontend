@@ -15,7 +15,7 @@ export default function Users() {
   const qc = useQueryClient();
   const { admin } = useAuth();
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"" | "active" | "inactive">("");
+  const [status, setStatus] = useState<"" | "active" | "inactive" | "admin">("");
   const [page, setPage] = useState(0);
   const [toDisable, setToDisable] = useState<AppUser | null>(null);
   const [reason, setReason] = useState("");
@@ -92,6 +92,7 @@ export default function Users() {
           <option value="">Todos</option>
           <option value="active">Activos</option>
           <option value="inactive">Deshabilitados</option>
+          <option value="admin">Administradores</option>
         </select>
       </div>
 

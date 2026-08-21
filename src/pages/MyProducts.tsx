@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, Pencil, Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import type { MyProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import { Picklist, addIfMissing } from "@/components/Picklist";
 import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
+
+type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
 function isExpiringSoon(date: string | null): boolean {
   if (!date) return false;
@@ -19,23 +24,150 @@ function isExpired(date: string | null): boolean {
   return new Date(date).getTime() < Date.now();
 }
 
-export default function MyProducts() {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(0);
+const EDIT_EMPTY = {
+  nombre: "",
+  marca: "",
+  categoria: "",
+  stock: "",
+  vencimiento: "",
+  descripcion: "",
+  imagen_url: "",
+  ubicacion: "",
+};
 
-  useEffect(() => setPage(0), [search]);
+export default function MyProducts() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [vencido, setVencido] = useState<"" | "si" | "no">("");
+  const [bajoStock, setBajoStock] = useState(false);
+  const [sortBy, setSortBy] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(0);
+  const [editing, setEditing] = useState<MyProduct | null>(null);
+  const [editForm, setEditForm] = useState(EDIT_EMPTY);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  useEffect(() => setPage(0), [search, categoria, vencido, bajoStock]);
+
+  const { data: filterOptions } = useQuery({
+    queryKey: ["my-products-filter-options"],
+    queryFn: async () => {
+      const { data } = await api.get<{ categorias: string[]; ubicaciones: string[] }>(
+        "/me/products/filters/options",
+      );
+      return data;
+    },
+  });
+  const categoriaOptions = filterOptions?.categorias ?? [];
+  const [editCategoriaOptions, setEditCategoriaOptions] = useState<string[]>([]);
+  const [editUbicacionOptions, setEditUbicacionOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (filterOptions) {
+      setEditCategoriaOptions(filterOptions.categorias);
+      setEditUbicacionOptions(filterOptions.ubicaciones);
+    }
+  }, [filterOptions]);
+
+  const buildFilterParams = (): Record<string, string | number | boolean> => {
+    const params: Record<string, string | number | boolean> = {};
+    if (search) params.search = search;
+    if (categoria) params.categoria = categoria;
+    if (vencido) params.vencido = vencido === "si";
+    if (bajoStock) params.bajo_stock = true;
+    if (sortBy) {
+      params.sort_by = sortBy;
+      params.sort_dir = sortDir;
+    }
+    return params;
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-products", search, page],
+    queryKey: ["my-products", search, categoria, vencido, bajoStock, sortBy, sortDir, page],
     queryFn: async () => {
-      const params: Record<string, string | number> = {
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      };
-      if (search) params.search = search;
+      const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<MyProduct>>("/me/products", { params })).data;
     },
     placeholderData: keepPreviousData,
+  });
+
+  const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  const exportProducts = async (format: "csv" | "xlsx") => {
+    setExporting(format);
+    try {
+      await downloadFile(
+        "/me/products/export",
+        { ...buildFilterParams(), format },
+        `mis_productos.${format}`,
+      );
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const toggleSort = (field: SortField) => {
+    if (sortBy !== field) {
+      setSortBy(field);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortBy(null);
+    }
+  };
+
+  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(field)}
+      className="inline-flex items-center gap-1 hover:text-primaryDark"
+    >
+      {label}
+      {sortBy === field && (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+    </button>
+  );
+
+  const openEdit = (p: MyProduct) => {
+    setEditError(null);
+    setEditing(p);
+    setEditForm({
+      nombre: p.nombre,
+      marca: p.marca ?? "",
+      categoria: p.categoria,
+      stock: String(p.stock),
+      vencimiento: p.vencimiento ?? "",
+      descripcion: p.descripcion ?? "",
+      imagen_url: p.imagen_url ?? "",
+      ubicacion: p.ubicacion ?? "",
+    });
+  };
+
+  const editSet = (field: keyof typeof EDIT_EMPTY) => (e: { target: { value: string } }) =>
+    setEditForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const saveEdit = useMutation({
+    mutationFn: async () => {
+      if (!editing) return;
+      await api.patch(`/me/products/${editing.id}`, {
+        nombre: editForm.nombre,
+        marca: editForm.marca || null,
+        categoria: editForm.categoria,
+        stock: Number(editForm.stock),
+        vencimiento: editForm.vencimiento || null,
+        descripcion: editForm.descripcion || null,
+        imagen_url: editForm.imagen_url || null,
+        ubicacion: editForm.ubicacion || null,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-products"] });
+      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      setEditing(null);
+    },
+    onError: (err: any) => {
+      setEditError(err?.response?.data?.detail ?? "No se pudo guardar el producto.");
+    },
   });
 
   const items = data?.items ?? [];
@@ -43,15 +175,60 @@ export default function MyProducts() {
 
   return (
     <div>
-      <PageHeader title="Productos" subtitle="Tus productos cargados" />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader title="Productos" subtitle="Tus productos cargados" />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => exportProducts("csv")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => exportProducts("xlsx")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
+          </button>
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o marca…"
-          className="flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+          className="min-w-[200px] flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
         />
+        <select
+          value={categoria}
+          onChange={(e) => setCategoria(e.target.value)}
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Todas las categorías</option>
+          {(categoriaOptions ?? []).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={vencido}
+          onChange={(e) => setVencido(e.target.value as any)}
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Vencimiento: todos</option>
+          <option value="si">Vencidos</option>
+          <option value="no">No vencidos</option>
+        </select>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
+          Bajo stock
+        </label>
       </div>
 
       {isLoading ? (
@@ -63,10 +240,19 @@ export default function MyProducts() {
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-5 py-3 text-center">Imagen</th>
-                  <th className="px-5 py-3">Producto</th>
-                  <th className="px-5 py-3 text-center">Categoría</th>
-                  <th className="px-5 py-3 text-center">Stock</th>
-                  <th className="px-5 py-3 text-center">Vencimiento</th>
+                  <th className="px-5 py-3">
+                    <SortHeader field="nombre" label="Producto" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="categoria" label="Categoría" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="stock" label="Stock" />
+                  </th>
+                  <th className="px-5 py-3 text-center">
+                    <SortHeader field="vencimiento" label="Vencimiento" />
+                  </th>
+                  <th className="px-5 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -98,11 +284,19 @@ export default function MyProducts() {
                         "—"
                       )}
                     </td>
+                    <td className="px-5 py-3 text-center">
+                      <button
+                        onClick={() => openEdit(p)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
+                      >
+                        <Pencil size={14} /> Editar
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={6} className="px-5 py-10 text-center text-muted">
                       No se encontraron productos.
                     </td>
                   </tr>
@@ -112,6 +306,114 @@ export default function MyProducts() {
           </div>
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </Card>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold">Editar producto</h3>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
+                <input
+                  value={editForm.nombre}
+                  onChange={editSet("nombre")}
+                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
+                  <input
+                    value={editForm.marca}
+                    onChange={editSet("marca")}
+                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <Picklist
+                  label="Categoría"
+                  value={editForm.categoria}
+                  options={editCategoriaOptions}
+                  onChange={(v) => {
+                    setEditForm((f) => ({ ...f, categoria: v }));
+                    setEditCategoriaOptions((prev) => addIfMissing(prev, v));
+                  }}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-ink">Stock</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editForm.stock}
+                    onChange={editSet("stock")}
+                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-ink">Vencimiento</label>
+                  <input
+                    type="date"
+                    value={editForm.vencimiento}
+                    onChange={editSet("vencimiento")}
+                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+              <Picklist
+                label="Ubicación"
+                value={editForm.ubicacion}
+                options={editUbicacionOptions}
+                emptyLabel="Sin ubicación"
+                onChange={(v) => {
+                  setEditForm((f) => ({ ...f, ubicacion: v }));
+                  setEditUbicacionOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">URL de imagen</label>
+                <input
+                  value={editForm.imagen_url}
+                  onChange={editSet("imagen_url")}
+                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
+                <textarea
+                  value={editForm.descripcion}
+                  onChange={editSet("descripcion")}
+                  rows={2}
+                  className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {editError && (
+              <div className="mt-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+                {editError}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setEditing(null)}
+                className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => saveEdit.mutate()}
+                disabled={saveEdit.isPending}
+                className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+              >
+                {saveEdit.isPending ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

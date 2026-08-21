@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { ShieldCheck, ShieldOff, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AuditEntry } from "@/lib/types";
 import { Badge, Spinner } from "@/components/ui";
@@ -52,14 +52,28 @@ export default function AuditModal({
             <p className="py-8 text-center text-sm text-danger">No se pudo cargar la auditoría.</p>
           ) : !data || data.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">
-              Este usuario no tiene cambios de estado registrados.
+              Este usuario no tiene cambios registrados.
             </p>
           ) : (
             <ul className="space-y-3">
               {data.map((entry) => (
-                <li key={entry.id} className="rounded-xl border border-line p-3">
+                <li key={`${entry.kind}-${entry.id}`} className="rounded-xl border border-line p-3">
                   <div className="flex items-center justify-between">
-                    {entry.is_active ? (
+                    {entry.kind === "role" ? (
+                      entry.action === "granted" ? (
+                        <Badge tone="ok">
+                          <span className="inline-flex items-center gap-1">
+                            <ShieldCheck size={12} /> Se le dio admin
+                          </span>
+                        </Badge>
+                      ) : (
+                        <Badge tone="off">
+                          <span className="inline-flex items-center gap-1">
+                            <ShieldOff size={12} /> Se le quitó admin
+                          </span>
+                        </Badge>
+                      )
+                    ) : entry.is_active ? (
                       <Badge tone="ok">Habilitado</Badge>
                     ) : (
                       <Badge tone="off">Deshabilitado</Badge>

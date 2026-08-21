@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, PageHeader } from "@/components/ui";
+import { Picklist, addIfMissing } from "@/components/Picklist";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
 
 const EMPTY = {
@@ -15,105 +16,6 @@ const EMPTY = {
   imagen_url: "",
   ubicacion: "",
 };
-
-function addIfMissing(options: string[], value: string | null | undefined): string[] {
-  if (!value || options.includes(value)) return options;
-  return [...options, value].sort((a, b) => a.localeCompare(b));
-}
-
-function Picklist({
-  label,
-  value,
-  options,
-  onChange,
-  required,
-  emptyLabel,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  required?: boolean;
-  emptyLabel?: string;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [newValue, setNewValue] = useState("");
-
-  const confirmAdd = () => {
-    const trimmed = newValue.trim();
-    setAdding(false);
-    setNewValue("");
-    if (trimmed) onChange(trimmed);
-  };
-
-  if (adding) {
-    return (
-      <div>
-        <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
-        <div className="flex gap-2">
-          <input
-            autoFocus
-            value={newValue}
-            onChange={(e) => setNewValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                confirmAdd();
-              }
-            }}
-            className="flex-1 rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-          />
-          <button
-            type="button"
-            onClick={confirmAdd}
-            className="rounded-xl bg-primary px-3 text-sm font-medium text-white"
-          >
-            OK
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAdding(false); setNewValue(""); }}
-            className="rounded-xl border border-line px-3 text-sm text-muted"
-          >
-            Cancelar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-ink">{label}</label>
-      <select
-        value={options.includes(value) ? value : ""}
-        onChange={(e) => {
-          if (e.target.value === "__new__") {
-            setAdding(true);
-            return;
-          }
-          onChange(e.target.value);
-        }}
-        required={required}
-        className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-      >
-        {emptyLabel ? (
-          <option value="">{emptyLabel}</option>
-        ) : (
-          <option value="" disabled>
-            Seleccionar…
-          </option>
-        )}
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-        <option value="__new__">+ Nueva…</option>
-      </select>
-    </div>
-  );
-}
 
 function ManualForm() {
   const qc = useQueryClient();
@@ -128,26 +30,13 @@ function ManualForm() {
 
   useEffect(() => {
     api
-      .get<{ categorias: string[]; ubicaciones: string[]; marcas: string[] }>("/me/products/filters/options")
+      .get<{ categorias: string[]; ubicaciones: string[]; marcas: string[] }>(
+        "/me/products/filters/options",
+      )
       .then(({ data }) => {
         setCategoriaOptions(data.categorias);
         setUbicacionOptions(data.ubicaciones);
         setMarcaOptions(data.marcas);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    api
-      .get<{ last_categoria: string | null; last_ubicacion: string | null }>("/me/products/defaults")
-      .then(({ data }) => {
-        setForm((f) => ({
-          ...f,
-          categoria: f.categoria || data.last_categoria || "",
-          ubicacion: f.ubicacion || data.last_ubicacion || "",
-        }));
-        setCategoriaOptions((prev) => addIfMissing(prev, data.last_categoria));
-        setUbicacionOptions((prev) => addIfMissing(prev, data.last_ubicacion));
       })
       .catch(() => {});
   }, []);
@@ -372,6 +261,18 @@ function BulkUpload() {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [categoriaOptions, setCategoriaOptions] = useState<string[]>([]);
+  const [ubicacionOptions, setUbicacionOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    api
+      .get<{ categorias: string[]; ubicaciones: string[] }>("/me/products/filters/options")
+      .then(({ data }) => {
+        setCategoriaOptions(data.categorias);
+        setUbicacionOptions(data.ubicaciones);
+      })
+      .catch(() => {});
+  }, []);
   const [result, setResult] = useState<BulkCommitResult | null>(null);
 
   const handleFiles = async (fileList: FileList) => {
@@ -597,14 +498,16 @@ function BulkUpload() {
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Categoría</label>
-                    <input
-                      value={active.data.categoria}
-                      onChange={(e) => updateRow(active.key, { categoria: e.target.value })}
-                      className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                    />
-                  </div>
+                  <Picklist
+                    label="Categoría"
+                    value={active.data.categoria}
+                    options={categoriaOptions}
+                    onChange={(v) => {
+                      updateRow(active.key, { categoria: v });
+                      setCategoriaOptions((prev) => addIfMissing(prev, v));
+                    }}
+                    required
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -627,14 +530,16 @@ function BulkUpload() {
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Ubicación</label>
-                  <input
-                    value={active.data.ubicacion ?? ""}
-                    onChange={(e) => updateRow(active.key, { ubicacion: e.target.value || null })}
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                </div>
+                <Picklist
+                  label="Ubicación"
+                  value={active.data.ubicacion ?? ""}
+                  options={ubicacionOptions}
+                  emptyLabel="Sin ubicación"
+                  onChange={(v) => {
+                    updateRow(active.key, { ubicacion: v || null });
+                    setUbicacionOptions((prev) => addIfMissing(prev, v));
+                  }}
+                />
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
                   <textarea

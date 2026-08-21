@@ -15,7 +15,9 @@ export interface AuditEntry {
   id: number;
   user_id: string;
   changed_by: string;
-  is_active: boolean;
+  kind: "status" | "role";
+  is_active: boolean | null;
+  action: "granted" | "revoked" | null;
   reason: string | null;
   created_at: string | null;
 }
@@ -121,6 +123,15 @@ export interface MyDefaults {
   last_ubicacion: string | null;
 }
 
+export interface MyProfile {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  stock_minimo: number;
+  dias_alerta_vencimiento: number;
+}
+
 export interface BulkProductRow {
   row_number: number;
   nombre: string;
@@ -151,4 +162,21 @@ export interface BulkCommitResult {
   merged: number;
   failed: number;
   errors: string[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  kind:
+    | "status"
+    | "role"
+    | "login"
+    | "registered"
+    | "product_created"
+    | "product_updated"
+    | "product_deleted";
+  actor_email: string | null;
+  target_user_id: string | null;
+  target_email: string | null;
+  description: string;
+  created_at: string | null;
 }
