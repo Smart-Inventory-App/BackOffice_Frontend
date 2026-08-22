@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Package, LogOut, UserPlus, Upload, Eye, ShieldCheck, Bell, ClipboardList, UserCircle } from "lucide-react";
+import { LayoutDashboard, Users, Package, LogOut, UserPlus, Upload, Eye, ShieldCheck, Bell, ClipboardList, UserCircle, Brain } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import logo from "../../assets/logo.png";
@@ -10,6 +10,7 @@ const ADMIN_NAV = [
   { to: "/usuarios", label: "Usuarios", icon: Users },
   { to: "/productos", label: "Productos", icon: Package },
   { to: "/auditoria", label: "Auditoría", icon: ClipboardList },
+  { to: "/ml", label: "ML", icon: Brain },
 ];
 
 const USER_NAV = [
