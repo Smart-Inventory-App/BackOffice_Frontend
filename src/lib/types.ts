@@ -107,11 +107,14 @@ export interface MyProduct {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  stock_minimo: number | null;
+  dias_alerta_vencimiento: number | null;
   created_at: string | null;
   merged?: boolean;
 }
 
 export interface ProductSuggestion {
+  id: number;
   nombre: string;
   marca: string | null;
   categoria: string;
@@ -142,6 +145,8 @@ export interface BulkProductRow {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  stock_minimo: number | null;
+  dias_alerta_vencimiento: number | null;
 }
 
 export interface BulkParsedRow {
@@ -149,7 +154,7 @@ export interface BulkParsedRow {
   data: BulkProductRow | null;
   valid: boolean;
   errors: string[];
-  action: "create" | "merge" | null;
+  action: "create" | "merge" | "salida" | null;
   existing_stock: number | null;
 }
 
@@ -162,6 +167,26 @@ export interface BulkCommitResult {
   merged: number;
   failed: number;
   errors: string[];
+}
+
+export interface ConsumoPorDia {
+  day: string;
+  quantity: number;
+}
+
+export interface ProductoConsumo {
+  product_id: number;
+  nombre: string;
+  cantidad: number;
+}
+
+export interface MyMetrics {
+  period_days: number;
+  total_consumido: number;
+  total_entradas: number;
+  consumo_por_dia: ConsumoPorDia[];
+  top_productos: ProductoConsumo[];
+  productos_menos_usados: ProductoConsumo[];
 }
 
 export interface ActivityEntry {

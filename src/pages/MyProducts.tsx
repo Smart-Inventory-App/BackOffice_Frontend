@@ -33,6 +33,8 @@ const EDIT_EMPTY = {
   descripcion: "",
   imagen_url: "",
   ubicacion: "",
+  stock_minimo: "",
+  dias_alerta_vencimiento: "",
 };
 
 export default function MyProducts() {
@@ -47,6 +49,12 @@ export default function MyProducts() {
   const [editing, setEditing] = useState<MyProduct | null>(null);
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editError, setEditError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [bulkCategoria, setBulkCategoria] = useState("");
+  const [bulkUbicacion, setBulkUbicacion] = useState("");
+  const [bulkMarca, setBulkMarca] = useState("");
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => setPage(0), [search, categoria, vencido, bajoStock]);
 
@@ -140,6 +148,8 @@ export default function MyProducts() {
       descripcion: p.descripcion ?? "",
       imagen_url: p.imagen_url ?? "",
       ubicacion: p.ubicacion ?? "",
+      stock_minimo: p.stock_minimo != null ? String(p.stock_minimo) : "",
+      dias_alerta_vencimiento: p.dias_alerta_vencimiento != null ? String(p.dias_alerta_vencimiento) : "",
     });
   };
 
@@ -158,6 +168,10 @@ export default function MyProducts() {
         descripcion: editForm.descripcion || null,
         imagen_url: editForm.imagen_url || null,
         ubicacion: editForm.ubicacion || null,
+        stock_minimo: editForm.stock_minimo ? Number(editForm.stock_minimo) : null,
+        dias_alerta_vencimiento: editForm.dias_alerta_vencimiento
+          ? Number(editForm.dias_alerta_vencimiento)
+          : null,
       });
     },
     onSuccess: () => {
@@ -172,6 +186,55 @@ export default function MyProducts() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+
+  const toggleSelected = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allOnPageSelected = items.length > 0 && items.every((p) => selected.has(p.id));
+  const toggleSelectAllOnPage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        items.forEach((p) => next.delete(p.id));
+      } else {
+        items.forEach((p) => next.add(p.id));
+      }
+      return next;
+    });
+  };
+
+  const openBulkEdit = () => {
+    setBulkError(null);
+    setBulkCategoria("");
+    setBulkUbicacion("");
+    setBulkMarca("");
+    setShowBulkEdit(true);
+  };
+
+  const bulkEdit = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = { product_ids: Array.from(selected) };
+      if (bulkCategoria) payload.categoria = bulkCategoria;
+      if (bulkUbicacion) payload.ubicacion = bulkUbicacion;
+      if (bulkMarca) payload.marca = bulkMarca;
+      return (await api.patch<{ updated: number }>("/me/products/bulk-edit", payload)).data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-products"] });
+      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      setSelected(new Set());
+      setShowBulkEdit(false);
+    },
+    onError: (err: any) => {
+      setBulkError(err?.response?.data?.detail ?? "No se pudo aplicar el cambio.");
+    },
+  });
 
   return (
     <div>
@@ -231,6 +294,30 @@ export default function MyProducts() {
         </label>
       </div>
 
+      {selected.size > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5">
+          <p className="text-sm text-primaryDark">
+            {selected.size} producto{selected.size === 1 ? "" : "s"} seleccionado{selected.size === 1 ? "" : "s"}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas"
+            >
+              Deseleccionar
+            </button>
+            <button
+              type="button"
+              onClick={openBulkEdit}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+            >
+              Editar en lote
+            </button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <Spinner />
       ) : (
@@ -239,6 +326,9 @@ export default function MyProducts() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-5 py-3 text-center">
+                    <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAllOnPage} />
+                  </th>
                   <th className="px-5 py-3 text-center">Imagen</th>
                   <th className="px-5 py-3">
                     <SortHeader field="nombre" label="Producto" />
@@ -258,6 +348,13 @@ export default function MyProducts() {
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
+                    <td className="px-5 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(p.id)}
+                        onChange={() => toggleSelected(p.id)}
+                      />
+                    </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-center">
                         <ProductImage url={p.imagen_url} alt={p.nombre} />
@@ -296,7 +393,7 @@ export default function MyProducts() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
                       No se encontraron productos.
                     </td>
                   </tr>
@@ -389,6 +486,35 @@ export default function MyProducts() {
                   className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                 />
               </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Alertas para este producto (opcional)
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editForm.stock_minimo}
+                      onChange={editSet("stock_minimo")}
+                      placeholder="Usa tu regla general"
+                      className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editForm.dias_alerta_vencimiento}
+                      onChange={editSet("dias_alerta_vencimiento")}
+                      placeholder="Usa tu regla general"
+                      className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {editError && (
@@ -410,6 +536,80 @@ export default function MyProducts() {
                 className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
               >
                 {saveEdit.isPending ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold">Editar {selected.size} productos</h3>
+            <p className="mt-1 text-sm text-muted">
+              Solo se cambian los campos que completes acá — dejá "No cambiar" en los demás.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Categoría</label>
+                <select
+                  value={bulkCategoria}
+                  onChange={(e) => setBulkCategoria(e.target.value)}
+                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">No cambiar</option>
+                  {editCategoriaOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Ubicación</label>
+                <select
+                  value={bulkUbicacion}
+                  onChange={(e) => setBulkUbicacion(e.target.value)}
+                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">No cambiar</option>
+                  {editUbicacionOptions.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
+                <input
+                  value={bulkMarca}
+                  onChange={(e) => setBulkMarca(e.target.value)}
+                  placeholder="Dejar vacío para no cambiar"
+                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {bulkError && (
+              <div className="mt-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
+                {bulkError}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowBulkEdit(false)}
+                className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => bulkEdit.mutate()}
+                disabled={bulkEdit.isPending || (!bulkCategoria && !bulkUbicacion && !bulkMarca)}
+                className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+              >
+                {bulkEdit.isPending ? "Aplicando…" : "Aplicar"}
               </button>
             </div>
           </div>

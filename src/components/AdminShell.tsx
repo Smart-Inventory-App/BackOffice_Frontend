@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Package, LogOut, UserPlus, Upload, Eye, ShieldCheck, Bell, ClipboardList, UserCircle, Brain } from "lucide-react";
+import { LayoutDashboard, Users, Package, LogOut, UserPlus, ArrowLeftRight, Eye, ShieldCheck, Bell, ClipboardList, UserCircle, Brain, LineChart } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import logo from "../../assets/logo.png";
@@ -16,7 +16,8 @@ const ADMIN_NAV = [
 const USER_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/productos", label: "Productos", icon: Package },
-  { to: "/cargar", label: "Cargar", icon: Upload },
+  { to: "/cargar", label: "Flujo de producto", icon: ArrowLeftRight },
+  { to: "/metricas", label: "Métricas", icon: LineChart },
   { to: "/alertas", label: "Alertas", icon: Bell },
   { to: "/perfil", label: "Mi perfil", icon: UserCircle },
 ];
