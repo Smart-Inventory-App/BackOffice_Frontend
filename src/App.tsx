@@ -14,6 +14,7 @@ import Alertas from "./pages/Alertas";
 import Auditoria from "./pages/Auditoria";
 import Perfil from "./pages/Perfil";
 import ML from "./pages/ML";
+import Metricas from "./pages/Metricas";
 
 function Protected({ children }: { children: JSX.Element }) {
   const { admin, loading } = useAuth();
@@ -61,6 +62,7 @@ export default function App() {
       />
       <Route path="/cargar" element={<Protected><Cargar /></Protected>} />
       <Route path="/alertas" element={<Protected><Alertas /></Protected>} />
+      <Route path="/metricas" element={<Protected><Metricas /></Protected>} />
       <Route path="/perfil" element={<Protected><Perfil /></Protected>} />
       <Route path="/auditoria" element={<AdminOnly><Auditoria /></AdminOnly>} />
       <Route path="/ml" element={<AdminOnly><ML /></AdminOnly>} />

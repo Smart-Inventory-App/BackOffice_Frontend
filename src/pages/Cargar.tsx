@@ -15,6 +15,8 @@ const EMPTY = {
   descripcion: "",
   imagen_url: "",
   ubicacion: "",
+  stock_minimo: "",
+  dias_alerta_vencimiento: "",
 };
 
 function ManualForm() {
@@ -86,6 +88,8 @@ function ManualForm() {
           descripcion: form.descripcion || null,
           imagen_url: form.imagen_url || null,
           ubicacion: form.ubicacion || null,
+          stock_minimo: form.stock_minimo ? Number(form.stock_minimo) : null,
+          dias_alerta_vencimiento: form.dias_alerta_vencimiento ? Number(form.dias_alerta_vencimiento) : null,
         })
       ).data,
     onSuccess: (data: { merged?: boolean }) => {
@@ -212,6 +216,36 @@ function ManualForm() {
           />
         </div>
 
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+            Alertas para este producto (opcional)
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+              <input
+                type="number"
+                min={1}
+                value={form.stock_minimo}
+                onChange={set("stock_minimo")}
+                placeholder="Usa tu regla general"
+                className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+              <input
+                type="number"
+                min={1}
+                value={form.dias_alerta_vencimiento}
+                onChange={set("dias_alerta_vencimiento")}
+                placeholder="Usa tu regla general"
+                className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+        </div>
+
         {error && (
           <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
             {error}
@@ -235,25 +269,184 @@ function ManualForm() {
   );
 }
 
+function SalidaForm() {
+  const qc = useQueryClient();
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selected, setSelected] = useState<ProductSuggestion | null>(null);
+  const [cantidad, setCantidad] = useState("");
+  const [motivo, setMotivo] = useState<"consumed" | "expired">("consumed");
+  const [error, setError] = useState<string | null>(null);
+  const [okMessage, setOkMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selected) return;
+    const q = query.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      api
+        .get<ProductSuggestion[]>("/me/products/suggest", { params: { q } })
+        .then(({ data }) => setSuggestions(data))
+        .catch(() => setSuggestions([]));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query, selected]);
+
+  const onQueryChange = (v: string) => {
+    setQuery(v);
+    setSelected(null);
+  };
+
+  const pick = (s: ProductSuggestion) => {
+    setSelected(s);
+    setQuery(s.nombre + (s.marca ? ` · ${s.marca}` : ""));
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  const salida = useMutation({
+    mutationFn: async () => {
+      if (!selected) throw new Error("no seleccionado");
+      return (
+        await api.post<{ stock: number }>("/me/products/salida", {
+          product_id: selected.id,
+          quantity: Number(cantidad),
+          event_type: motivo,
+        })
+      ).data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["my-products"] });
+      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      qc.invalidateQueries({ queryKey: ["my-metrics"] });
+      setOkMessage(`Se sacaron ${cantidad} unidades de "${selected?.nombre}". Stock actual: ${data.stock}.`);
+      setError(null);
+      setQuery("");
+      setSelected(null);
+      setCantidad("");
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.detail ?? "No se pudo registrar la salida.");
+      setOkMessage(null);
+    },
+  });
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setOkMessage(null);
+    if (!selected) {
+      setError("Elegí un producto de la lista de sugerencias — no se puede sacar algo que no existe.");
+      return;
+    }
+    setError(null);
+    salida.mutate();
+  };
+
+  return (
+    <Card className="max-w-xl">
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="relative">
+          <label className="mb-1 block text-sm font-medium text-ink">Producto</label>
+          <input
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            placeholder="Escribí para buscar un producto que ya tengas cargado"
+            required
+            autoComplete="off"
+            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-line bg-white shadow-lg">
+              {suggestions.map((s) => (
+                <button
+                  type="button"
+                  key={s.id}
+                  onClick={() => pick(s)}
+                  className="block w-full border-b border-line/60 px-4 py-2 text-left text-sm last:border-0 hover:bg-canvas"
+                >
+                  {s.nombre}
+                  {s.marca && <span className="text-muted"> · {s.marca}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {!selected && query.trim().length >= 2 && suggestions.length === 0 && (
+            <p className="mt-1 text-xs text-muted">No encontramos ningún producto tuyo con ese nombre.</p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink">Cantidad a sacar</label>
+            <input
+              type="number"
+              min={1}
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              required
+              className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-ink">Motivo</label>
+            <select
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value as "consumed" | "expired")}
+              className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+            >
+              <option value="consumed">Consumido</option>
+              <option value="expired">Vencido</option>
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+            {error}
+          </div>
+        )}
+        {okMessage && (
+          <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
+            {okMessage}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={salida.isPending || !selected}
+          className="w-full rounded-xl bg-danger py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {salida.isPending ? "Registrando…" : "Registrar salida"}
+        </button>
+      </form>
+    </Card>
+  );
+}
+
 interface EditableRow {
   key: string;
   fileName: string;
   row_number: number;
   data: BulkProductRow;
-  action: "create" | "merge" | null;
+  action: "create" | "merge" | "salida" | null;
   existing_stock: number | null;
   included: boolean;
 }
 
-function validateRowLocal(data: BulkProductRow): string[] {
+function validateRowLocal(data: BulkProductRow, direction: "entrada" | "salida"): string[] {
   const errors: string[] = [];
   if (!data.nombre.trim()) errors.push("nombre es obligatorio");
-  if (!data.categoria.trim()) errors.push("categoria es obligatoria");
+  if (direction === "entrada" && !data.categoria.trim()) errors.push("categoria es obligatoria");
   if (!data.stock || data.stock <= 0) errors.push("stock debe ser mayor a 0");
   return errors;
 }
 
-function BulkUpload() {
+function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nextId = useRef(0);
@@ -263,6 +456,7 @@ function BulkUpload() {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [categoriaOptions, setCategoriaOptions] = useState<string[]>([]);
   const [ubicacionOptions, setUbicacionOptions] = useState<string[]>([]);
+  const [result, setResult] = useState<BulkCommitResult | null>(null);
 
   useEffect(() => {
     api
@@ -273,7 +467,13 @@ function BulkUpload() {
       })
       .catch(() => {});
   }, []);
-  const [result, setResult] = useState<BulkCommitResult | null>(null);
+
+  useEffect(() => {
+    setRows([]);
+    setActiveKey(null);
+    setResult(null);
+    setParseErrors([]);
+  }, [direction]);
 
   const handleFiles = async (fileList: FileList) => {
     setResult(null);
@@ -288,6 +488,7 @@ function BulkUpload() {
         formData.append("file", file);
         const { data } = await api.post<{ rows: BulkParsedRow[] }>("/me/products/bulk/parse", formData, {
           headers: { "Content-Type": "multipart/form-data" },
+          params: { mode: direction },
         });
         data.rows.forEach((r) => {
           if (!r.data) return;
@@ -342,29 +543,46 @@ function BulkUpload() {
 
   const commit = useMutation({
     mutationFn: async () => {
-      const toSend = rows.filter((r) => r.included && validateRowLocal(r.data).length === 0).map((r) => r.data);
-      const { data } = await api.post<BulkCommitResult>("/me/products/bulk/commit", { rows: toSend });
+      const toSend = rows
+        .filter((r) => r.included && validateRowLocal(r.data, direction).length === 0)
+        .map((r) => r.data);
+      const { data } = await api.post<BulkCommitResult>("/me/products/bulk/commit", {
+        rows: toSend,
+        mode: direction,
+      });
       return data;
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
       qc.invalidateQueries({ queryKey: ["my-stats"] });
+      qc.invalidateQueries({ queryKey: ["my-metrics"] });
       setResult(data);
       setRows([]);
       setActiveKey(null);
     },
   });
 
-  const includedRows = rows.filter((r) => r.included && validateRowLocal(r.data).length === 0);
+  const includedRows = rows.filter((r) => r.included && validateRowLocal(r.data, direction).length === 0);
   const active = rows.find((r) => r.key === activeKey) ?? null;
-  const activeErrors = active ? validateRowLocal(active.data) : [];
+  const activeErrors = active ? validateRowLocal(active.data, direction) : [];
 
   return (
     <Card className="max-w-5xl">
       <p className="mb-4 text-sm text-muted">
-        Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca, categoria,
-        stock, vencimiento, descripcion, imagen_url, ubicacion. Cada producto que se lea aparece
-        como una pestaña que podés revisar y modificar antes de confirmar la carga.
+        {direction === "entrada" ? (
+          <>
+            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca,
+            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, stock_minimo,
+            dias_alerta_vencimiento (las últimas dos son opcionales). Cada producto que se lea
+            aparece como una pestaña que podés revisar y modificar antes de confirmar la carga.
+          </>
+        ) : (
+          <>
+            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca, stock
+            (cantidad a sacar), vencimiento (opcional, para identificar el lote si hay más de uno
+            con ese nombre). Cada fila tiene que coincidir con un producto que ya tengas cargado.
+          </>
+        )}
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -404,7 +622,13 @@ function BulkUpload() {
 
       {result && (
         <div className="mt-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
-          Carga terminada: {result.created} productos nuevos, {result.merged} con stock sumado
+          {direction === "entrada" ? (
+            <>
+              Carga terminada: {result.created} productos nuevos, {result.merged} con stock sumado
+            </>
+          ) : (
+            <>Carga terminada: {result.merged} salidas aplicadas</>
+          )}
           {result.failed > 0 ? `, ${result.failed} con error` : ""}.
           {result.errors.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-danger">
@@ -421,7 +645,7 @@ function BulkUpload() {
           <div className="w-56 shrink-0">
             <div className="max-h-[55vh] space-y-1 overflow-auto rounded-xl border border-line p-2">
               {rows.map((r) => {
-                const errs = validateRowLocal(r.data);
+                const errs = validateRowLocal(r.data, direction);
                 return (
                   <button
                     key={r.key}
@@ -465,6 +689,13 @@ function BulkUpload() {
                       <> · va a sumar {active.existing_stock ?? 0} + {active.data.stock}</>
                     )}
                     {active.action === "create" && <> · producto nuevo</>}
+                    {active.action === "salida" && (
+                      <>
+                        {" "}
+                        · va a sacar {active.data.stock} (quedan{" "}
+                        {(active.existing_stock ?? 0) - active.data.stock})
+                      </>
+                    )}
                   </p>
                   <button
                     type="button"
@@ -498,20 +729,24 @@ function BulkUpload() {
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
                   </div>
-                  <Picklist
-                    label="Categoría"
-                    value={active.data.categoria}
-                    options={categoriaOptions}
-                    onChange={(v) => {
-                      updateRow(active.key, { categoria: v });
-                      setCategoriaOptions((prev) => addIfMissing(prev, v));
-                    }}
-                    required
-                  />
+                  {direction === "entrada" && (
+                    <Picklist
+                      label="Categoría"
+                      value={active.data.categoria}
+                      options={categoriaOptions}
+                      onChange={(v) => {
+                        updateRow(active.key, { categoria: v });
+                        setCategoriaOptions((prev) => addIfMissing(prev, v));
+                      }}
+                      required
+                    />
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Stock</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">
+                      {direction === "entrada" ? "Stock" : "Cantidad a sacar"}
+                    </label>
                     <input
                       type="number"
                       min={1}
@@ -530,25 +765,66 @@ function BulkUpload() {
                     />
                   </div>
                 </div>
-                <Picklist
-                  label="Ubicación"
-                  value={active.data.ubicacion ?? ""}
-                  options={ubicacionOptions}
-                  emptyLabel="Sin ubicación"
-                  onChange={(v) => {
-                    updateRow(active.key, { ubicacion: v || null });
-                    setUbicacionOptions((prev) => addIfMissing(prev, v));
-                  }}
-                />
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
-                  <textarea
-                    value={active.data.descripcion ?? ""}
-                    onChange={(e) => updateRow(active.key, { descripcion: e.target.value || null })}
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                </div>
+                {direction === "entrada" && (
+                  <>
+                    <Picklist
+                      label="Ubicación"
+                      value={active.data.ubicacion ?? ""}
+                      options={ubicacionOptions}
+                      emptyLabel="Sin ubicación"
+                      onChange={(v) => {
+                        updateRow(active.key, { ubicacion: v || null });
+                        setUbicacionOptions((prev) => addIfMissing(prev, v));
+                      }}
+                    />
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
+                      <textarea
+                        value={active.data.descripcion ?? ""}
+                        onChange={(e) => updateRow(active.key, { descripcion: e.target.value || null })}
+                        rows={2}
+                        className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                        Alertas para este producto (opcional)
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={active.data.stock_minimo ?? ""}
+                            onChange={(e) =>
+                              updateRow(active.key, {
+                                stock_minimo: e.target.value ? Number(e.target.value) : null,
+                              })
+                            }
+                            placeholder="Usa tu regla general"
+                            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={active.data.dias_alerta_vencimiento ?? ""}
+                            onChange={(e) =>
+                              updateRow(active.key, {
+                                dias_alerta_vencimiento: e.target.value ? Number(e.target.value) : null,
+                              })
+                            }
+                            placeholder="Usa tu regla general"
+                            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <p className="p-4 text-sm text-muted">Elegí un producto de la lista para revisarlo.</p>
@@ -572,10 +848,37 @@ function BulkUpload() {
 
 export default function Cargar() {
   const [tab, setTab] = useState<"manual" | "archivo">("manual");
+  const [direction, setDirection] = useState<"entrada" | "salida">("entrada");
 
   return (
     <div>
-      <PageHeader title="Cargar producto" subtitle="Alta de productos a tu inventario" />
+      <PageHeader
+        title="Flujo de producto"
+        subtitle={
+          direction === "entrada"
+            ? "Alta de productos a tu inventario"
+            : "Registrá salidas de stock de tu inventario"
+        }
+      />
+
+      <div className="mb-3 flex gap-2">
+        <button
+          onClick={() => setDirection("entrada")}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+            direction === "entrada" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
+          }`}
+        >
+          Entrada
+        </button>
+        <button
+          onClick={() => setDirection("salida")}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+            direction === "salida" ? "bg-danger text-white" : "bg-canvas text-muted hover:text-primaryDark"
+          }`}
+        >
+          Salida
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-2">
         <button
@@ -596,7 +899,15 @@ export default function Cargar() {
         </button>
       </div>
 
-      {tab === "manual" ? <ManualForm /> : <BulkUpload />}
+      {tab === "manual" ? (
+        direction === "entrada" ? (
+          <ManualForm />
+        ) : (
+          <SalidaForm />
+        )
+      ) : (
+        <BulkUpload direction={direction} />
+      )}
     </div>
   );
 }
