@@ -1,10 +1,14 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, CheckCircle, XCircle, RefreshCw, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, PageHeader, Spinner } from "@/components/ui";
 
+type ModelType = "gbm" | "xgboost" | "lightgbm" | "svr";
+
 interface ModelVersion {
   id: string;
+  model_type?: ModelType;
   trained_at: string;
   mae: number;
   mape: number;
@@ -12,6 +16,34 @@ interface ModelVersion {
   n_products: number;
   status: "active" | "inactive" | "rejected";
   model_file: string;
+}
+
+const MODEL_OPTIONS: { value: ModelType; label: string; description: string }[] = [
+  { value: "gbm", label: "GBM", description: "Gradient Boosting (sklearn)" },
+  { value: "xgboost", label: "XGBoost", description: "Extreme Gradient Boosting" },
+  { value: "lightgbm", label: "LightGBM", description: "Light Gradient Boosting" },
+  { value: "svr", label: "SVR", description: "Support Vector Regression" },
+];
+
+function ModelTypeBadge({ modelType }: { modelType?: ModelType }) {
+  const colors: Record<ModelType, string> = {
+    gbm: "bg-blue-100 text-blue-700",
+    xgboost: "bg-orange-100 text-orange-700",
+    lightgbm: "bg-purple-100 text-purple-700",
+    svr: "bg-gray-100 text-gray-700",
+  };
+  const labels: Record<ModelType, string> = {
+    gbm: "GBM",
+    xgboost: "XGBoost",
+    lightgbm: "LightGBM",
+    svr: "SVR",
+  };
+  const type = modelType ?? "gbm";
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${colors[type]}`}>
+      {labels[type]}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: ModelVersion["status"] }) {
@@ -49,6 +81,7 @@ function MapeBar({ mape }: { mape: number }) {
 
 export default function ML() {
   const qc = useQueryClient();
+  const [selectedModel, setSelectedModel] = useState<ModelType>("gbm");
 
   const { data: versions = [], isLoading } = useQuery<ModelVersion[]>({
     queryKey: ["ml-models"],
@@ -56,7 +89,8 @@ export default function ML() {
   });
 
   const trainMutation = useMutation({
-    mutationFn: async () => (await api.post("/admin/ml/models/train")).data,
+    mutationFn: async () =>
+      (await api.post("/admin/ml/models/train", { model_type: selectedModel })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ml-models"] }),
   });
 
@@ -90,20 +124,47 @@ export default function ML() {
         ))}
       </div>
 
-      {/* Botón entrenar */}
+      {/* Entrenar */}
       <Card className="mb-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex-1">
             <p className="font-semibold">Entrenar nuevo modelo</p>
-            <p className="text-sm text-gray-500">
-              Toma todos los eventos de consumo, entrena el GBM y evalúa MAE y MAPE.
+            <p className="mb-4 text-sm text-gray-500">
+              Toma todos los eventos de consumo, entrena el modelo seleccionado y evalúa MAE y MAPE.
               Si las métricas no pasan los umbrales, el modelo es rechazado.
             </p>
+
+            {/* Selector de tipo de modelo */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Algoritmo
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {MODEL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSelectedModel(opt.value)}
+                    title={opt.description}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      selectedModel === opt.value
+                        ? "border-primary bg-primary text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {MODEL_OPTIONS.find((o) => o.value === selectedModel)?.description}
+              </p>
+            </div>
           </div>
+
           <button
             onClick={() => trainMutation.mutate()}
             disabled={trainMutation.isPending}
-            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
           >
             {trainMutation.isPending ? (
               <RefreshCw size={16} className="animate-spin" />
@@ -124,7 +185,7 @@ export default function ML() {
           >
             {trainResult.status === "saved" ? (
               <span>
-                Modelo <strong>{trainResult.version?.id}</strong> guardado — MAE:{" "}
+                Modelo <strong>{trainResult.version?.id}</strong> ({trainResult.model_type?.toUpperCase() ?? "GBM"}) guardado — MAE:{" "}
                 {trainResult.version?.mae} u/sem · MAPE: {trainResult.version?.mape}%
               </span>
             ) : (
@@ -157,6 +218,7 @@ export default function ML() {
               <thead>
                 <tr className="border-b text-left text-xs text-gray-500">
                   <th className="pb-2 pr-4">Versión</th>
+                  <th className="pb-2 pr-4">Modelo</th>
                   <th className="pb-2 pr-4">Fecha</th>
                   <th className="pb-2 pr-4">MAE (u/sem)</th>
                   <th className="pb-2 pr-4">MAPE</th>
@@ -170,6 +232,9 @@ export default function ML() {
                 {[...versions].reverse().map((v) => (
                   <tr key={v.id} className="border-b last:border-0">
                     <td className="py-3 pr-4 font-mono font-semibold">{v.id}</td>
+                    <td className="py-3 pr-4">
+                      <ModelTypeBadge modelType={v.model_type} />
+                    </td>
                     <td className="py-3 pr-4 text-gray-500">
                       {new Date(v.trained_at).toLocaleDateString("es-AR", {
                         day: "2-digit",
