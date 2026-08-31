@@ -50,7 +50,7 @@ export default function Dashboard() {
               <XAxis dataKey="day" tickFormatter={(d) => d.slice(5)} fontSize={11} stroke="#6E6E6E" />
               <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
               <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#2CC4B4" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="count" name="Productos" stroke="#2CC4B4" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </Card>

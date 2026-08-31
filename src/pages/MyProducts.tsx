@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Pencil, Download } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Download, History } from "lucide-react";
 import { api } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import type { MyProduct, Paginated } from "@/lib/types";
@@ -10,6 +10,7 @@ import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
+import HistorialModal from "@/components/HistorialModal";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
@@ -47,6 +48,7 @@ export default function MyProducts() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<MyProduct | null>(null);
+  const [historialProduct, setHistorialProduct] = useState<MyProduct | null>(null);
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editError, setEditError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -382,12 +384,20 @@ export default function MyProducts() {
                       )}
                     </td>
                     <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => openEdit(p)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
-                      >
-                        <Pencil size={14} /> Editar
-                      </button>
+                      <div className="flex justify-center gap-2">
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
+                        >
+                          <Pencil size={14} /> Editar
+                        </button>
+                        <button
+                          onClick={() => setHistorialProduct(p)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
+                        >
+                          <History size={14} /> Historial
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -614,6 +624,17 @@ export default function MyProducts() {
             </div>
           </div>
         </div>
+      )}
+
+      {historialProduct && (
+        <HistorialModal
+          product={historialProduct}
+          onClose={() => setHistorialProduct(null)}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ["my-products"] });
+            qc.invalidateQueries({ queryKey: ["my-stats"] });
+          }}
+        />
       )}
     </div>
   );

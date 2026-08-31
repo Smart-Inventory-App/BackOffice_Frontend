@@ -68,6 +68,10 @@ function ManualForm() {
       marca: s.marca ?? f.marca,
       categoria: s.categoria,
       ubicacion: s.ubicacion ?? f.ubicacion,
+      vencimiento: s.vencimiento ?? f.vencimiento,
+      stock_minimo: s.stock_minimo != null ? String(s.stock_minimo) : f.stock_minimo,
+      dias_alerta_vencimiento:
+        s.dias_alerta_vencimiento != null ? String(s.dias_alerta_vencimiento) : f.dias_alerta_vencimiento,
     }));
     setCategoriaOptions((prev) => addIfMissing(prev, s.categoria));
     setUbicacionOptions((prev) => addIfMissing(prev, s.ubicacion));

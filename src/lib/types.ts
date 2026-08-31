@@ -119,6 +119,9 @@ export interface ProductSuggestion {
   marca: string | null;
   categoria: string;
   ubicacion: string | null;
+  vencimiento: string | null;
+  stock_minimo: number | null;
+  dias_alerta_vencimiento: number | null;
 }
 
 export interface MyDefaults {
@@ -187,6 +190,13 @@ export interface MyMetrics {
   consumo_por_dia: ConsumoPorDia[];
   top_productos: ProductoConsumo[];
   productos_menos_usados: ProductoConsumo[];
+}
+
+export interface ConsumptionEvent {
+  id: number;
+  quantity: number;
+  event_type: "consumed" | "expired" | "restocked";
+  consumed_at: string;
 }
 
 export interface ActivityEntry {
