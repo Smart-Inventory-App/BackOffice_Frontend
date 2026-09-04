@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Pencil, Trash2 } from "lucide-react";
+import { X, Pencil, Trash2, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ConsumptionEvent, MyProduct } from "@/lib/types";
 
@@ -22,6 +22,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editQuantity, setEditQuantity] = useState("");
   const [editMotivo, setEditMotivo] = useState<"consumed" | "expired" | "restocked">("consumed");
+  const [editNote, setEditNote] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -51,6 +52,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
     setEditingId(event.id);
     setEditQuantity(String(event.quantity));
     setEditMotivo(event.event_type);
+    setEditNote("");
     setRowError(null);
   };
 
@@ -68,6 +70,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
       await api.put(`/me/products/${product.id}/events/${event.id}`, {
         quantity: n,
         event_type: editMotivo,
+        note: editNote || undefined,
       });
       setEditingId(null);
       load();
@@ -149,6 +152,13 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                             </button>
                           ))}
                         </div>
+                        <input
+                          type="text"
+                          placeholder="Motivo (opcional)"
+                          value={editNote}
+                          onChange={(e) => setEditNote(e.target.value)}
+                          className="w-full rounded-lg border border-line px-3 py-1.5 text-sm outline-none focus:border-primary"
+                        />
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
@@ -175,26 +185,40 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                             {event.quantity}
                           </span>
                           <div>
-                            <p className="text-sm font-medium text-ink">{motivoLabel(event.event_type)}</p>
-                            <p className="text-xs text-muted">{new Date(event.consumed_at).toLocaleString()}</p>
+                            <div className="flex items-center gap-1.5">
+                              {event.reverses_event_id != null && <Undo2 size={12} className="text-muted" />}
+                              <p className="text-sm font-medium text-ink">{motivoLabel(event.event_type)}</p>
+                              {event.reversed && (
+                                <span className="rounded-md bg-canvas px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                                  Corregido
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted">
+                              {new Date(event.consumed_at).toLocaleString()}
+                              {event.actor_email ? ` · ${event.actor_email}` : ""}
+                            </p>
+                            {event.note && <p className="text-xs italic text-muted">{event.note}</p>}
                           </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(event)}
-                            className="rounded-lg p-1.5 text-primary hover:bg-canvas"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteEvent(event)}
-                            className="rounded-lg p-1.5 text-danger hover:bg-canvas"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                        {event.reverses_event_id == null && !event.reversed && (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(event)}
+                              className="rounded-lg p-1.5 text-primary hover:bg-canvas"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteEvent(event)}
+                              className="rounded-lg p-1.5 text-danger hover:bg-canvas"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>

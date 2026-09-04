@@ -138,11 +138,17 @@ function ManualForm() {
               {suggestions.map((s) => (
                 <button
                   type="button"
-                  key={s.nombre}
+                  key={s.id}
                   onClick={() => selectSuggestion(s)}
                   className="block w-full border-b border-line/60 px-4 py-2 text-left text-sm last:border-0 hover:bg-canvas"
                 >
-                  {s.nombre}
+                  <p>
+                    {s.nombre}
+                    {s.marca && <span className="text-muted"> · {s.marca}</span>}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {s.vencimiento ? `Vence ${s.vencimiento}` : "Sin vencimiento"} · Stock: {s.stock}
+                  </p>
                 </button>
               ))}
             </div>
@@ -281,6 +287,7 @@ function SalidaForm() {
   const [selected, setSelected] = useState<ProductSuggestion | null>(null);
   const [cantidad, setCantidad] = useState("");
   const [motivo, setMotivo] = useState<"consumed" | "expired">("consumed");
+  const [nota, setNota] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
 
@@ -320,6 +327,7 @@ function SalidaForm() {
           product_id: selected.id,
           quantity: Number(cantidad),
           event_type: motivo,
+          note: nota || undefined,
         })
       ).data;
     },
@@ -332,6 +340,7 @@ function SalidaForm() {
       setQuery("");
       setSelected(null);
       setCantidad("");
+      setNota("");
     },
     onError: (err: any) => {
       setError(err?.response?.data?.detail ?? "No se pudo registrar la salida.");
@@ -374,8 +383,13 @@ function SalidaForm() {
                   onClick={() => pick(s)}
                   className="block w-full border-b border-line/60 px-4 py-2 text-left text-sm last:border-0 hover:bg-canvas"
                 >
-                  {s.nombre}
-                  {s.marca && <span className="text-muted"> · {s.marca}</span>}
+                  <p>
+                    {s.nombre}
+                    {s.marca && <span className="text-muted"> · {s.marca}</span>}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {s.vencimiento ? `Vence ${s.vencimiento}` : "Sin vencimiento"} · Stock: {s.stock}
+                  </p>
                 </button>
               ))}
             </div>
@@ -407,6 +421,16 @@ function SalidaForm() {
               <option value="expired">Vencido</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-ink">Motivo (opcional)</label>
+          <input
+            value={nota}
+            onChange={(e) => setNota(e.target.value)}
+            placeholder="ej. vencido en heladera, pedido especial"
+            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+          />
         </div>
 
         {error && (

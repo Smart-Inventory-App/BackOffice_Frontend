@@ -120,6 +120,7 @@ export interface ProductSuggestion {
   categoria: string;
   ubicacion: string | null;
   vencimiento: string | null;
+  stock: number;
   stock_minimo: number | null;
   dias_alerta_vencimiento: number | null;
 }
@@ -197,6 +198,10 @@ export interface ConsumptionEvent {
   quantity: number;
   event_type: "consumed" | "expired" | "restocked";
   consumed_at: string;
+  note: string | null;
+  actor_email: string | null;
+  reverses_event_id: number | null;
+  reversed: boolean;
 }
 
 export interface ActivityEntry {
