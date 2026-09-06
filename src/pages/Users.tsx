@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { History, ShieldOff, BellRing, RefreshCw } from "lucide-react";
+import { History, ShieldOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import type { AppUser, Paginated } from "@/lib/types";
@@ -22,7 +22,6 @@ export default function Users() {
   const [auditUser, setAuditUser] = useState<AppUser | null>(null);
   const [toRemoveAdmin, setToRemoveAdmin] = useState<AppUser | null>(null);
   const [removeAdminError, setRemoveAdminError] = useState<string | null>(null);
-  const [alertResult, setAlertResult] = useState<{ alerts_sent: number; users_processed: number } | null>(null);
 
   useEffect(() => setPage(0), [search, status]);
 
@@ -48,15 +47,6 @@ export default function Users() {
       setToDisable(null);
       setReason("");
     },
-  });
-
-  const runAllAlertsMutation = useMutation({
-    mutationFn: async () => (await api.post("/admin/alerts/run")).data,
-    onSuccess: (data) => setAlertResult(data),
-  });
-
-  const runUserAlertsMutation = useMutation({
-    mutationFn: async (userId: string) => (await api.post(`/admin/alerts/run/${userId}`)).data,
   });
 
   const removeAdminMutation = useMutation({
@@ -85,29 +75,7 @@ export default function Users() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <PageHeader title="Usuarios" subtitle="Monitoreo y habilitación de cuentas de la aplicación" />
-        <div className="flex flex-col items-end gap-2">
-          <button
-            onClick={() => { setAlertResult(null); runAllAlertsMutation.mutate(); }}
-            disabled={runAllAlertsMutation.isPending}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
-          >
-            {runAllAlertsMutation.isPending
-              ? <RefreshCw size={15} className="animate-spin" />
-              : <BellRing size={15} />}
-            {runAllAlertsMutation.isPending ? "Enviando…" : "Lanzar predicciones a todos"}
-          </button>
-          {alertResult && (
-            <p className="text-xs text-green-700">
-              ✓ {alertResult.alerts_sent} alertas enviadas a {alertResult.users_processed} usuario{alertResult.users_processed !== 1 ? "s" : ""}
-            </p>
-          )}
-          {runAllAlertsMutation.isError && (
-            <p className="text-xs text-red-600">Error al lanzar predicciones</p>
-          )}
-        </div>
-      </div>
+      <PageHeader title="Usuarios" subtitle="Monitoreo y habilitación de cuentas de la aplicación" />
 
       <div className="mb-4 flex flex-wrap gap-3">
         <input
@@ -198,17 +166,6 @@ export default function Users() {
                             <ShieldOff size={14} /> Quitar admin
                           </button>
                         )}
-                        <button
-                          onClick={() => runUserAlertsMutation.mutate(u.id)}
-                          disabled={runUserAlertsMutation.isPending && runUserAlertsMutation.variables === u.id}
-                          title="Lanzar predicciones para este usuario"
-                          className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-primary hover:text-primary disabled:opacity-50"
-                        >
-                          {runUserAlertsMutation.isPending && runUserAlertsMutation.variables === u.id
-                            ? <RefreshCw size={13} className="animate-spin" />
-                            : <BellRing size={13} />}
-                          Alertas
-                        </button>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-center">
@@ -224,7 +181,7 @@ export default function Users() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted">
                       No se encontraron usuarios.
                     </td>
                   </tr>
