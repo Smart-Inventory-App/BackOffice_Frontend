@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, CheckCircle, XCircle, RefreshCw, Zap, BarChart2 } from "lucide-react";
+import { Brain, CheckCircle, XCircle, RefreshCw, Zap, BarChart2, BellRing } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -191,6 +191,10 @@ export default function ML() {
 
   const trainResult = trainMutation.data as any;
 
+  const runAllAlertsMutation = useMutation({
+    mutationFn: async () => (await api.post("/admin/alerts/run")).data,
+  });
+
   return (
     <div>
       <PageHeader
@@ -288,6 +292,42 @@ export default function ML() {
         {trainMutation.isError && (
           <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
             {(trainMutation.error as any)?.response?.data?.detail ?? "Error al entrenar"}
+          </div>
+        )}
+      </Card>
+
+      {/* Lanzar predicciones */}
+      <Card className="mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold">Lanzar predicciones a usuarios</p>
+            <p className="text-sm text-gray-500">
+              Ejecuta el chequeo de alertas ML para todos los usuarios de forma inmediata,
+              ignorando la hora configurada.
+            </p>
+          </div>
+          <button
+            onClick={() => runAllAlertsMutation.mutate()}
+            disabled={runAllAlertsMutation.isPending}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
+          >
+            {runAllAlertsMutation.isPending
+              ? <RefreshCw size={16} className="animate-spin" />
+              : <BellRing size={16} />}
+            {runAllAlertsMutation.isPending ? "Enviando…" : "Lanzar a todos"}
+          </button>
+        </div>
+
+        {runAllAlertsMutation.isSuccess && (
+          <div className="mt-4 rounded-xl bg-green-50 p-3 text-sm text-green-800">
+            ✓ {(runAllAlertsMutation.data as any).alerts_sent} alertas enviadas
+            a {(runAllAlertsMutation.data as any).users_processed} usuario
+            {(runAllAlertsMutation.data as any).users_processed !== 1 ? "s" : ""}
+          </div>
+        )}
+        {runAllAlertsMutation.isError && (
+          <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+            {(runAllAlertsMutation.error as any)?.response?.data?.detail ?? "Error al lanzar alertas"}
           </div>
         )}
       </Card>
