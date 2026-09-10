@@ -4,6 +4,7 @@ import { UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, PageHeader } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
+import Procesamiento, { type Prefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
 
 const EMPTY = {
@@ -11,6 +12,7 @@ const EMPTY = {
   marca: "",
   categoria: "",
   stock: "",
+  codigo_barras: "",
   vencimiento: "",
   descripcion: "",
   imagen_url: "",
@@ -19,7 +21,7 @@ const EMPTY = {
   dias_alerta_vencimiento: "",
 };
 
-function ManualForm() {
+function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPrefillUsed?: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,12 @@ function ManualForm() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setForm((f) => ({ ...f, ...prefill }));
+    onPrefillUsed?.();
+  }, [prefill, onPrefillUsed]);
 
   useEffect(() => {
     const q = form.nombre.trim();
@@ -88,6 +96,7 @@ function ManualForm() {
           marca: form.marca || null,
           categoria: form.categoria,
           stock: Number(form.stock),
+          codigo_barras: form.codigo_barras || null,
           vencimiento: form.vencimiento || null,
           descripcion: form.descripcion || null,
           imagen_url: form.imagen_url || null,
@@ -186,6 +195,20 @@ function ManualForm() {
               className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
             />
           </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-ink">Código de barras</label>
+          <input
+            inputMode="numeric"
+            value={form.codigo_barras}
+            onChange={set("codigo_barras")}
+            placeholder="Sin código"
+            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+          />
+          <p className="mt-1 text-xs text-muted">
+            El número impreso debajo del código del envase. Cargándolo una vez, después alcanza con
+            escanearlo desde Procesamiento.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -874,9 +897,22 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   );
 }
 
+const TABS: { value: "manual" | "archivo" | "procesamiento"; label: string }[] = [
+  { value: "manual", label: "Manual" },
+  { value: "archivo", label: "Archivo" },
+  { value: "procesamiento", label: "Procesamiento" },
+];
+
 export default function Cargar() {
-  const [tab, setTab] = useState<"manual" | "archivo">("manual");
+  const [tab, setTab] = useState<"manual" | "archivo" | "procesamiento">("manual");
   const [direction, setDirection] = useState<"entrada" | "salida">("entrada");
+
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
+  const irAManual = (valores: Prefill) => {
+    setPrefill(valores);
+    setDirection("entrada");
+    setTab("manual");
+  };
 
   return (
     <div>
@@ -884,8 +920,8 @@ export default function Cargar() {
         title="Flujo de producto"
         subtitle={
           direction === "entrada"
-            ? "Alta de productos a tu inventario"
-            : "Registrá salidas de stock de tu inventario"
+            ? "Alta de productos a tu inventario: a mano, por archivo o sacándoles una foto"
+            : "Registrá salidas de stock: a mano, por archivo o sacándoles una foto"
         }
       />
 
@@ -908,33 +944,30 @@ export default function Cargar() {
         </button>
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => setTab("manual")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            tab === "manual" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-          }`}
-        >
-          Manual
-        </button>
-        <button
-          onClick={() => setTab("archivo")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            tab === "archivo" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-          }`}
-        >
-          Archivo
-        </button>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTab(t.value)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              tab === t.value ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {tab === "manual" ? (
         direction === "entrada" ? (
-          <ManualForm />
+          <ManualForm prefill={prefill} onPrefillUsed={() => setPrefill(null)} />
         ) : (
           <SalidaForm />
         )
-      ) : (
+      ) : tab === "archivo" ? (
         <BulkUpload direction={direction} />
+      ) : (
+        <Procesamiento direction={direction} irAManual={irAManual} />
       )}
     </div>
   );
