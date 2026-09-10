@@ -220,3 +220,93 @@ export interface ActivityEntry {
   description: string;
   created_at: string | null;
 }
+
+/* ── Módulo de OCR ──────────────────────────────────────────────────────────
+ * El panel habla con `ocr_service` a través del backoffice; estos tipos son los
+ * que devuelve `/admin/ocr/*`. Las fotos escaneadas no se guardan en ningún
+ * lado: lo único que queda de cada ejecución es su renglón de auditoría.
+ */
+
+export type OCRDocType = "product_label" | "expiry_date" | "receipt" | "barcode";
+
+export interface OCREngineStatus {
+  name: string;
+  url: string;
+  available: boolean;
+  version: string;
+  /** Un motor puede estar replicado; PaddleOCR lo está. */
+  replicas: string[];
+}
+
+export interface OCRServiceStatus {
+  available: boolean;
+  checks: Record<string, unknown>;
+  engines: OCREngineStatus[];
+}
+
+export interface OCRField {
+  value: string | number | null;
+  confidence: number;
+}
+
+export interface OCRReceiptItem {
+  nombre_producto: OCRField;
+  cantidad: OCRField;
+}
+
+export interface OCRResult {
+  fields: Record<string, OCRField>;
+  items: OCRReceiptItem[];
+  document_confidence: number;
+  needs_review: boolean;
+  engine: string;
+  raw_text: string;
+  processing_ms: number;
+  /** Giro con el que se obtuvo la lectura, y cuántas combinaciones hicieron falta. */
+  rotation: number;
+  attempts: number;
+  warnings: string[];
+  texto_legible: string;
+}
+
+export interface OCRSyncResponse {
+  doc_type: OCRDocType;
+  result: OCRResult;
+}
+
+export interface OCRAuditEntry {
+  id: number;
+  job_id: string | null;
+  user_email: string;
+  user_id: string | null;
+  origen: "app" | "panel";
+  doc_type: OCRDocType;
+  engine: string | null;
+  status: "done" | "failed";
+  confianza: number | null;
+  processing_ms: number | null;
+  campos: number | null;
+  resumen: string | null;
+  created_at: string;
+}
+
+export interface OCRDocTypeStats {
+  doc_type: OCRDocType;
+  ejecuciones: number;
+  exitosas: number;
+  fallidas: number;
+  ms_promedio: number | null;
+  ms_maximo: number | null;
+  confianza_promedio: number | null;
+}
+
+export interface OCRStats {
+  dias: number;
+  ejecuciones: number;
+  exitosas: number;
+  fallidas: number;
+  usuarios: number;
+  ms_promedio: number | null;
+  confianza_promedio: number | null;
+  por_tipo: OCRDocTypeStats[];
+}

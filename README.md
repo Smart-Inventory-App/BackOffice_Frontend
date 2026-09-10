@@ -27,6 +27,13 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
 | `/usuarios/:id` | Detalle de usuario + sus productos |
 | `/productos` | Productos cargados (con imagen), búsqueda y eliminación |
+| `/auditoria` | Actividad de usuarios: altas, productos, logins y cambios de rol |
+| `/ocr` | Módulo de OCR: estado de los motores, tiempos y precisión, prueba de fotos y auditoría de escaneos |
+| `/ml` | Modelos de predicción de consumo |
+| `/cargar` | Flujo de producto (entrada y salida), en modo usuario |
+| `/metricas`, `/alertas`, `/perfil` | Consumo, avisos de stock y vencimiento, y datos de la cuenta, en modo usuario |
+
+La página de OCR habla con `/admin/ocr/*` del backoffice, que a su vez habla con el coordinador del módulo. La foto que se sube desde ahí para probar **no se guarda en ningún lado**: se procesa en memoria y de la ejecución sólo queda un renglón de auditoría con quién la pidió, cuánto tardó y un resumen recortado de lo leído.
 
 ---
 
