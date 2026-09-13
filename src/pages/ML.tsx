@@ -14,10 +14,12 @@ import { api } from "@/lib/api";
 import { Card, PageHeader, Spinner } from "@/components/ui";
 
 type ModelType = "gbm" | "xgboost" | "lightgbm" | "svr";
+type DataSource = "real" | "test";
 
 interface ModelVersion {
   id: string;
   model_type?: ModelType;
+  data_source?: DataSource;
   trained_at: string;
   mae: number;
   mape: number;
@@ -38,6 +40,11 @@ const MODEL_OPTIONS: { value: ModelType; label: string; description: string }[] 
   { value: "xgboost", label: "XGBoost", description: "Extreme Gradient Boosting" },
   { value: "lightgbm", label: "LightGBM", description: "Light Gradient Boosting" },
   { value: "svr", label: "SVR", description: "Support Vector Regression" },
+];
+
+const DATA_SOURCE_OPTIONS: { value: DataSource; label: string; description: string }[] = [
+  { value: "real", label: "Datos reales", description: "Eventos de consumo de los usuarios en producción" },
+  { value: "test", label: "Dataset de prueba", description: "Dataset sintético para evaluar el modelo de forma reproducible" },
 ];
 
 function ModelTypeBadge({ modelType }: { modelType?: ModelType }) {
@@ -170,6 +177,7 @@ function FeatureImportancesChart({ versionId }: { versionId: string }) {
 export default function ML() {
   const qc = useQueryClient();
   const [selectedModel, setSelectedModel] = useState<ModelType>("gbm");
+  const [dataSource, setDataSource] = useState<DataSource>("real");
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
   const { data: versions = [], isLoading } = useQuery<ModelVersion[]>({
@@ -177,9 +185,22 @@ export default function ML() {
     queryFn: async () => (await api.get("/admin/ml/models")).data,
   });
 
+  // Las versiones viejas no guardaban model_type ni data_source; se asumen
+  // GBM (igual que ModelTypeBadge) y entrenadas con datos reales.
+  const visibleVersions = versions.filter(
+    (v) =>
+      (v.model_type ?? "gbm") === selectedModel &&
+      (v.data_source ?? "real") === dataSource,
+  );
+
   const trainMutation = useMutation({
     mutationFn: async () =>
-      (await api.post("/admin/ml/models/train", { model_type: selectedModel })).data,
+      (
+        await api.post("/admin/ml/models/train", {
+          model_type: selectedModel,
+          data_source: dataSource,
+        })
+      ).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ml-models"] }),
   });
 
@@ -251,6 +272,32 @@ export default function ML() {
               </div>
               <p className="mt-1.5 text-xs text-gray-400">
                 {MODEL_OPTIONS.find((o) => o.value === selectedModel)?.description}
+              </p>
+            </div>
+
+            {/* Fuente de datos */}
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Fuente de datos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DATA_SOURCE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setDataSource(opt.value)}
+                    title={opt.description}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      dataSource === opt.value
+                        ? "border-primary bg-primary text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.description}
               </p>
             </div>
           </div>
@@ -334,14 +381,26 @@ export default function ML() {
 
       {/* Tabla de versiones */}
       <Card>
-        <h2 className="mb-4 font-semibold">Versiones del modelo</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="font-semibold">Versiones del modelo</h2>
+          <ModelTypeBadge modelType={selectedModel} />
+          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            {DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label}
+          </span>
+          <span className="text-sm text-gray-400">
+            {visibleVersions.length} de {versions.length}
+          </span>
+        </div>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
-        ) : versions.length === 0 ? (
+        ) : visibleVersions.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-400">
-            Aún no hay modelos entrenados.
+            {versions.length === 0
+              ? "Aún no hay modelos entrenados."
+              : `No hay versiones de ${selectedModel.toUpperCase()} entrenadas con ` +
+                `${DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label.toLowerCase()}.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -360,7 +419,7 @@ export default function ML() {
                 </tr>
               </thead>
               <tbody>
-                {[...versions].reverse().map((v) => (
+                {[...visibleVersions].reverse().map((v) => (
                   <>
                     <tr key={v.id} className="border-b last:border-0">
                       <td className="py-3 pr-4 font-mono font-semibold">{v.id}</td>
