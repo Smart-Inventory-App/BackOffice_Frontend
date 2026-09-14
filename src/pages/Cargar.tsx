@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { UploadCloud } from "lucide-react";
+import { AlertTriangle, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
+import { LARGOS_CODIGO, digitosDelCodigo, limpiarCodigo } from "@/lib/barcode";
 import { Card, PageHeader } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
-import Procesamiento, { type Prefill } from "@/components/Procesamiento";
+import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
 
 const EMPTY = {
@@ -31,6 +32,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
   const [categoriaOptions, setCategoriaOptions] = useState<string[]>([]);
   const [ubicacionOptions, setUbicacionOptions] = useState<string[]>([]);
   const [marcaOptions, setMarcaOptions] = useState<string[]>([]);
+  const [duplicado, setDuplicado] = useState<ProductSuggestion | null>(null);
+  const [codigoError, setCodigoError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -65,6 +68,23 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
     }, 300);
     return () => clearTimeout(handle);
   }, [form.nombre]);
+
+  useEffect(() => {
+    const digitos = digitosDelCodigo(form.codigo_barras);
+    setDuplicado(null);
+    setCodigoError(null);
+    if (!LARGOS_CODIGO.includes(digitos.length)) return;
+
+    const handle = setTimeout(() => {
+      api
+        .get<ProductSuggestion | null>(`/me/products/by-barcode/${digitos}`)
+        .then(({ data }) => setDuplicado(data))
+        // Un 400 acá es el mismo rechazo que daría el alta —dígito verificador que
+        // no cierra—: se muestra antes de apretar Cargar, no después.
+        .catch((err: any) => setCodigoError(err?.response?.data?.detail ?? null));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [form.codigo_barras]);
 
   const set = (field: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -201,14 +221,41 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           <input
             inputMode="numeric"
             value={form.codigo_barras}
-            onChange={set("codigo_barras")}
+            onChange={(e) => setForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))}
             placeholder="Sin código"
-            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
           />
-          <p className="mt-1 text-xs text-muted">
-            El número impreso debajo del código del envase. Cargándolo una vez, después alcanza con
-            escanearlo desde Procesamiento.
-          </p>
+          {codigoError ? (
+            <p className="mt-1 text-xs text-danger">{codigoError}</p>
+          ) : duplicado ? (
+            <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div className="space-y-1.5">
+                <p>
+                  Ya tenés <span className="font-medium">«{duplicado.nombre}»</span>
+                  {duplicado.marca ? ` de ${duplicado.marca}` : ""} con este código (stock{" "}
+                  {duplicado.stock}
+                  {duplicado.vencimiento ? `, vence ${duplicado.vencimiento}` : ""}).
+                </p>
+                <p className="text-xs">
+                  Si es el mismo producto, sumale el stock. Si es otro lote con distinto vencimiento,
+                  podés cargarlo igual.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => selectSuggestion(duplicado)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                >
+                  Sumar stock a ese producto
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              El número impreso debajo del código del envase. Cargándolo una vez, después alcanza con
+              escanearlo desde Procesamiento.
+            </p>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -302,7 +349,13 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
   );
 }
 
-function SalidaForm() {
+function SalidaForm({
+  prefill,
+  onPrefillUsed,
+}: {
+  prefill?: SalidaPrefill | null;
+  onPrefillUsed?: () => void;
+}) {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
@@ -313,6 +366,17 @@ function SalidaForm() {
   const [nota, setNota] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setSelected(null);
+    setQuery(prefill.busqueda);
+    setNota(prefill.nota ?? "");
+    setShowSuggestions(true);
+    setOkMessage(null);
+    setError(null);
+    onPrefillUsed?.();
+  }, [prefill, onPrefillUsed]);
 
   useEffect(() => {
     if (selected) return;
@@ -914,6 +978,13 @@ export default function Cargar() {
     setTab("manual");
   };
 
+  const [salidaPrefill, setSalidaPrefill] = useState<SalidaPrefill | null>(null);
+  const irASalidaManual = (valores: SalidaPrefill) => {
+    setSalidaPrefill(valores);
+    setDirection("salida");
+    setTab("manual");
+  };
+
   return (
     <div>
       <PageHeader
@@ -962,12 +1033,12 @@ export default function Cargar() {
         direction === "entrada" ? (
           <ManualForm prefill={prefill} onPrefillUsed={() => setPrefill(null)} />
         ) : (
-          <SalidaForm />
+          <SalidaForm prefill={salidaPrefill} onPrefillUsed={() => setSalidaPrefill(null)} />
         )
       ) : tab === "archivo" ? (
         <BulkUpload direction={direction} />
       ) : (
-        <Procesamiento direction={direction} irAManual={irAManual} />
+        <Procesamiento direction={direction} irAManual={irAManual} irASalidaManual={irASalidaManual} />
       )}
     </div>
   );

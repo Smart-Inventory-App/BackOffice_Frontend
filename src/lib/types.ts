@@ -107,6 +107,7 @@ export interface MyProduct {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  codigo_barras: string | null;
   stock_minimo: number | null;
   dias_alerta_vencimiento: number | null;
   created_at: string | null;

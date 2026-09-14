@@ -10,6 +10,7 @@ import {
   ScanLine,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { limpiarCodigo } from "@/lib/barcode";
 import { Card } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import type {
@@ -30,6 +31,9 @@ const POLL_MS = 1500;
 const MOTIVO_COMPROBANTE = "Documento Comercial";
 
 export type Prefill = { codigo_barras?: string; nombre?: string };
+
+/** Lo que llega a la salida manual desde un renglón que no se pudo identificar. */
+export type SalidaPrefill = { busqueda: string; nota?: string };
 
 type Opciones = { categorias: string[]; ubicaciones: string[]; marcas: string[] };
 
@@ -588,9 +592,11 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
                 <input
                   inputMode="numeric"
                   value={form.codigo_barras}
-                  onChange={set("codigo_barras")}
+                  onChange={(e) =>
+                    setForm((f) => (f ? { ...f, codigo_barras: limpiarCodigo(e.target.value) } : f))
+                  }
                   placeholder="Sin código"
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                  className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
                 />
               </div>
             </div>
@@ -1034,9 +1040,9 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                   <input
                     inputMode="numeric"
                     value={r.codigo_barras}
-                    onChange={(e) => editar(i, { codigo_barras: e.target.value })}
+                    onChange={(e) => editar(i, { codigo_barras: limpiarCodigo(e.target.value) })}
                     placeholder="Sin código"
-                    className="w-full rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-primary"
+                    className="w-full rounded-xl border border-line px-3 py-2 font-mono text-sm outline-none focus:border-primary"
                   />
                 </div>
                 <Picklist
@@ -1245,7 +1251,7 @@ function SalidaCodigo() {
 
 /* ── salida · comprobante ───────────────────────────────────────────────── */
 
-function SalidaComprobante() {
+function SalidaComprobante({ irASalidaManual }: { irASalidaManual: (p: SalidaPrefill) => void }) {
   const qc = useQueryClient();
   const scan = useScan("receipt");
   const [foto, setFoto] = useState<File | null>(null);
@@ -1352,7 +1358,8 @@ function SalidaComprobante() {
               <span>
                 No se pudo cargar {sinIdentificar}{" "}
                 {sinIdentificar === 1 ? "producto" : "productos"}: no encontramos en tu inventario
-                ningún producto con ese nombre. Cargá esa salida a mano desde la pestaña Manual.
+                ningún producto con ese nombre. Podés cargar{" "}
+                {sinIdentificar === 1 ? "esa salida" : "cada una"} a mano con el botón de su renglón.
               </span>
             </p>
           )}
@@ -1385,6 +1392,23 @@ function SalidaComprobante() {
                 contexto="salida"
                 onElegir={(m) => editar(i, { elegido: m?.id ?? null, nombre: m?.nombre ?? r.nombre })}
               />
+
+              {r.elegido === null && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    irASalidaManual({
+                      busqueda: r.draft.texto_leido ?? r.nombre,
+                      nota: scan.resultado?.comprobante?.comercio
+                        ? `${MOTIVO_COMPROBANTE} - ${scan.resultado.comprobante.comercio}`
+                        : MOTIVO_COMPROBANTE,
+                    })
+                  }
+                  className="mt-3 rounded-xl border border-line bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-canvas"
+                >
+                  Cargar esta salida a mano
+                </button>
+              )}
 
               {r.elegido !== null && (
                 <div className="mt-3 max-w-xs">
@@ -1478,9 +1502,11 @@ const MODOS: Record<"entrada" | "salida", { value: Modo; label: string; hint: st
 export default function Procesamiento({
   direction,
   irAManual,
+  irASalidaManual,
 }: {
   direction: "entrada" | "salida";
   irAManual: (p: Prefill) => void;
+  irASalidaManual: (p: SalidaPrefill) => void;
 }) {
   const modos = MODOS[direction];
   const [modo, setModo] = useState<Modo>(modos[0].value);
@@ -1549,7 +1575,7 @@ export default function Procesamiento({
         ) : modo === "codigo" ? (
           <SalidaCodigo />
         ) : (
-          <SalidaComprobante />
+          <SalidaComprobante irASalidaManual={irASalidaManual} />
         )}
       </Card>
     </div>

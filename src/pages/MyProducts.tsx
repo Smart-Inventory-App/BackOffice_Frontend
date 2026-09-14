@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Pencil, Download, History } from "lucide-react";
+import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History } from "lucide-react";
 import { api } from "@/lib/api";
+import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
 import type { MyProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
@@ -34,6 +35,7 @@ const EDIT_EMPTY = {
   descripcion: "",
   imagen_url: "",
   ubicacion: "",
+  codigo_barras: "",
   stock_minimo: "",
   dias_alerta_vencimiento: "",
 };
@@ -150,6 +152,7 @@ export default function MyProducts() {
       descripcion: p.descripcion ?? "",
       imagen_url: p.imagen_url ?? "",
       ubicacion: p.ubicacion ?? "",
+      codigo_barras: p.codigo_barras ?? "",
       stock_minimo: p.stock_minimo != null ? String(p.stock_minimo) : "",
       dias_alerta_vencimiento: p.dias_alerta_vencimiento != null ? String(p.dias_alerta_vencimiento) : "",
     });
@@ -170,6 +173,7 @@ export default function MyProducts() {
         descripcion: editForm.descripcion || null,
         imagen_url: editForm.imagen_url || null,
         ubicacion: editForm.ubicacion || null,
+        codigo_barras: editForm.codigo_barras.trim() || null,
         stock_minimo: editForm.stock_minimo ? Number(editForm.stock_minimo) : null,
         dias_alerta_vencimiento: editForm.dias_alerta_vencimiento
           ? Number(editForm.dias_alerta_vencimiento)
@@ -365,6 +369,14 @@ export default function MyProducts() {
                     <td className="px-5 py-3">
                       <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
+                      {p.codigo_barras && (
+                        <p
+                          className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-muted"
+                          title="Código de barras"
+                        >
+                          <Barcode size={11} /> {p.codigo_barras}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
                     <td className="px-5 py-3 text-center">
@@ -469,16 +481,30 @@ export default function MyProducts() {
                   />
                 </div>
               </div>
-              <Picklist
-                label="Ubicación"
-                value={editForm.ubicacion}
-                options={editUbicacionOptions}
-                emptyLabel="Sin ubicación"
-                onChange={(v) => {
-                  setEditForm((f) => ({ ...f, ubicacion: v }));
-                  setEditUbicacionOptions((prev) => addIfMissing(prev, v));
-                }}
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <Picklist
+                  label="Ubicación"
+                  value={editForm.ubicacion}
+                  options={editUbicacionOptions}
+                  emptyLabel="Sin ubicación"
+                  onChange={(v) => {
+                    setEditForm((f) => ({ ...f, ubicacion: v }));
+                    setEditUbicacionOptions((prev) => addIfMissing(prev, v));
+                  }}
+                />
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-ink">Código de barras</label>
+                  <input
+                    inputMode="numeric"
+                    value={editForm.codigo_barras}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))
+                    }
+                    placeholder="Sin código"
+                    className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">URL de imagen</label>
                 <input
