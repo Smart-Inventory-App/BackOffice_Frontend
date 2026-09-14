@@ -80,6 +80,7 @@ export interface AdminProduct {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  codigo_barras: string | null;
   created_at: string | null;
   owner: ProductOwner;
 }
@@ -223,11 +224,7 @@ export interface ActivityEntry {
   created_at: string | null;
 }
 
-/* ── Módulo de OCR ──────────────────────────────────────────────────────────
- * El panel habla con `ocr_service` a través del backoffice; estos tipos son los
- * que devuelve `/admin/ocr/*`. Las fotos escaneadas no se guardan en ningún
- * lado: lo único que queda de cada ejecución es su renglón de auditoría.
- */
+/* Módulo de OCR */
 
 export type OCRDocType = "product_label" | "expiry_date" | "receipt" | "barcode";
 

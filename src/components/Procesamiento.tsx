@@ -30,15 +30,43 @@ const POLL_MS = 1500;
 /** El mismo motivo que asienta el backend para una salida por comprobante. */
 const MOTIVO_COMPROBANTE = "Documento Comercial";
 
-export type Prefill = { codigo_barras?: string; nombre?: string };
+export type Prefill = {
+  codigo_barras?: string;
+  nombre?: string;
+  marca?: string;
+  categoria?: string;
+  ubicacion?: string;
+};
 
 /** Lo que llega a la salida manual desde un renglón que no se pudo identificar. */
 export type SalidaPrefill = { busqueda: string; nota?: string };
 
 type Opciones = { categorias: string[]; ubicaciones: string[]; marcas: string[] };
 
+/**
+ * Lo que cambia en otras pantallas cuando entra o sale stock.
+ */
+function refrescarInventario(qc: ReturnType<typeof useQueryClient>) {
+  for (const clave of ["my-products", "my-stats", "my-metrics", "my-products-filter-options"]) {
+    qc.invalidateQueries({ queryKey: [clave] });
+  }
+}
+
+const OCR_NO_DISPONIBLE =
+  "El módulo de OCR no está disponible en este momento. Probá de nuevo en unos minutos o cargalo a mano.";
+
 function detalle(err: any, fallback: string): string {
-  return err?.response?.data?.detail ?? fallback;
+  // Un 502/503/504 trae el error de red crudo del gateway («[Errno -2] Name or
+  // service not known»): al usuario sólo le sirve saber que el módulo no responde.
+  if ([502, 503, 504].includes(err?.response?.status)) return OCR_NO_DISPONIBLE;
+  const mensaje = err?.response?.data?.detail ?? fallback;
+  // El coordinador calcula cuánto falta para recuperar el cupo: sin ese dato,
+  // «superaste el límite» no dice cuándo volver a intentar.
+  const espera = Number(err?.response?.headers?.["retry-after"]);
+  if (err?.response?.status === 429 && espera > 0) {
+    return `${mensaje} Podés volver a intentar en ${formatEspera(espera).replace("~", "")}.`;
+  }
+  return mensaje;
 }
 
 function unidades(n: number | string): string {
@@ -91,6 +119,9 @@ function useScan(docType: OCRDocType) {
     queryFn: async () => (await api.get<ScanState>(`/me/products/ocr/scan/${jobId}`)).data,
     enabled: Boolean(jobId),
     refetchInterval: (query) => {
+      // Si la consulta falló —el trabajo expiró, no es de este usuario o el
+      // módulo se cayó a mitad de camino— seguir preguntando no lo arregla.
+      if (query.state.status === "error") return false;
       const estado = query.state.data?.status;
       return estado === "done" || estado === "failed" ? false : POLL_MS;
     },
@@ -98,12 +129,17 @@ function useScan(docType: OCRDocType) {
 
   const estado = directo ?? consulta.data ?? null;
   const terminado = estado?.status === "done" || estado?.status === "failed";
+  // Sin esto, un error al consultar dejaba la pantalla en "procesando…" para
+  // siempre y sin decir nada: el trabajo seguía "sin terminar" desde acá.
+  const errorConsulta = consulta.isError
+    ? detalle(consulta.error, "Se perdió el seguimiento del escaneo. Probá subir la foto de nuevo.")
+    : null;
 
   return {
     estado,
     resultado: estado?.status === "done" ? estado.result : null,
-    error: errorSubida ?? (estado?.status === "failed" ? estado.error : null),
-    procesando: subida.isPending || (Boolean(jobId) && !terminado),
+    error: errorSubida ?? errorConsulta ?? (estado?.status === "failed" ? estado.error : null),
+    procesando: subida.isPending || (Boolean(jobId) && !terminado && !consulta.isError),
     enviado: subida.isPending || Boolean(jobId) || Boolean(directo) || Boolean(errorSubida),
     subir: (file: File) => subida.mutate(file),
     reiniciar: () => {
@@ -282,6 +318,65 @@ function MatchPicker({
   );
 }
 
+/**
+ * Qué producto corresponde a un código leído, cuando puede ser más de uno.
+ *
+ * Dos lotes del mismo producto comparten código y difieren en el vencimiento.
+ * Antes se tomaba el primero sin preguntar, y la salida descontaba de un lote
+ * cualquiera. Ahora vienen ordenados —primero el que vence antes— y, si hay más
+ * de uno, se muestran para elegir.
+ */
+function LoteDelCodigo({
+  coincidencias,
+  elegido,
+  onElegir,
+}: {
+  coincidencias: ProductMatch[];
+  elegido: number | null;
+  onElegir: (id: number) => void;
+}) {
+  if (coincidencias.length === 1) {
+    const m = coincidencias[0];
+    return (
+      <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
+        <p className="text-sm text-muted">Corresponde a</p>
+        <p className="text-lg font-semibold text-ink">{m.nombre}</p>
+        <p className="text-sm text-muted">
+          {m.marca ? `${m.marca} · ` : ""}stock actual {m.stock}
+          {m.vencimiento ? ` · vence ${m.vencimiento}` : ""}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm text-ink">
+        Tenés <span className="font-medium">{coincidencias.length} lotes</span> con este código.
+        Elegí de cuál se trata:
+      </p>
+      {coincidencias.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          onClick={() => onElegir(m.id)}
+          className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 text-left text-sm transition ${
+            elegido === m.id ? "border-primary bg-primary/5" : "border-line hover:border-primary/50 hover:bg-canvas"
+          }`}
+        >
+          <span>
+            <span className="font-medium text-ink">{m.nombre}</span>
+            {m.marca && <span className="text-muted"> · {m.marca}</span>}
+          </span>
+          <span className="shrink-0 text-xs text-muted">
+            stock {m.stock} · {m.vencimiento ? `vence ${m.vencimiento}` : "sin vencimiento"}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Aviso({ resultado }: { resultado: ScanResult }) {
   if (!resultado.needs_review && resultado.advertencias.length === 0) return null;
   return (
@@ -417,8 +512,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refrescarInventario(qc);
       setHecho(
         data.merged
           ? `Se ${Number(form!.stock) === 1 ? "sumó" : "sumaron"} ${unidades(form!.stock)} a «${data.nombre}», que ya tenías cargado.`
@@ -501,9 +595,15 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
           <Progreso scan={etiqueta} etiqueta="Etiqueta" />
           <Progreso scan={vencimiento} etiqueta="Vencimiento" />
           <Progreso scan={codigo} etiqueta="Código de barras" />
-          <ErrorScan scan={etiqueta} />
-          <ErrorScan scan={vencimiento} />
-          <ErrorScan scan={codigo} />
+          {/* Con el módulo caído las tres fotos fallan igual: un aviso, no tres. */}
+          {[...new Set([etiqueta.error, vencimiento.error, codigo.error].filter(Boolean))].map((e) => (
+            <p
+              key={e}
+              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger"
+            >
+              {e}
+            </p>
+          ))}
         </>
       )}
 
@@ -659,9 +759,11 @@ function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
   const [foto, setFoto] = useState<File | null>(null);
   const [cantidad, setCantidad] = useState("1");
   const [hecho, setHecho] = useState<string | null>(null);
+  const [elegido, setElegido] = useState<number | null>(null);
 
   const draft = codigo.resultado?.draft ?? null;
-  const match = draft?.coincidencias[0] ?? null;
+  useEffect(() => setElegido(draft?.coincidencia_id ?? null), [draft]);
+  const match = draft?.coincidencias.find((m) => m.id === elegido) ?? null;
 
   const cargar = useMutation({
     mutationFn: async () => {
@@ -677,8 +779,7 @@ function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refrescarInventario(qc);
       setHecho(`Se ${Number(cantidad) === 1 ? "sumó" : "sumaron"} ${unidades(cantidad)} a «${data.nombre}».`);
     },
   });
@@ -689,6 +790,7 @@ function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
     setCantidad("1");
     setHecho(null);
     cargar.reset();
+    setElegido(null);
   };
 
   if (hecho) return <Confirmado texto={hecho} onSeguir={reiniciar} />;
@@ -729,14 +831,25 @@ function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
 
           {match ? (
             <>
-              <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
-                <p className="text-sm text-muted">Corresponde a</p>
-                <p className="text-lg font-semibold text-ink">{match.nombre}</p>
-                <p className="text-sm text-muted">
-                  {match.marca ? `${match.marca} · ` : ""}stock actual {match.stock}
-                  {match.vencimiento ? ` · vence ${match.vencimiento}` : ""}
-                </p>
-              </div>
+              <LoteDelCodigo coincidencias={draft.coincidencias} elegido={elegido} onElegir={setElegido} />
+
+              {/* Sumar al lote elegido conserva su vencimiento. Si la caja que
+                  llegó vence en otra fecha, es otro lote y va por el alta. */}
+              <button
+                type="button"
+                onClick={() =>
+                  irAManual({
+                    codigo_barras: draft.codigo_barras ?? "",
+                    nombre: match.nombre,
+                    marca: match.marca ?? "",
+                    categoria: match.categoria ?? "",
+                    ubicacion: match.ubicacion ?? "",
+                  })
+                }
+                className="text-xs font-medium text-muted underline hover:text-primaryDark"
+              >
+                ¿Vence en otra fecha? Cargalo como lote nuevo
+              </button>
 
               <div className="max-w-xs">
                 <label className="mb-1 block text-sm font-medium text-ink">Unidades a cargar</label>
@@ -887,8 +1000,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refrescarInventario(qc);
       setHecho(data);
     },
   });
@@ -906,18 +1018,27 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
 
   if (hecho) {
     return (
-      <Confirmado
-        texto={`${
-          hecho.created === 1 ? "1 producto nuevo" : `${hecho.created} productos nuevos`
-        } y ${
-          hecho.merged === 1 ? "1 actualizado" : `${hecho.merged} actualizados`
-        } desde el comprobante.${
-          hecho.failed
-            ? ` ${hecho.failed === 1 ? "1 renglón no se pudo cargar" : `${hecho.failed} renglones no se pudieron cargar`}.`
-            : ""
-        }`}
-        onSeguir={reiniciar}
-      />
+      <div className="space-y-3">
+        <Confirmado
+          texto={`${
+            hecho.created === 1 ? "1 producto nuevo" : `${hecho.created} productos nuevos`
+          } y ${
+            hecho.merged === 1 ? "1 actualizado" : `${hecho.merged} actualizados`
+          } desde el comprobante.${
+            hecho.failed
+              ? ` ${hecho.failed === 1 ? "1 renglón no se pudo cargar" : `${hecho.failed} renglones no se pudieron cargar`}.`
+              : ""
+          }`}
+          onSeguir={reiniciar}
+        />
+        {hecho.errors.length > 0 && (
+          <ul className="list-inside list-disc rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+            {hecho.errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        )}
+      </div>
     );
   }
 
@@ -1107,9 +1228,11 @@ function SalidaCodigo() {
   const [cantidad, setCantidad] = useState("1");
   const [motivo, setMotivo] = useState<"consumed" | "expired">("consumed");
   const [hecho, setHecho] = useState<string | null>(null);
+  const [elegido, setElegido] = useState<number | null>(null);
 
   const draft = codigo.resultado?.draft ?? null;
-  const match = draft?.coincidencias[0] ?? null;
+  useEffect(() => setElegido(draft?.coincidencia_id ?? null), [draft]);
+  const match = draft?.coincidencias.find((m) => m.id === elegido) ?? null;
 
   const descargar = useMutation({
     mutationFn: async () => {
@@ -1121,8 +1244,7 @@ function SalidaCodigo() {
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refrescarInventario(qc);
       setHecho(`${Number(cantidad) === 1 ? "Salió" : "Salieron"} ${unidades(cantidad)} de «${data.nombre}». Quedan ${data.stock}.`);
     },
   });
@@ -1170,13 +1292,7 @@ function SalidaCodigo() {
 
           {match ? (
             <>
-              <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
-                <p className="text-sm text-muted">Corresponde a</p>
-                <p className="text-lg font-semibold text-ink">{match.nombre}</p>
-                <p className="text-sm text-muted">
-                  {match.marca ? `${match.marca} · ` : ""}stock actual {match.stock}
-                </p>
-              </div>
+              <LoteDelCodigo coincidencias={draft.coincidencias} elegido={elegido} onElegir={setElegido} />
 
               <div className="grid max-w-md gap-4 sm:grid-cols-2">
                 <div>
@@ -1279,8 +1395,7 @@ function SalidaComprobante({ irASalidaManual }: { irASalidaManual: (p: SalidaPre
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refrescarInventario(qc);
       setHecho(data);
     },
   });

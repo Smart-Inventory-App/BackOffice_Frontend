@@ -687,8 +687,9 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
         {direction === "entrada" ? (
           <>
             Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca,
-            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, stock_minimo,
-            dias_alerta_vencimiento (las últimas dos son opcionales). Cada producto que se lea
+            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, codigo_barras,
+            stock_minimo, dias_alerta_vencimiento (las últimas tres son opcionales). Es el
+            mismo formato que genera la exportación. Cada producto que se lea
             aparece como una pestaña que podés revisar y modificar antes de confirmar la carga.
           </>
         ) : (
