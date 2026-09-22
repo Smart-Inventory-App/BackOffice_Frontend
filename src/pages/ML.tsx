@@ -14,12 +14,17 @@ import { api } from "@/lib/api";
 import { Card, PageHeader, Spinner } from "@/components/ui";
 
 type ModelType = "gbm" | "xgboost" | "lightgbm" | "svr";
+type DataSource = "real" | "test";
+type Segment = "individuo" | "comercio";
 
 interface ModelVersion {
   id: string;
   model_type?: ModelType;
+  data_source?: DataSource;
+  segment?: Segment;
   trained_at: string;
   mae: number;
+  mae_relative?: number;
   mape: number;
   n_samples: number;
   n_products: number;
@@ -38,6 +43,16 @@ const MODEL_OPTIONS: { value: ModelType; label: string; description: string }[] 
   { value: "xgboost", label: "XGBoost", description: "Extreme Gradient Boosting" },
   { value: "lightgbm", label: "LightGBM", description: "Light Gradient Boosting" },
   { value: "svr", label: "SVR", description: "Support Vector Regression" },
+];
+
+const DATA_SOURCE_OPTIONS: { value: DataSource; label: string; description: string }[] = [
+  { value: "real", label: "Datos reales", description: "Eventos de consumo de los usuarios en producción" },
+  { value: "test", label: "Dataset de prueba", description: "Dataset simulado de escala comercial, para evaluar el modelo de forma reproducible" },
+];
+
+const SEGMENT_OPTIONS: { value: Segment; label: string; description: string }[] = [
+  { value: "individuo", label: "Individuos", description: "Consumo doméstico — se acepta con MAE ≤ 2 u/sem por producto" },
+  { value: "comercio", label: "Comercios", description: "Escala comercial — se acepta por error relativo al volumen (≤ 25%)" },
 ];
 
 function ModelTypeBadge({ modelType }: { modelType?: ModelType }) {
@@ -75,15 +90,15 @@ function StatusBadge({ status }: { status: ModelVersion["status"] }) {
   );
 }
 
-function MapeBar({ mape }: { mape: number }) {
-  const pct = Math.min(mape, 100);
-  const color = mape <= 15 ? "bg-green-500" : mape <= 25 ? "bg-yellow-400" : "bg-red-500";
+function PercentBar({ value }: { value: number }) {
+  const pct = Math.min(value, 100);
+  const color = value <= 15 ? "bg-green-500" : value <= 25 ? "bg-yellow-400" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
       <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-100">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-sm tabular-nums">{mape.toFixed(1)}%</span>
+      <span className="text-sm tabular-nums">{value.toFixed(1)}%</span>
     </div>
   );
 }
@@ -170,16 +185,33 @@ function FeatureImportancesChart({ versionId }: { versionId: string }) {
 export default function ML() {
   const qc = useQueryClient();
   const [selectedModel, setSelectedModel] = useState<ModelType>("gbm");
+  const [dataSource, setDataSource] = useState<DataSource>("real");
+  const [segment, setSegment] = useState<Segment>("individuo");
   const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
+
+  const testDatasetUnavailable = segment === "individuo" && dataSource === "test";
 
   const { data: versions = [], isLoading } = useQuery<ModelVersion[]>({
     queryKey: ["ml-models"],
     queryFn: async () => (await api.get("/admin/ml/models")).data,
   });
 
+  const visibleVersions = versions.filter(
+    (v) =>
+      (v.model_type ?? "gbm") === selectedModel &&
+      (v.data_source ?? "real") === dataSource &&
+      (v.segment ?? "individuo") === segment,
+  );
+
   const trainMutation = useMutation({
     mutationFn: async () =>
-      (await api.post("/admin/ml/models/train", { model_type: selectedModel })).data,
+      (
+        await api.post("/admin/ml/models/train", {
+          model_type: selectedModel,
+          data_source: dataSource,
+          segment,
+        })
+      ).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ml-models"] }),
   });
 
@@ -205,7 +237,9 @@ export default function ML() {
       {/* Umbrales de aceptación */}
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
-          { label: "MAE máx", value: "2.0 u/sem", hint: "Mean Absolute Error" },
+          segment === "comercio"
+            ? { label: "MAE relativo máx", value: "25%", hint: "Error ponderado por volumen (WAPE)" }
+            : { label: "MAE máx", value: "2.0 u/sem", hint: "Error absoluto por producto" },
           { label: "MAPE óptimo", value: "≤ 15%", hint: "Mean Absolute Percentage Error" },
           { label: "MAPE máx", value: "25%", hint: "Umbral de producción" },
           { label: "Muestras mín", value: "5 productos", hint: "Para entrenar" },
@@ -227,6 +261,32 @@ export default function ML() {
               Toma todos los eventos de consumo, entrena el modelo seleccionado y evalúa MAE y
               MAPE. Si las métricas no pasan los umbrales, el modelo es rechazado.
             </p>
+
+            {/* Segmento */}
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Segmento
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SEGMENT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSegment(opt.value)}
+                    title={opt.description}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      segment === opt.value
+                        ? "border-primary bg-primary text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {SEGMENT_OPTIONS.find((o) => o.value === segment)?.description}
+              </p>
+            </div>
 
             {/* Selector de algoritmo */}
             <div>
@@ -253,11 +313,39 @@ export default function ML() {
                 {MODEL_OPTIONS.find((o) => o.value === selectedModel)?.description}
               </p>
             </div>
+
+            {/* Fuente de datos */}
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Fuente de datos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DATA_SOURCE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setDataSource(opt.value)}
+                    title={opt.description}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      dataSource === opt.value
+                        ? "border-primary bg-primary text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                {testDatasetUnavailable
+                  ? "El dataset de prueba es de escala comercial: no hay equivalente para individuos."
+                  : DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.description}
+              </p>
+            </div>
           </div>
 
           <button
             onClick={() => trainMutation.mutate()}
-            disabled={trainMutation.isPending}
+            disabled={trainMutation.isPending || testDatasetUnavailable}
             className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
           >
             {trainMutation.isPending ? (
@@ -334,14 +422,29 @@ export default function ML() {
 
       {/* Tabla de versiones */}
       <Card>
-        <h2 className="mb-4 font-semibold">Versiones del modelo</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 className="font-semibold">Versiones del modelo</h2>
+          <ModelTypeBadge modelType={selectedModel} />
+          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            {SEGMENT_OPTIONS.find((o) => o.value === segment)?.label}
+          </span>
+          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+            {DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label}
+          </span>
+          <span className="text-sm text-gray-400">
+            {visibleVersions.length} de {versions.length}
+          </span>
+        </div>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
-        ) : versions.length === 0 ? (
+        ) : visibleVersions.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-400">
-            Aún no hay modelos entrenados.
+            {versions.length === 0
+              ? "Aún no hay modelos entrenados."
+              : `No hay versiones de ${selectedModel.toUpperCase()} entrenadas con ` +
+                `${DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label.toLowerCase()}.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -352,6 +455,7 @@ export default function ML() {
                   <th className="pb-2 pr-4">Modelo</th>
                   <th className="pb-2 pr-4">Fecha</th>
                   <th className="pb-2 pr-4">MAE (u/sem)</th>
+                  <th className="pb-2 pr-4">MAE rel.</th>
                   <th className="pb-2 pr-4">MAPE</th>
                   <th className="pb-2 pr-4">Muestras</th>
                   <th className="pb-2 pr-4">Productos</th>
@@ -360,7 +464,7 @@ export default function ML() {
                 </tr>
               </thead>
               <tbody>
-                {[...versions].reverse().map((v) => (
+                {[...visibleVersions].reverse().map((v) => (
                   <>
                     <tr key={v.id} className="border-b last:border-0">
                       <td className="py-3 pr-4 font-mono font-semibold">{v.id}</td>
@@ -374,13 +478,18 @@ export default function ML() {
                           year: "numeric",
                         })}
                       </td>
-                      <td className="py-3 pr-4 tabular-nums">
-                        <span className={v.mae <= 2 ? "text-green-700" : "text-red-600"}>
-                          {v.mae.toFixed(3)}
-                        </span>
+                      <td className="py-3 pr-4 tabular-nums text-gray-500">
+                        {v.mae.toFixed(3)}
                       </td>
                       <td className="py-3 pr-4">
-                        <MapeBar mape={v.mape} />
+                        {v.mae_relative === undefined ? (
+                          <span className="text-sm text-gray-300">—</span>
+                        ) : (
+                          <PercentBar value={v.mae_relative} />
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <PercentBar value={v.mape} />
                       </td>
                       <td className="py-3 pr-4 tabular-nums">{v.n_samples}</td>
                       <td className="py-3 pr-4 tabular-nums">{v.n_products}</td>
@@ -420,7 +529,7 @@ export default function ML() {
                     {/* Fila expandible con el gráfico */}
                     {expandedVersion === v.id && (
                       <tr key={`${v.id}-chart`}>
-                        <td colSpan={9} className="bg-gray-50 px-4 pb-4">
+                        <td colSpan={10} className="bg-gray-50 px-4 pb-4">
                           <FeatureImportancesChart versionId={v.id} />
                         </td>
                       </tr>
