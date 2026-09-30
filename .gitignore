@@ -1,6 +1,10 @@
+# Configs
 node_modules/
 dist/
 .env
 *.local
 .vite/
 tsconfig.tsbuildinfo
+
+# Testing Coverage
+coverage/
