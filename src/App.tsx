@@ -15,6 +15,7 @@ import Auditoria from "./pages/Auditoria";
 import Perfil from "./pages/Perfil";
 import ML from "./pages/ML";
 import Metricas from "./pages/Metricas";
+import OCR from "./pages/OCR";
 
 function Protected({ children }: { children: JSX.Element }) {
   const { admin, loading } = useAuth();
@@ -66,6 +67,7 @@ export default function App() {
       <Route path="/perfil" element={<Protected><Perfil /></Protected>} />
       <Route path="/auditoria" element={<AdminOnly><Auditoria /></AdminOnly>} />
       <Route path="/ml" element={<AdminOnly><ML /></AdminOnly>} />
+      <Route path="/ocr" element={<AdminOnly><OCR /></AdminOnly>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

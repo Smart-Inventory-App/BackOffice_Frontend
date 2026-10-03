@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { X, Pencil, Trash2, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ConsumptionEvent, MyProduct } from "@/lib/types";
+import { apiErrorMessage } from "@/lib/errors";
 
 interface Props {
   product: MyProduct | null;
@@ -76,7 +77,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
       load();
       onChanged();
     } catch (err: any) {
-      setRowError(err?.response?.data?.detail ?? "No se pudo corregir el registro");
+      setRowError(apiErrorMessage(err, "No se pudo corregir el registro"));
     } finally {
       setSaving(false);
     }
@@ -90,7 +91,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
       load();
       onChanged();
     } catch (err: any) {
-      setRowError(err?.response?.data?.detail ?? "No se pudo borrar el registro");
+      setRowError(apiErrorMessage(err, "No se pudo borrar el registro"));
     }
   };
 

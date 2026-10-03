@@ -80,6 +80,7 @@ export interface AdminProduct {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  codigo_barras: string | null;
   created_at: string | null;
   owner: ProductOwner;
 }
@@ -107,6 +108,7 @@ export interface MyProduct {
   descripcion: string | null;
   imagen_url: string | null;
   ubicacion: string | null;
+  codigo_barras: string | null;
   stock_minimo: number | null;
   dias_alerta_vencimiento: number | null;
   created_at: string | null;
@@ -145,6 +147,7 @@ export interface BulkProductRow {
   marca: string | null;
   categoria: string;
   stock: number;
+  codigo_barras?: string | null;
   vencimiento: string | null;
   descripcion: string | null;
   imagen_url: string | null;
@@ -219,4 +222,149 @@ export interface ActivityEntry {
   target_email: string | null;
   description: string;
   created_at: string | null;
+}
+
+/* Módulo de OCR */
+
+export type OCRDocType = "product_label" | "expiry_date" | "receipt" | "barcode";
+
+export interface OCREngineStatus {
+  name: string;
+  url: string;
+  available: boolean;
+  version: string;
+  replicas: string[];
+}
+
+export interface OCRServiceStatus {
+  available: boolean;
+  checks: Record<string, unknown>;
+  engines: OCREngineStatus[];
+}
+
+export interface OCRField {
+  value: string | number | null;
+  confidence: number;
+}
+
+export interface OCRReceiptItem {
+  nombre_producto: OCRField;
+  cantidad: OCRField;
+}
+
+export interface OCRResult {
+  fields: Record<string, OCRField>;
+  items: OCRReceiptItem[];
+  document_confidence: number;
+  needs_review: boolean;
+  engine: string;
+  raw_text: string;
+  processing_ms: number;
+  rotation: number;
+  attempts: number;
+  warnings: string[];
+  texto_legible: string;
+}
+
+export interface OCRSyncResponse {
+  doc_type: OCRDocType;
+  result: OCRResult;
+}
+
+export interface OCRAuditEntry {
+  id: number;
+  job_id: string | null;
+  user_email: string;
+  user_id: string | null;
+  origen: "app" | "panel";
+  doc_type: OCRDocType;
+  engine: string | null;
+  status: "done" | "failed";
+  confianza: number | null;
+  processing_ms: number | null;
+  campos: number | null;
+  resumen: string | null;
+  created_at: string;
+}
+
+export interface OCRDocTypeStats {
+  doc_type: OCRDocType;
+  ejecuciones: number;
+  exitosas: number;
+  fallidas: number;
+  ms_promedio: number | null;
+  ms_maximo: number | null;
+  confianza_promedio: number | null;
+}
+
+export interface OCRStats {
+  dias: number;
+  ejecuciones: number;
+  exitosas: number;
+  fallidas: number;
+  usuarios: number;
+  ms_promedio: number | null;
+  confianza_promedio: number | null;
+  por_tipo: OCRDocTypeStats[];
+}
+
+export interface ProductMatch {
+  id: number;
+  nombre: string;
+  marca: string | null;
+  categoria: string | null;
+  ubicacion: string | null;
+  vencimiento: string | null;
+  stock: number;
+  codigo_barras: string | null;
+  score: number;
+  por_codigo: boolean;
+}
+
+export interface ProductDraft {
+  nombre: string | null;
+  marca: string | null;
+  descripcion: string | null;
+  vencimiento: string | null;
+  codigo_barras: string | null;
+  pais_registro: string | null;
+  stock: number | null;
+  confianzas: Record<string, number>;
+  texto_leido: string | null;
+  coincidencias: ProductMatch[];
+  coincidencia_id: number | null;
+}
+
+export interface ReceiptInfo {
+  comercio: string | null;
+  fecha_compra: string | null;
+  total: number | null;
+}
+
+export interface ScanResult {
+  doc_type: OCRDocType;
+  draft: ProductDraft | null;
+  items: ProductDraft[];
+  comprobante: ReceiptInfo | null;
+  needs_review: boolean;
+  confianza: number;
+  texto_legible: string;
+  advertencias: string[];
+  sin_coincidencia: number;
+}
+
+export interface ScanState {
+  job_id: string | null;
+  status: "queued" | "processing" | "done" | "failed";
+  doc_type: OCRDocType;
+  result: ScanResult | null;
+  error: string | null;
+  queue_position: number | null;
+  estimated_wait_seconds: number | null;
+}
+
+export interface SalidaOCRResult {
+  procesados: number;
+  fallidos: number;
+  errores: string[];
 }

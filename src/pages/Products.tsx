@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Trash2, ArrowUp, ArrowDown, Download } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, Barcode, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import type { AdminProduct, Paginated } from "@/lib/types";
@@ -239,6 +239,14 @@ export default function Products() {
                     <td className="px-5 py-3">
                       <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
+                      {p.codigo_barras && (
+                        <p
+                          className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-muted"
+                          title="Código de barras"
+                        >
+                          <Barcode size={11} /> {p.codigo_barras}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
                     <td className="px-5 py-3 text-center">

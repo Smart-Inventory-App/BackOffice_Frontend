@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { LogIn, ShieldCheck, Trash2, ToggleLeft, PackagePlus, PackageCheck, UserPlus2 } from "lucide-react";
+import { LogIn, ShieldCheck, Trash2, ToggleLeft, PackagePlus, PackageCheck, UserPlus2, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ActivityEntry, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
@@ -17,31 +17,25 @@ const KIND_LABELS: Record<ActivityEntry["kind"], string> = {
   product_deleted: "Producto eliminado",
 };
 
-function KindIcon({ kind }: { kind: ActivityEntry["kind"] }) {
-  switch (kind) {
-    case "login":
-      return <LogIn size={14} />;
-    case "role":
-      return <ShieldCheck size={14} />;
-    case "registered":
-      return <UserPlus2 size={14} />;
-    case "product_created":
-      return <PackagePlus size={14} />;
-    case "product_updated":
-      return <PackageCheck size={14} />;
-    case "product_deleted":
-      return <Trash2 size={14} />;
-    default:
-      return <ToggleLeft size={14} />;
-  }
-}
+const KIND_ICONS: Record<ActivityEntry["kind"], LucideIcon> = {
+  status: ToggleLeft,
+  role: ShieldCheck,
+  login: LogIn,
+  registered: UserPlus2,
+  product_created: PackagePlus,
+  product_updated: PackageCheck,
+  product_deleted: Trash2,
+};
 
-function kindTone(kind: ActivityEntry["kind"]): "ok" | "off" | "warn" | "neutral" {
-  if (kind === "product_deleted") return "off";
-  if (kind === "role" || kind === "registered" || kind === "product_created") return "ok";
-  if (kind === "login" || kind === "product_updated") return "neutral";
-  return "warn";
-}
+const KIND_TONES: Record<ActivityEntry["kind"], "ok" | "off" | "warn" | "neutral"> = {
+  status: "warn",
+  role: "ok",
+  login: "neutral",
+  registered: "ok",
+  product_created: "ok",
+  product_updated: "neutral",
+  product_deleted: "off",
+};
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -119,12 +113,14 @@ export default function Auditoria() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((e) => (
+                {items.map((e) => {
+                  const Icon = KIND_ICONS[e.kind];
+                  return (
                   <tr key={e.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
                     <td className="px-5 py-3">
-                      <Badge tone={kindTone(e.kind)}>
+                      <Badge tone={KIND_TONES[e.kind]}>
                         <span className="inline-flex items-center gap-1">
-                          <KindIcon kind={e.kind} /> {KIND_LABELS[e.kind]}
+                          <Icon size={14} /> {KIND_LABELS[e.kind]}
                         </span>
                       </Badge>
                     </td>
@@ -133,7 +129,8 @@ export default function Auditoria() {
                       {formatDateTime(e.created_at)}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {items.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-5 py-10 text-center text-muted">

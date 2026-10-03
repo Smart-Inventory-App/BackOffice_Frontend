@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { apiErrorMessage } from "@/lib/errors";
 
 function validatePassword(pw: string): string | null {
   if (pw.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
@@ -34,7 +35,7 @@ export default function SetPassword() {
       await api.post("/admin/auth/set-password", { email, password });
       navigate("/login", { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "No se pudo definir la contraseña.");
+      setError(apiErrorMessage(err, "No se pudo definir la contraseña."));
     } finally {
       setLoading(false);
     }

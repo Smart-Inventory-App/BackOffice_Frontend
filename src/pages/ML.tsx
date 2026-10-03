@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 import { Card, PageHeader, Spinner } from "@/components/ui";
+import { apiErrorMessage } from "@/lib/errors";
 
 type ModelType = "gbm" | "xgboost" | "lightgbm" | "svr";
 type DataSource = "real" | "test";
@@ -379,7 +380,7 @@ export default function ML() {
 
         {trainMutation.isError && (
           <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-            {(trainMutation.error as any)?.response?.data?.detail ?? "Error al entrenar"}
+            {apiErrorMessage(trainMutation.error, "Error al entrenar")}
           </div>
         )}
       </Card>
@@ -415,7 +416,7 @@ export default function ML() {
         )}
         {runAllAlertsMutation.isError && (
           <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-            {(runAllAlertsMutation.error as any)?.response?.data?.detail ?? "Error al lanzar alertas"}
+            {apiErrorMessage(runAllAlertsMutation.error, "Error al lanzar alertas")}
           </div>
         )}
       </Card>
