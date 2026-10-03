@@ -4,6 +4,7 @@ import { LayoutDashboard, Users, Package, LogOut, UserPlus, ArrowLeftRight, Eye,
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import logo from "../../assets/logo.png";
+import { apiErrorMessage } from "@/lib/errors";
 
 const ADMIN_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -56,7 +57,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       setNewEmail("");
       setNewName("");
     } catch (err: any) {
-      setAddError(err?.response?.data?.detail ?? "No se pudo agregar el administrador.");
+      setAddError(apiErrorMessage(err, "No se pudo agregar el administrador."));
     } finally {
       setAdding(false);
     }

@@ -12,6 +12,7 @@ import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
+import { apiErrorMessage } from "@/lib/errors";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
@@ -186,7 +187,7 @@ export default function MyProducts() {
       setEditing(null);
     },
     onError: (err: any) => {
-      setEditError(err?.response?.data?.detail ?? "No se pudo guardar el producto.");
+      setEditError(apiErrorMessage(err, "No se pudo guardar el producto."));
     },
   });
 
@@ -238,7 +239,7 @@ export default function MyProducts() {
       setShowBulkEdit(false);
     },
     onError: (err: any) => {
-      setBulkError(err?.response?.data?.detail ?? "No se pudo aplicar el cambio.");
+      setBulkError(apiErrorMessage(err, "No se pudo aplicar el cambio."));
     },
   });
 

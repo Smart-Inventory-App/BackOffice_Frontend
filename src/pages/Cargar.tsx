@@ -7,6 +7,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
+import { apiErrorMessage } from "@/lib/errors";
 
 const EMPTY = {
   nombre: "",
@@ -81,7 +82,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
         .then(({ data }) => setDuplicado(data))
         // Un 400 acá es el mismo rechazo que daría el alta —dígito verificador que
         // no cierra—: se muestra antes de apretar Cargar, no después.
-        .catch((err: any) => setCodigoError(err?.response?.data?.detail ?? null));
+        .catch((err: any) => setCodigoError(apiErrorMessage(err, "") || null));
     }, 400);
     return () => clearTimeout(handle);
   }, [form.codigo_barras]);
@@ -137,7 +138,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
       setError(null);
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? "No se pudo cargar el producto.");
+      setError(apiErrorMessage(err, "No se pudo cargar el producto."));
       setOkMessage(null);
     },
   });
@@ -430,7 +431,7 @@ function SalidaForm({
       setNota("");
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? "No se pudo registrar la salida.");
+      setError(apiErrorMessage(err, "No se pudo registrar la salida."));
       setOkMessage(null);
     },
   });
@@ -619,7 +620,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
           });
         });
       } catch (err: any) {
-        errs.push(`${file.name}: ${err?.response?.data?.detail ?? "no se pudo leer el archivo"}`);
+        errs.push(`${file.name}: ${apiErrorMessage(err, "no se pudo leer el archivo")}`);
       }
     }
 

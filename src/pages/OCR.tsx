@@ -27,6 +27,7 @@ import type {
 import type { Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, StatCard, Spinner } from "@/components/ui";
 import Pagination from "@/components/Pagination";
+import { apiErrorMessage } from "@/lib/errors";
 
 const PAGE_SIZE = 15;
 
@@ -617,7 +618,7 @@ function Playground({ onScanned }: { onScanned: () => void }) {
 
       {scan.isError && (
         <p className="mt-4 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
-          {(scan.error as any)?.response?.data?.detail ?? "No se pudo procesar la foto."}
+          {apiErrorMessage(scan.error, "No se pudo procesar la foto.")}
         </p>
       )}
 

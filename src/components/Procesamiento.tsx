@@ -23,6 +23,7 @@ import type {
   ScanResult,
   ScanState,
 } from "@/lib/types";
+import { apiErrorMessage } from "@/lib/errors";
 
 /** Cada cuánto se le pregunta al módulo si ya terminó. */
 const POLL_MS = 1500;
@@ -59,7 +60,7 @@ function detalle(err: any, fallback: string): string {
   // Un 502/503/504 trae el error de red crudo del gateway («[Errno -2] Name or
   // service not known»): al usuario sólo le sirve saber que el módulo no responde.
   if ([502, 503, 504].includes(err?.response?.status)) return OCR_NO_DISPONIBLE;
-  const mensaje = err?.response?.data?.detail ?? fallback;
+  const mensaje = apiErrorMessage(err, fallback);
   // El coordinador calcula cuánto falta para recuperar el cupo: sin ese dato,
   // «superaste el límite» no dice cuándo volver a intentar.
   const espera = Number(err?.response?.headers?.["retry-after"]);
