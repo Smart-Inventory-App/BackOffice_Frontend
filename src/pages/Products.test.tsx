@@ -185,6 +185,29 @@ describe("Products (admin)", () => {
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/admin/products/1"));
   });
 
+  it("si el backend rechaza el borrado, muestra el error en el diálogo y no lo cierra", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.delete).mockImplementation(async () => {
+      const err: any = new Error("fallo");
+      err.response = { data: { detail: "No se pudo borrar por una restricción." } };
+      throw err;
+    });
+
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+    await user.click(screen.getByRole("button", { name: /Eliminar/ }));
+    const modal = screen.getByText("Eliminar producto").closest(".rounded-2xl") as HTMLElement;
+    await user.click(within(modal).getByRole("button", { name: "Eliminar" }));
+
+    expect(await within(modal).findByRole("alert")).toHaveTextContent("No se pudo borrar por una restricción.");
+    expect(screen.getByText("Eliminar producto")).toBeInTheDocument();
+
+    await user.click(within(modal).getByRole("button", { name: "Cancelar" }));
+    await user.click(screen.getByRole("button", { name: /Eliminar/ }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("exporta a csv y a xlsx aplicando los filtros vigentes", async () => {
     const user = userEvent.setup();
     mockGets([product()]);

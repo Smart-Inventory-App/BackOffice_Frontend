@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HistorialModal from "./HistorialModal";
@@ -170,7 +170,6 @@ describe("HistorialModal", () => {
     const onChanged = vi.fn();
     vi.mocked(api.get).mockResolvedValue({ data: [event()] });
     vi.mocked(api.delete).mockResolvedValue({ data: {} });
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const { container } = render(
       <HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={onChanged} />,
@@ -179,12 +178,18 @@ describe("HistorialModal", () => {
     const deleteButton = container.querySelectorAll("button")[2];
 
     await user.click(deleteButton);
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText("¿Borrar este registro de consumo?")).toBeInTheDocument();
+    expect(within(dialog).getByText("El stock se va a ajustar automáticamente.")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(api.delete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 
     await user.click(deleteButton);
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Borrar" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/me/products/1/events/1"));
     expect(onChanged).toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
   it("si falla el borrado, muestra el error de fila", async () => {
@@ -195,13 +200,13 @@ describe("HistorialModal", () => {
       err.response = { data: { detail: "No se puede borrar." } };
       throw err;
     });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const { container } = render(
       <HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />,
     );
     await screen.findByText("Consumido");
     await user.click(container.querySelectorAll("button")[2]);
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Borrar" }));
 
     expect(await screen.findByText("No se puede borrar.")).toBeInTheDocument();
   });
