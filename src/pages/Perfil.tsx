@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, PageHeader } from "@/components/ui";
 import type { MyProfile } from "@/lib/types";
+import { apiErrorMessage } from "@/lib/errors";
 
 export default function Perfil() {
   const qc = useQueryClient();
@@ -49,7 +50,7 @@ export default function Perfil() {
       setError(null);
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? "No se pudo guardar.");
+      setError(apiErrorMessage(err, "No se pudo guardar."));
       setOkMessage(null);
     },
   });

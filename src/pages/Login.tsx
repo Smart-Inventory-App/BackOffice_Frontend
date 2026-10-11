@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import { apiErrorMessage } from "@/lib/errors";
 
 export default function Login() {
   const { admin, login } = useAuth();
@@ -33,7 +34,7 @@ export default function Login() {
       }
       setStep("password");
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "No se pudo verificar el email.");
+      setError(apiErrorMessage(err, "No se pudo verificar el email."));
     } finally {
       setLoading(false);
     }
@@ -47,7 +48,7 @@ export default function Login() {
       await login(email, password);
       navigate("/", { replace: true });
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? "No se pudo iniciar sesión.");
+      setError(apiErrorMessage(err, "No se pudo iniciar sesión."));
     } finally {
       setLoading(false);
     }

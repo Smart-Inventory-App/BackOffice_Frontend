@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { UploadCloud } from "lucide-react";
+import { AlertTriangle, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
+import { LARGOS_CODIGO, digitosDelCodigo, limpiarCodigo } from "@/lib/barcode";
 import { Card, PageHeader } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
+import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
+import { apiErrorMessage } from "@/lib/errors";
 
 const EMPTY = {
   nombre: "",
   marca: "",
   categoria: "",
   stock: "",
+  codigo_barras: "",
   vencimiento: "",
   descripcion: "",
   imagen_url: "",
@@ -19,7 +23,7 @@ const EMPTY = {
   dias_alerta_vencimiento: "",
 };
 
-function ManualForm() {
+function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPrefillUsed?: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +33,8 @@ function ManualForm() {
   const [categoriaOptions, setCategoriaOptions] = useState<string[]>([]);
   const [ubicacionOptions, setUbicacionOptions] = useState<string[]>([]);
   const [marcaOptions, setMarcaOptions] = useState<string[]>([]);
+  const [duplicado, setDuplicado] = useState<ProductSuggestion | null>(null);
+  const [codigoError, setCodigoError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -44,6 +50,12 @@ function ManualForm() {
   }, []);
 
   useEffect(() => {
+    if (!prefill) return;
+    setForm((f) => ({ ...f, ...prefill }));
+    onPrefillUsed?.();
+  }, [prefill, onPrefillUsed]);
+
+  useEffect(() => {
     const q = form.nombre.trim();
     if (q.length < 2) {
       setSuggestions([]);
@@ -57,6 +69,23 @@ function ManualForm() {
     }, 300);
     return () => clearTimeout(handle);
   }, [form.nombre]);
+
+  useEffect(() => {
+    const digitos = digitosDelCodigo(form.codigo_barras);
+    setDuplicado(null);
+    setCodigoError(null);
+    if (!LARGOS_CODIGO.includes(digitos.length)) return;
+
+    const handle = setTimeout(() => {
+      api
+        .get<ProductSuggestion | null>(`/me/products/by-barcode/${digitos}`)
+        .then(({ data }) => setDuplicado(data))
+        // Un 400 acá es el mismo rechazo que daría el alta —dígito verificador que
+        // no cierra—: se muestra antes de apretar Cargar, no después.
+        .catch((err: any) => setCodigoError(apiErrorMessage(err, "") || null));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [form.codigo_barras]);
 
   const set = (field: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -88,6 +117,7 @@ function ManualForm() {
           marca: form.marca || null,
           categoria: form.categoria,
           stock: Number(form.stock),
+          codigo_barras: form.codigo_barras || null,
           vencimiento: form.vencimiento || null,
           descripcion: form.descripcion || null,
           imagen_url: form.imagen_url || null,
@@ -108,7 +138,7 @@ function ManualForm() {
       setError(null);
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? "No se pudo cargar el producto.");
+      setError(apiErrorMessage(err, "No se pudo cargar el producto."));
       setOkMessage(null);
     },
   });
@@ -186,6 +216,47 @@ function ManualForm() {
               className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
             />
           </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-ink">Código de barras</label>
+          <input
+            inputMode="numeric"
+            value={form.codigo_barras}
+            onChange={(e) => setForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))}
+            placeholder="Sin código"
+            className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
+          />
+          {codigoError ? (
+            <p className="mt-1 text-xs text-danger">{codigoError}</p>
+          ) : duplicado ? (
+            <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div className="space-y-1.5">
+                <p>
+                  Ya tenés <span className="font-medium">«{duplicado.nombre}»</span>
+                  {duplicado.marca ? ` de ${duplicado.marca}` : ""} con este código (stock{" "}
+                  {duplicado.stock}
+                  {duplicado.vencimiento ? `, vence ${duplicado.vencimiento}` : ""}).
+                </p>
+                <p className="text-xs">
+                  Si es el mismo producto, sumale el stock. Si es otro lote con distinto vencimiento,
+                  podés cargarlo igual.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => selectSuggestion(duplicado)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                >
+                  Sumar stock a ese producto
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              El número impreso debajo del código del envase. Cargándolo una vez, después alcanza con
+              escanearlo desde Procesamiento.
+            </p>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -279,7 +350,13 @@ function ManualForm() {
   );
 }
 
-function SalidaForm() {
+function SalidaForm({
+  prefill,
+  onPrefillUsed,
+}: {
+  prefill?: SalidaPrefill | null;
+  onPrefillUsed?: () => void;
+}) {
   const qc = useQueryClient();
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
@@ -290,6 +367,17 @@ function SalidaForm() {
   const [nota, setNota] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setSelected(null);
+    setQuery(prefill.busqueda);
+    setNota(prefill.nota ?? "");
+    setShowSuggestions(true);
+    setOkMessage(null);
+    setError(null);
+    onPrefillUsed?.();
+  }, [prefill, onPrefillUsed]);
 
   useEffect(() => {
     if (selected) return;
@@ -343,7 +431,7 @@ function SalidaForm() {
       setNota("");
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? "No se pudo registrar la salida.");
+      setError(apiErrorMessage(err, "No se pudo registrar la salida."));
       setOkMessage(null);
     },
   });
@@ -532,7 +620,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
           });
         });
       } catch (err: any) {
-        errs.push(`${file.name}: ${err?.response?.data?.detail ?? "no se pudo leer el archivo"}`);
+        errs.push(`${file.name}: ${apiErrorMessage(err, "no se pudo leer el archivo")}`);
       }
     }
 
@@ -600,8 +688,9 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
         {direction === "entrada" ? (
           <>
             Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca,
-            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, stock_minimo,
-            dias_alerta_vencimiento (las últimas dos son opcionales). Cada producto que se lea
+            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, codigo_barras,
+            stock_minimo, dias_alerta_vencimiento (las últimas tres son opcionales). Es el
+            mismo formato que genera la exportación. Cada producto que se lea
             aparece como una pestaña que podés revisar y modificar antes de confirmar la carga.
           </>
         ) : (
@@ -874,9 +963,29 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   );
 }
 
+const TABS: { value: "manual" | "archivo" | "procesamiento"; label: string }[] = [
+  { value: "manual", label: "Manual" },
+  { value: "archivo", label: "Archivo" },
+  { value: "procesamiento", label: "Procesamiento" },
+];
+
 export default function Cargar() {
-  const [tab, setTab] = useState<"manual" | "archivo">("manual");
+  const [tab, setTab] = useState<"manual" | "archivo" | "procesamiento">("manual");
   const [direction, setDirection] = useState<"entrada" | "salida">("entrada");
+
+  const [prefill, setPrefill] = useState<Prefill | null>(null);
+  const irAManual = (valores: Prefill) => {
+    setPrefill(valores);
+    setDirection("entrada");
+    setTab("manual");
+  };
+
+  const [salidaPrefill, setSalidaPrefill] = useState<SalidaPrefill | null>(null);
+  const irASalidaManual = (valores: SalidaPrefill) => {
+    setSalidaPrefill(valores);
+    setDirection("salida");
+    setTab("manual");
+  };
 
   return (
     <div>
@@ -884,8 +993,8 @@ export default function Cargar() {
         title="Flujo de producto"
         subtitle={
           direction === "entrada"
-            ? "Alta de productos a tu inventario"
-            : "Registrá salidas de stock de tu inventario"
+            ? "Alta de productos a tu inventario: a mano, por archivo o sacándoles una foto"
+            : "Registrá salidas de stock: a mano, por archivo o sacándoles una foto"
         }
       />
 
@@ -908,33 +1017,30 @@ export default function Cargar() {
         </button>
       </div>
 
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => setTab("manual")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            tab === "manual" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-          }`}
-        >
-          Manual
-        </button>
-        <button
-          onClick={() => setTab("archivo")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            tab === "archivo" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-          }`}
-        >
-          Archivo
-        </button>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTab(t.value)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              tab === t.value ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {tab === "manual" ? (
         direction === "entrada" ? (
-          <ManualForm />
+          <ManualForm prefill={prefill} onPrefillUsed={() => setPrefill(null)} />
         ) : (
-          <SalidaForm />
+          <SalidaForm prefill={salidaPrefill} onPrefillUsed={() => setSalidaPrefill(null)} />
         )
-      ) : (
+      ) : tab === "archivo" ? (
         <BulkUpload direction={direction} />
+      ) : (
+        <Procesamiento direction={direction} irAManual={irAManual} irASalidaManual={irASalidaManual} />
       )}
     </div>
   );

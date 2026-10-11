@@ -10,6 +10,7 @@ import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import AuditModal from "@/components/AuditModal";
+import { apiErrorMessage } from "@/lib/errors";
 
 export default function Users() {
   const qc = useQueryClient();
@@ -57,7 +58,7 @@ export default function Users() {
       setRemoveAdminError(null);
     },
     onError: (err: any) => {
-      setRemoveAdminError(err?.response?.data?.detail ?? "No se pudo quitar el rol de administrador.");
+      setRemoveAdminError(apiErrorMessage(err, "No se pudo quitar el rol de administrador."));
     },
   });
 
