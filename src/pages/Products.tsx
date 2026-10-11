@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Trash2, ArrowUp, ArrowDown, Barcode, Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { apiErrorMessage } from "@/lib/errors";
 import { downloadFile } from "@/lib/download";
 import type { AdminProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
@@ -270,7 +271,7 @@ export default function Products() {
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button
-                        onClick={() => setToDelete(p)}
+                        onClick={() => { del.reset(); setToDelete(p); }}
                         className="inline-flex items-center gap-1 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
                       >
                         <Trash2 size={14} /> Eliminar
@@ -299,9 +300,14 @@ export default function Products() {
             <p className="mt-2 text-sm text-muted">
               ¿Seguro que querés eliminar <span className="font-medium text-ink">{toDelete.nombre}</span>? Esta acción no se puede deshacer.
             </p>
+            {del.isError && (
+              <p role="alert" className="mt-3 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+                {apiErrorMessage(del.error, "No se pudo eliminar el producto")}
+              </p>
+            )}
             <div className="mt-6 flex gap-3">
               <button
-                onClick={() => setToDelete(null)}
+                onClick={() => { del.reset(); setToDelete(null); }}
                 className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
               >
                 Cancelar

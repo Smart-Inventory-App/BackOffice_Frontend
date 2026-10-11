@@ -26,6 +26,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
   const [editNote, setEditNote] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<ConsumptionEvent | null>(null);
 
   const load = () => {
     if (!product) return;
@@ -83,8 +84,13 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
     }
   };
 
-  const deleteEvent = async (event: ConsumptionEvent) => {
-    if (!confirm("¿Borrar este registro de consumo? El stock se va a ajustar automáticamente.")) return;
+  // La confirmación es un diálogo propio: confirm() puede estar bloqueado por el navegador y entonces no pasa nada.
+  const deleteEvent = (event: ConsumptionEvent) => setEventToDelete(event);
+
+  const confirmDeleteEvent = async () => {
+    const event = eventToDelete;
+    setEventToDelete(null);
+    if (!event) return;
     setRowError(null);
     try {
       await api.delete(`/me/products/${product.id}/events/${event.id}`);
@@ -229,6 +235,34 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
           )}
         </div>
       </div>
+
+      {eventToDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+          <div role="alertdialog" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold">Borrar registro</h3>
+            <p className="mt-2 text-sm text-muted">
+              <span className="block">¿Borrar este registro de consumo?</span>
+              <span className="block">El stock se va a ajustar automáticamente.</span>
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setEventToDelete(null)}
+                className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteEvent}
+                className="flex-1 rounded-xl bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                Borrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
