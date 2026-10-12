@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import AdminShell from "./components/AdminShell";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import SetPassword from "./pages/SetPassword";
 import Dashboard from "./pages/Dashboard";
 import MyDashboard from "./pages/MyDashboard";
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/set-password" element={<SetPassword />} />
       <Route
         path="/"
