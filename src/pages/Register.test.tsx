@@ -1,0 +1,100 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestQueryClient } from "@/test/test-utils";
+import Register from "./Register";
+
+vi.mock("@/lib/api", () => ({
+  api: { post: vi.fn() },
+}));
+
+import { api } from "@/lib/api";
+
+function renderRegister(email?: string) {
+  const queryClient = createTestQueryClient();
+  const entries = email ? [{ pathname: "/register", state: { email } }] : ["/register"];
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={entries as any}>
+        <Register />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("Register", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("precarga el email recibido por navegación", () => {
+    renderRegister("nuevo@test.com");
+    expect(screen.getByPlaceholderText("tu@email.com")).toHaveValue("nuevo@test.com");
+  });
+
+  it("sin email precargado, el campo arranca vacío y editable", () => {
+    renderRegister();
+    expect(screen.getByPlaceholderText("tu@email.com")).toHaveValue("");
+  });
+
+  it("valida largo mínimo, mayúscula, minúscula y número", async () => {
+    const user = userEvent.setup();
+    renderRegister("nuevo@test.com");
+
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "abc");
+    await user.type(confirm, "abc");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+    expect(await screen.findByText("La contraseña debe tener al menos 8 caracteres.")).toBeInTheDocument();
+  });
+
+  it("si las contraseñas no coinciden, lo avisa", async () => {
+    const user = userEvent.setup();
+    renderRegister("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg2");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByText("Las contraseñas no coinciden.")).toBeInTheDocument();
+  });
+
+  it("crea la cuenta correctamente", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: {} });
+    renderRegister("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/admin/auth/register", {
+        email: "nuevo@test.com",
+        password: "Abcdefg1",
+      }),
+    );
+  });
+
+  it("si falla el backend, muestra el error", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockImplementation(async () => {
+      const err: any = new Error("fallo");
+      err.response = { data: { detail: "Ya existe una cuenta con ese email. Iniciá sesión." } };
+      throw err;
+    });
+    renderRegister("repetido@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByText("Ya existe una cuenta con ese email. Iniciá sesión.")).toBeInTheDocument();
+  });
+});

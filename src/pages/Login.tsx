@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
@@ -7,10 +7,17 @@ import { apiErrorMessage } from "@/lib/errors";
 export default function Login() {
   const { admin, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const navState = location.state as { email?: string; registered?: boolean } | null;
+
   const [step, setStep] = useState<"email" | "password">("email");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(navState?.email ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(
+    navState?.registered ? "Cuenta creada. Iniciá sesión con tu contraseña." : null,
+  );
+  const [showRegisterHint, setShowRegisterHint] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (admin) return <Navigate to="/" replace />;
@@ -18,6 +25,8 @@ export default function Login() {
   const onEmailSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    setShowRegisterHint(false);
     setLoading(true);
     try {
       const { data } = await api.post<{ exists: boolean; is_admin: boolean; password_set: boolean }>(
@@ -26,6 +35,7 @@ export default function Login() {
       );
       if (!data.exists) {
         setError("No existe una cuenta con ese email.");
+        setShowRegisterHint(true);
         return;
       }
       if (data.is_admin && !data.password_set) {
@@ -79,9 +89,26 @@ export default function Login() {
                 placeholder="admin@smartinventory.com"
               />
             </div>
+            {notice && (
+              <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
+                {notice}
+              </div>
+            )}
             {error && (
               <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
                 {error}
+                {showRegisterHint && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate("/register", { state: { email } })}
+                      className="font-semibold underline"
+                    >
+                      Registrarte
+                    </button>
+                  </>
+                )}
               </div>
             )}
             <button
