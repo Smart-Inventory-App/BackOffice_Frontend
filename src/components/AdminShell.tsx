@@ -1,8 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Package, LogOut, UserPlus, ArrowLeftRight, Eye, ShieldCheck, Bell, ClipboardList, UserCircle, Brain, LineChart, ScanLine } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import type { AppUser, Paginated } from "@/lib/types";
+import { truncate } from "@/lib/format";
 import logo from "../../assets/logo.png";
 import { apiErrorMessage } from "@/lib/errors";
 
@@ -31,8 +33,10 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const NAV = effectiveIsAdmin ? ADMIN_NAV : USER_NAV;
 
   const [showAddAdmin, setShowAddAdmin] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newName, setNewName] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminResults, setAdminResults] = useState<AppUser[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [addOk, setAddOk] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -40,24 +44,41 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
   const resetAddForm = () => {
-    setNewEmail("");
-    setNewName("");
+    setAdminSearch("");
+    setAdminResults([]);
+    setSelectedUser(null);
     setAddError(null);
     setAddOk(null);
   };
 
-  const onAddAdmin = async (e: FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    const q = adminSearch.trim();
+    if (selectedUser || q.length < 2) {
+      setAdminResults([]);
+      return;
+    }
+    setSearching(true);
+    const handle = setTimeout(() => {
+      api
+        .get<Paginated<AppUser>>("/admin/users/", { params: { search: q, limit: 8 } })
+        .then(({ data }) => setAdminResults(data.items.filter((u) => !u.is_admin)))
+        .catch(() => setAdminResults([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [adminSearch, selectedUser]);
+
+  const onGrantAdmin = async () => {
+    if (!selectedUser) return;
     setAddError(null);
-    setAddOk(null);
     setAdding(true);
     try {
-      await api.post("/admin/auth/admins", { email: newEmail, full_name: newName || null });
-      setAddOk("Administrador agregado. Definirá su contraseña al iniciar sesión por primera vez.");
-      setNewEmail("");
-      setNewName("");
+      await api.post(`/admin/users/${selectedUser.id}/admin`);
+      setAddOk(`${selectedUser.email} ya es administrador. Puede iniciar sesión con su contraseña actual.`);
+      setSelectedUser(null);
+      setAdminSearch("");
     } catch (err: any) {
-      setAddError(apiErrorMessage(err, "No se pudo agregar el administrador."));
+      setAddError(apiErrorMessage(err, "No se pudo otorgar el rol de administrador."));
     } finally {
       setAdding(false);
     }
@@ -171,31 +192,58 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold">Agregar administrador</h3>
             <p className="mt-1 text-sm text-muted">
-              Ingresá el email y el nombre. El nuevo administrador definirá su contraseña
-              al iniciar sesión por primera vez.
+              Buscá un usuario ya registrado y hacelo administrador. Va a poder iniciar
+              sesión con la contraseña que ya tiene — no hace falta que defina una nueva.
             </p>
-            <form onSubmit={onAddAdmin} className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Email</label>
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  placeholder="nuevo@admin.com"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  placeholder="Nombre Apellido"
-                />
-              </div>
+
+            <div className="mt-4 space-y-3">
+              {selectedUser ? (
+                <div className="flex items-center justify-between rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm">
+                  <span className="truncate text-ink" title={selectedUser.email ?? selectedUser.id}>
+                    {truncate(selectedUser.email ?? selectedUser.id)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUser(null)}
+                    className="ml-2 shrink-0 text-xs font-medium text-primaryDark hover:underline"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <label className="mb-1 block text-sm font-medium text-ink">Buscar usuario</label>
+                  <input
+                    type="text"
+                    value={adminSearch}
+                    onChange={(e) => setAdminSearch(e.target.value)}
+                    autoFocus
+                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                    placeholder="Buscar por email…"
+                  />
+                  {adminSearch.trim().length >= 2 && (
+                    <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-line bg-white shadow-lg">
+                      {searching ? (
+                        <p className="px-4 py-2.5 text-sm text-muted">Buscando…</p>
+                      ) : adminResults.length === 0 ? (
+                        <p className="px-4 py-2.5 text-sm text-muted">Sin resultados.</p>
+                      ) : (
+                        adminResults.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => { setSelectedUser(u); setAddOk(null); setAddError(null); }}
+                            className="block w-full truncate px-4 py-2.5 text-left text-sm hover:bg-canvas"
+                            title={u.email ?? u.id}
+                          >
+                            {truncate(u.email ?? u.id)}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {addError && (
                 <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
@@ -217,14 +265,15 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                   Cerrar
                 </button>
                 <button
-                  type="submit"
-                  disabled={adding || !newEmail.trim()}
+                  type="button"
+                  onClick={onGrantAdmin}
+                  disabled={adding || !selectedUser}
                   className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                 >
-                  {adding ? "Agregando…" : "Agregar"}
+                  {adding ? "Agregando…" : "Hacer administrador"}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
