@@ -16,6 +16,7 @@ export default function SetPassword() {
   const navigate = useNavigate();
   const email = (location.state as { email?: string } | null)?.email;
 
+  const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function SetPassword() {
 
     setLoading(true);
     try {
-      await api.post("/admin/auth/set-password", { email, password });
+      await api.post("/admin/auth/set-password", { email, password, invite_token: inviteCode.trim() });
       navigate("/login", { replace: true });
     } catch (err: any) {
       setError(apiErrorMessage(err, "No se pudo definir la contraseña."));
@@ -55,13 +56,26 @@ export default function SetPassword() {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
+            <label className="mb-1 block text-sm font-medium text-ink">Código de invitación</label>
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              required
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-xl border border-line px-4 py-2.5 font-mono text-xs outline-none focus:border-primary"
+              placeholder="Pegá el código que te enviaron"
+            />
+          </div>
+          <div>
             <label className="mb-1 block text-sm font-medium text-ink">Nueva contraseña</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              autoFocus
               className="w-full rounded-xl border border-line px-4 py-2.5 text-sm outline-none focus:border-primary"
               placeholder="••••••••"
             />
