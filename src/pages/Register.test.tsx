@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
 import Register from "./Register";
@@ -96,5 +96,113 @@ describe("Register", () => {
     await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
 
     expect(await screen.findByText("Ya existe una cuenta con ese email. Iniciá sesión.")).toBeInTheDocument();
+  });
+});
+
+function LoginProbe() {
+  const location = useLocation();
+  return <p>LOGIN {JSON.stringify(location.state)}</p>;
+}
+
+function renderRegisterWithLogin(email?: string) {
+  const queryClient = createTestQueryClient();
+  const entries = email ? [{ pathname: "/register", state: { email } }] : ["/register"];
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={entries as any}>
+        <Routes>
+          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<LoginProbe />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("Register · reglas de contraseña y navegación", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ["abcdefg1", "Debe incluir al menos una mayúscula."],
+    ["ABCDEFG1", "Debe incluir al menos una minúscula."],
+    ["Abcdefgh", "Debe incluir al menos un número."],
+  ])("rechaza %s sin llamar al backend", async (password, message) => {
+    const user = userEvent.setup();
+    renderRegister("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, password);
+    await user.type(confirm, password);
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("tras crear la cuenta navega al login con el email y el aviso de registro", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: {} });
+    renderRegisterWithLogin("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByText(/LOGIN/)).toHaveTextContent('"email":"nuevo@test.com"');
+    expect(screen.getByText(/LOGIN/)).toHaveTextContent('"registered":true');
+  });
+
+  it("el link 'Ya tengo cuenta' lleva al login", async () => {
+    const user = userEvent.setup();
+    renderRegisterWithLogin();
+
+    await user.click(screen.getByRole("button", { name: /Ya tengo cuenta/ }));
+
+    expect(await screen.findByText(/LOGIN/)).toBeInTheDocument();
+  });
+
+  it("mientras crea la cuenta deshabilita el botón y lo informa", async () => {
+    const user = userEvent.setup();
+    let release: (v: unknown) => void = () => {};
+    vi.mocked(api.post).mockReturnValue(new Promise((resolve) => { release = resolve; }) as any);
+    renderRegister("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByRole("button", { name: "Creando cuenta…" })).toBeDisabled();
+    await act(async () => { release({ data: {} }); });
+  });
+
+  it("si el backend no manda detalle, muestra el mensaje genérico", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockRejectedValue(new Error("red"));
+    renderRegister("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(await screen.findByText("No se pudo crear la cuenta.")).toBeInTheDocument();
+  });
+
+  it("al editar el email, lo envía tal cual al backend", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: {} });
+    renderRegister();
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(screen.getByPlaceholderText("tu@email.com"), "otro@test.com");
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/admin/auth/register", { email: "otro@test.com", password: "Abcdefg1" }));
   });
 });

@@ -26,6 +26,8 @@ function renderSetPassword(email: string | null = "nuevo@test.com") {
   );
 }
 
+const inviteInput = () => screen.getByPlaceholderText("Pegá el código que te enviaron");
+
 describe("SetPassword", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,6 +43,7 @@ describe("SetPassword", () => {
     renderSetPassword();
 
     const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "abc");
     await user.type(confirm, "abc");
@@ -75,6 +78,7 @@ describe("SetPassword", () => {
     const user = userEvent.setup();
     renderSetPassword();
     const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg2");
@@ -88,6 +92,7 @@ describe("SetPassword", () => {
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderSetPassword("nuevo@test.com");
     const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -97,6 +102,7 @@ describe("SetPassword", () => {
       expect(api.post).toHaveBeenCalledWith("/admin/auth/set-password", {
         email: "nuevo@test.com",
         password: "Abcdefg1",
+        invite_token: "codigo-123",
       }),
     );
   });
@@ -110,6 +116,7 @@ describe("SetPassword", () => {
     });
     renderSetPassword();
     const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -121,5 +128,73 @@ describe("SetPassword", () => {
   it("sin email en el estado de navegación, redirige (no muestra el formulario)", () => {
     renderSetPassword(null);
     expect(screen.queryByRole("button", { name: "Definir contraseña" })).not.toBeInTheDocument();
+  });
+
+  it("pide el código de invitación antes que la contraseña", () => {
+    renderSetPassword();
+
+    expect(inviteInput()).toBeRequired();
+    expect(inviteInput()).toHaveFocus();
+    expect(screen.getByText("Código de invitación")).toBeInTheDocument();
+  });
+
+  it("sin el código no llama al backend", async () => {
+    const user = userEvent.setup();
+    renderSetPassword();
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Definir contraseña" }));
+
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("manda el código sin los espacios que se cuelan al pegarlo", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: {} });
+    renderSetPassword("nuevo@test.com");
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(inviteInput(), "  codigo-pegado  ");
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Definir contraseña" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/admin/auth/set-password", {
+        email: "nuevo@test.com",
+        password: "Abcdefg1",
+        invite_token: "codigo-pegado",
+      }),
+    );
+  });
+
+  it("si el código no es válido, muestra el mensaje del backend y no navega", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockImplementation(async () => {
+      const err: any = new Error("403");
+      err.response = {
+        data: { detail: "El código de invitación no es válido o venció. Pedile uno nuevo a un administrador." },
+      };
+      throw err;
+    });
+    renderSetPassword();
+    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+
+    await user.type(inviteInput(), "vencido");
+    await user.type(pw, "Abcdefg1");
+    await user.type(confirm, "Abcdefg1");
+    await user.click(screen.getByRole("button", { name: "Definir contraseña" }));
+
+    expect(await screen.findByText(/código de invitación no es válido/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Definir contraseña" })).toBeEnabled();
+  });
+
+  it("el campo del código no autocompleta ni corrige la ortografía", () => {
+    renderSetPassword();
+
+    expect(inviteInput()).toHaveAttribute("autocomplete", "off");
+    expect(inviteInput()).toHaveAttribute("spellcheck", "false");
   });
 });
