@@ -199,7 +199,7 @@ export interface MyMetrics {
 export interface ConsumptionEvent {
   id: number;
   quantity: number;
-  event_type: "consumed" | "expired" | "restocked";
+  event_type: "consumed" | "expired" | "sold" | "rented" | "restocked";
   consumed_at: string;
   note: string | null;
   actor_email: string | null;
