@@ -65,6 +65,38 @@ describe("HistorialModal", () => {
     expect(api.get).toHaveBeenCalledWith("/me/products/1/consumption");
   });
 
+  it("muestra las ventas y los alquileres con su propio motivo", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [event({ id: 1, event_type: "sold" }), event({ id: 2, event_type: "rented" }), event({ id: 3, event_type: "expired" })],
+    });
+
+    render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    expect(await screen.findByText("Vendido")).toBeInTheDocument();
+    expect(screen.getByText("Alquilado")).toBeInTheDocument();
+    expect(screen.getByText("Vencido")).toBeInTheDocument();
+  });
+
+  it("permite corregir un movimiento como venta o alquiler", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: [event()] });
+    vi.mocked(api.put).mockResolvedValue({ data: {} });
+
+    const { container } = render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
+    await screen.findByText("Consumido");
+    await user.click(container.querySelectorAll("button")[1]);
+    await user.click(screen.getByRole("button", { name: "Alquilado" }));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/me/products/1/events/1", {
+        quantity: 2,
+        event_type: "rented",
+        note: undefined,
+      }),
+    );
+  });
+
   it("sin eventos, muestra el estado vacío", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] });
     render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
