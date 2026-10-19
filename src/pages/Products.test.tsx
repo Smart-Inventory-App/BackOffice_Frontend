@@ -113,14 +113,14 @@ describe("Products (admin)", () => {
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
 
-    await user.click(screen.getByRole("button", { name: /Stock/ }));
+    await user.click(screen.getByRole("button", { name: "Stock" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/products/",
         expect.objectContaining({ params: expect.objectContaining({ sort_by: "stock", sort_dir: "asc" }) }),
       ),
     );
-    await user.click(screen.getByRole("button", { name: /Stock/ }));
+    await user.click(screen.getByRole("button", { name: "Stock" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/products/",
@@ -229,6 +229,68 @@ describe("Products (admin)", () => {
         "/admin/products/export",
         expect.objectContaining({ params: expect.objectContaining({ format: "csv" }) }),
       ),
+    );
+  });
+});
+
+describe("Products (admin) - stock total", () => {
+  const GRUPO = {
+    nombre: "Yerba Mate",
+    categoria: "Almacén",
+    stock_total: 8,
+    lotes: 2,
+    usuarios: 1,
+    proximo_vencimiento: null,
+    productos: [product({ id: 1, stock: 5 }), product({ id: 2, stock: 3, marca: "Taragüi" })],
+  };
+
+  function mockWithGroup() {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/products/filters/options") return { data: OPCIONES };
+      if (url === "/admin/products/") return { data: paginated([product()]) };
+      if (url === "/admin/products/group") return { data: GRUPO };
+      if (url === "/admin/products/groups") return { data: [GRUPO] };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("desde un producto de la tabla abre su stock total, acotado al dueño de ese producto", async () => {
+    const user = userEvent.setup();
+    mockWithGroup();
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByTitle("Ver el stock total de este producto"));
+
+    expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("8 unidades");
+    expect(api.get).toHaveBeenCalledWith("/admin/products/group", {
+      params: { nombre: "Yerba Mate", categoria: "Almacén", user_id: "u1" },
+    });
+  });
+
+  it("desde el botón de arriba busca por nombre en todos los usuarios, o solo en el dueño elegido", async () => {
+    const user = userEvent.setup();
+    mockWithGroup();
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("button", { name: "Stock total" }));
+    await user.type(screen.getByLabelText("Nombre del producto"), "yer");
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/admin/products/groups", { params: { q: "yer" } }),
+    );
+    expect(screen.getByText(/todos los usuarios de la plataforma/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+
+    await user.selectOptions(screen.getByDisplayValue("Todos los usuarios"), "u1");
+    await user.click(screen.getByRole("button", { name: "Stock total" }));
+    await user.type(screen.getByLabelText("Nombre del producto"), "yer");
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/admin/products/groups", { params: { q: "yer", user_id: "u1" } }),
     );
   });
 });

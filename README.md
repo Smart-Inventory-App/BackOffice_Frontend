@@ -28,12 +28,22 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | `/` | Dashboard — métricas globales y gráficos |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
 | `/usuarios/:id` | Detalle de usuario + sus productos |
-| `/productos` | Productos cargados (con imagen), búsqueda y eliminación |
+| `/productos` | Productos cargados (con imagen), búsqueda, filtros, orden, exportación, eliminación y **stock total por producto** |
 | `/auditoria` | Actividad de usuarios: altas, productos, logins y cambios de rol |
 | `/ocr` | Módulo de OCR: estado de los motores, tiempos y precisión, prueba de fotos y auditoría de escaneos |
 | `/ml` | Modelos de predicción de consumo |
 | `/cargar` | Flujo de producto (entrada y salida) en modo usuario, con tres formas de carga: manual, por archivo y **por foto** (pestaña Procesamiento) |
 | `/metricas`, `/alertas`, `/perfil` | Consumo, avisos de stock y vencimiento, y datos de la cuenta, en modo usuario |
+
+#### Stock total por producto
+
+En `/productos` el botón **Stock total** (arriba, y uno por cada fila) abre una ventana con la suma del stock de todos los productos que tienen el mismo nombre y categoría, de cualquier marca (`src/components/StockTotalModal.tsx`):
+
+- Desde el botón de arriba se **busca por nombre** (a partir de 2 letras, con sugerencias). Si hay un dueño elegido en el filtro de la página, se cuenta solo lo de ese usuario; si no, lo de **toda la plataforma**, y la ventana indica cuántos usuarios suman.
+- Desde el botón de una fila se abre directamente con ese producto, acotado al usuario dueño de esa fila.
+- El nombre y el resumen (stock total y cantidad de productos) **quedan fijos**; solo se desplaza el listado de «Productos encontrados». Cada producto tiene una casilla para incluirlo o sacarlo de la suma, y el total se recalcula al instante.
+
+El orden por nombre de las tablas de productos es alfabético (no distingue mayúsculas ni tildes) y al ordenar por vencimiento no aparecen los productos sin fecha; lo resuelve el `backoffice_backend`.
 
 La pestaña **Procesamiento** de `/cargar` (`src/components/Procesamiento.tsx`) es la contracara de usuario del mismo módulo: manda la foto a `/me/products/ocr/*`, espera —mostrando el lugar en la fila y la espera estimada, porque un comprobante tarda cerca de un minuto— y devuelve un borrador **ya emparejado** con el inventario de quien escanea. Nada se guarda hasta que la persona confirma, y lo que se confirma va a los endpoints de alta y de salida de siempre.
 
@@ -65,3 +75,14 @@ Requiere el `backoffice_backend` corriendo en `http://localhost:8002` y un admin
 ```powershell
 npm run build    # type-check + build de producción
 ```
+
+---
+
+## Tests
+
+```powershell
+npm test                # vitest
+npm run test:coverage   # con cobertura (umbral del 90 %)
+```
+
+297 tests, 99 % de cobertura de líneas.

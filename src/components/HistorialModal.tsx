@@ -13,6 +13,8 @@ interface Props {
 const motivoLabel = (type: ConsumptionEvent["event_type"]) => {
   if (type === "restocked") return "Entrada";
   if (type === "expired") return "Vencido";
+  if (type === "sold") return "Vendido";
+  if (type === "rented") return "Alquilado";
   return "Consumido";
 };
 
@@ -22,7 +24,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editQuantity, setEditQuantity] = useState("");
-  const [editMotivo, setEditMotivo] = useState<"consumed" | "expired" | "restocked">("consumed");
+  const [editMotivo, setEditMotivo] = useState<ConsumptionEvent["event_type"]>("consumed");
   const [editNote, setEditNote] = useState("");
   const [rowError, setRowError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -144,7 +146,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                           className="w-full rounded-lg border border-line px-3 py-1.5 text-sm outline-none focus:border-primary"
                         />
                         <div className="flex gap-2">
-                          {(["consumed", "expired", "restocked"] as const).map((type) => (
+                          {(["consumed", "expired", "sold", "rented", "restocked"] as const).map((type) => (
                             <button
                               key={type}
                               type="button"

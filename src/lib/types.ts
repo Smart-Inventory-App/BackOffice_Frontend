@@ -85,6 +85,19 @@ export interface AdminProduct {
   owner: ProductOwner;
 }
 
+export interface AdminProductGroupSummary {
+  nombre: string;
+  categoria: string;
+  stock_total: number;
+  lotes: number;
+  usuarios: number;
+  proximo_vencimiento: string | null;
+}
+
+export interface AdminProductGroupDetail extends AdminProductGroupSummary {
+  productos: AdminProduct[];
+}
+
 export interface AppUserDetail extends AppUser {
   products: AdminProduct[];
 }
@@ -199,7 +212,7 @@ export interface MyMetrics {
 export interface ConsumptionEvent {
   id: number;
   quantity: number;
-  event_type: "consumed" | "expired" | "restocked";
+  event_type: "consumed" | "expired" | "sold" | "rented" | "restocked";
   consumed_at: string;
   note: string | null;
   actor_email: string | null;
