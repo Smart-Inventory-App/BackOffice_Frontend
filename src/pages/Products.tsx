@@ -283,6 +283,7 @@ export default function Products() {
                       <button
                         onClick={() => setStockTotal({ initial: { nombre: p.nombre, categoria: p.categoria }, userId: p.owner.user_id })}
                         title="Ver el stock total de este producto"
+                        aria-label={`Stock total de ${p.nombre}`}
                         className="mr-2 inline-flex items-center gap-1 rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10"
                       >
                         <Layers size={14} /> Stock total
