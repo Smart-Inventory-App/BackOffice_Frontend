@@ -85,6 +85,19 @@ export interface AdminProduct {
   owner: ProductOwner;
 }
 
+export interface AdminProductGroupSummary {
+  nombre: string;
+  categoria: string;
+  stock_total: number;
+  lotes: number;
+  usuarios: number;
+  proximo_vencimiento: string | null;
+}
+
+export interface AdminProductGroupDetail extends AdminProductGroupSummary {
+  productos: AdminProduct[];
+}
+
 export interface AppUserDetail extends AppUser {
   products: AdminProduct[];
 }

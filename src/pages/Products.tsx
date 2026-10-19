@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Trash2, ArrowUp, ArrowDown, Barcode, Download } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, Barcode, Download, Layers } from "lucide-react";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
 import { downloadFile } from "@/lib/download";
@@ -10,6 +10,7 @@ import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
+import StockTotalModal, { type StockTotalTarget } from "@/components/StockTotalModal";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
@@ -36,6 +37,8 @@ export default function Products() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [toDelete, setToDelete] = useState<AdminProduct | null>(null);
+  // Ventana de stock total: abierta desde el botón de arriba (busca por nombre) o desde un producto de la tabla
+  const [stockTotal, setStockTotal] = useState<{ initial: StockTotalTarget | null; userId?: string } | null>(null);
 
   useEffect(() => setPage(0), [search, onlyImage, categoria, ownerId, vencido, bajoStock]);
 
@@ -135,6 +138,13 @@ export default function Products() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader title="Productos" subtitle="Datos e imágenes cargados por los usuarios de la app" />
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setStockTotal({ initial: null, userId: ownerId || undefined })}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-primary px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+          >
+            <Layers size={14} /> Stock total
+          </button>
           <button
             type="button"
             onClick={() => exportProducts("csv")}
@@ -271,6 +281,13 @@ export default function Products() {
                     </td>
                     <td className="px-5 py-3 text-center">
                       <button
+                        onClick={() => setStockTotal({ initial: { nombre: p.nombre, categoria: p.categoria }, userId: p.owner.user_id })}
+                        title="Ver el stock total de este producto"
+                        className="mr-2 inline-flex items-center gap-1 rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10"
+                      >
+                        <Layers size={14} /> Stock total
+                      </button>
+                      <button
                         onClick={() => { del.reset(); setToDelete(p); }}
                         className="inline-flex items-center gap-1 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
                       >
@@ -292,6 +309,13 @@ export default function Products() {
           <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </Card>
       )}
+
+      <StockTotalModal
+        open={stockTotal !== null}
+        onClose={() => setStockTotal(null)}
+        userId={stockTotal?.userId}
+        initial={stockTotal?.initial}
+      />
 
       {toDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
