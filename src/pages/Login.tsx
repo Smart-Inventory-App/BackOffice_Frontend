@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
+import logo from "../../assets/logo.png";
 
 export default function Login() {
   const { admin, login } = useAuth();
@@ -68,6 +69,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-md rounded-2xl border border-line bg-white p-8 shadow-sm">
         <div className="mb-6 text-center">
+          <img src={logo} alt="Smart Inventory" className="mx-auto mb-2 h-20 w-auto object-contain" />
           <div className="text-2xl font-bold">
             <span className="text-primary">Smart</span>
             <span className="text-primaryDark">Inventory</span>

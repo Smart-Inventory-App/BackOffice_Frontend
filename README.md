@@ -1,5 +1,7 @@
 # Backoffice Frontend — Smart Inventory Platform
 
+<p align="center"><img src="assets/brand/logo_con_texto/logo_horizontal_color.png" alt="Smart Inventory" width="360"></p>
+
 [![codecov](https://codecov.io/gh/Smart-Inventory-App/BackOffice_Frontend/branch/main/graph/badge.svg?token=HQWB45P8NJ)](https://codecov.io/gh/Smart-Inventory-App/BackOffice_Frontend)
 
 Interfaz web del panel de administración (backoffice) de Smart Inventory Platform. Pensada para usuarios regulares y administradores: permite ver el estado general del sistema, gestionar/habilitar usuarios, gestionar y supervisar los productos e imágenes que cargan.
