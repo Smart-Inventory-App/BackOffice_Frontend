@@ -5,8 +5,8 @@ import { ArrowDown, ArrowUp, Pencil, Download, History, Trash2, X } from "lucide
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
-import type { AlertList, AlertOut, MyProduct, MyProfile, Paginated } from "@/lib/types";
-import { Badge, Card, ConfirmDialog, Notice, Spinner } from "@/components/ui";
+import type { MyProduct, MyProfile, Paginated } from "@/lib/types";
+import { Card, ConfirmDialog, Notice, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import ProductImage from "@/components/ProductImage";
 import ImageUpload from "@/components/ImageUpload";
@@ -20,10 +20,6 @@ import { invalidateInventory } from "@/lib/queries";
 import { OPTION_MAX } from "@/pages/Cargar";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
-
-// Cada producto tiene su nivel de alerta según SUS reglas (la propia o la del perfil), el mismo del Centro de Alertas
-const LEVEL_BADGE = { critical: "off", warning: "warn" } as const;
-const LEVEL_TEXT = { critical: "Crítica", warning: "Advertencia" } as const;
 
 const EDIT_EMPTY = {
   nombre: "",
@@ -204,7 +200,7 @@ export default function MyProducts() {
     <button
       type="button"
       onClick={() => toggleSort(field)}
-      className="inline-flex items-center gap-1 hover:text-primaryDark"
+      className="inline-flex items-center gap-1 uppercase hover:text-primaryDark"
     >
       {label}
       {sortBy === field && (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
@@ -268,17 +264,6 @@ export default function MyProducts() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
-
-  // El nivel de alerta de cada producto, para marcarlo en la lista
-  const alerts = useQuery({
-    queryKey: ["my-alert-levels"],
-    queryFn: async () => (await api.get<AlertList>("/me/alerts/")).data.items,
-  });
-  const alertByProduct = new Map<number, AlertOut>();
-  for (const alert of alerts.data ?? []) {
-    const current = alertByProduct.get(alert.product_id);
-    if (!current || (current.level === "warning" && alert.level === "critical")) alertByProduct.set(alert.product_id, alert);
-  }
 
   const toggleSelected = (id: number) => {
     setSelected((prev) => {
@@ -508,7 +493,6 @@ export default function MyProducts() {
                   <th className="px-3 py-3 text-center">
                     <SortHeader field="vencimiento" label="Vencimiento" />
                   </th>
-                  <th className="px-3 py-3 text-center">Alerta</th>
                   <th className="px-3 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
@@ -551,15 +535,6 @@ export default function MyProducts() {
                     <td className="px-3 py-3 text-center">
                       {p.vencimiento ? <span className="text-muted">{formatDate(p.vencimiento)}</span> : "—"}
                     </td>
-                    <td className="px-3 py-3 text-center" data-testid={`product-alert-${p.id}`}>
-                      {alertByProduct.get(p.id) ? (
-                        <Badge tone={LEVEL_BADGE[alertByProduct.get(p.id)!.level]}>
-                          {LEVEL_TEXT[alertByProduct.get(p.id)!.level]}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
                     <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-center gap-2">
                         <button
@@ -592,7 +567,7 @@ export default function MyProducts() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
                       No se encontraron productos.
                     </td>
                   </tr>
@@ -612,6 +587,7 @@ export default function MyProducts() {
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
                 <input
+                  placeholder="ej. Leche entera 1L"
                   value={editForm.nombre}
                   onChange={editSet("nombre")}
                   className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
@@ -623,6 +599,7 @@ export default function MyProducts() {
                   value={editForm.marca}
                   options={editMarcaOptions}
                   emptyLabel="Sin marca"
+                  addPlaceholder="Opcional"
                   maxLength={OPTION_MAX}
                   onChange={(v) => {
                     setEditForm((f) => ({ ...f, marca: v }));
@@ -664,6 +641,7 @@ export default function MyProducts() {
               <div className="grid grid-cols-2 gap-3">
                 <Picklist
                   label="Ubicación"
+                  addPlaceholder="Ej. Heladera, Alacena A, Freezer"
                   value={editForm.ubicacion}
                   options={editUbicacionOptions}
                   emptyLabel="Sin ubicación"
@@ -680,7 +658,7 @@ export default function MyProducts() {
                     onChange={(e) =>
                       setEditForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))
                     }
-                    placeholder="Sin código"
+                    placeholder="Opcional"
                     className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
                   />
                 </div>
@@ -689,6 +667,7 @@ export default function MyProducts() {
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
                 <textarea
+                  placeholder="Opcional"
                   value={editForm.descripcion}
                   onChange={editSet("descripcion")}
                   rows={2}
@@ -696,33 +675,33 @@ export default function MyProducts() {
                 />
               </div>
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Reglas de alerta de producto (opcional)
-                </p>
+                <p className="mb-2 text-sm font-bold text-muted">Reglas de alerta de producto</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días de cobertura)</label>
                     <input
                       type="number"
                       min={1}
                       max={9999999}
                       value={editForm.stock_minimo}
                       onChange={editSet("stock_minimo")}
-                      placeholder="Usa tu regla general"
+                      placeholder="Opcional"
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
+                    <p className="mt-1 text-xs text-muted">{editForm.stock_minimo ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación (vencimiento)</label>
                     <input
                       type="number"
                       min={1}
                       max={999}
                       value={editForm.dias_alerta_vencimiento}
                       onChange={editSet("dias_alerta_vencimiento")}
-                      placeholder="Usa tu regla general"
+                      placeholder="Opcional"
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
+                    <p className="mt-1 text-xs text-muted">{editForm.dias_alerta_vencimiento ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                   </div>
                 </div>
               </div>
@@ -785,6 +764,7 @@ export default function MyProducts() {
               />
               <Picklist
                 label="Ubicación"
+                addPlaceholder="Ej. Heladera, Alacena A, Freezer"
                 value={bulkUbicacion}
                 options={editUbicacionOptions}
                 emptyLabel="No cambiar"

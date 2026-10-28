@@ -635,6 +635,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
                 <input
+                  placeholder="ej. Leche entera 1L"
                   value={form.nombre}
                   onChange={set("nombre")}
                   className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
@@ -648,6 +649,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
                 value={form.marca}
                 options={opciones.marcas}
                 emptyLabel="Sin marca"
+                addPlaceholder="Opcional"
                 onChange={(v) => {
                   setForm((f) => (f ? { ...f, marca: v } : f));
                   setOpciones({ ...opciones, marcas: addIfMissing(opciones.marcas, v) });
@@ -658,6 +660,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
             <div className="grid gap-4 sm:grid-cols-2">
               <Picklist
                 label="Categoría"
+                addPlaceholder="Ej. Lácteos"
                 value={form.categoria}
                 options={opciones.categorias}
                 required
@@ -669,6 +672,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Unidades a cargar</label>
                 <input
+                  placeholder="0"
                   type="number"
                   min={1}
                   value={form.stock}
@@ -696,7 +700,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
                   onChange={(e) =>
                     setForm((f) => (f ? { ...f, codigo_barras: limpiarCodigo(e.target.value) } : f))
                   }
-                  placeholder="Sin código"
+                  placeholder="Opcional"
                   className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
                 />
               </div>
@@ -704,6 +708,8 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
 
             <Picklist
               label="Ubicación"
+              emptyLabel="Ej. Heladera, Alacena A, Freezer"
+              addPlaceholder="Ej. Heladera, Alacena A, Freezer"
               value={form.ubicacion}
               options={opciones.ubicaciones}
               onChange={(v) => {
@@ -715,6 +721,7 @@ function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpc
             <div>
               <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
               <textarea
+                placeholder="Opcional"
                 value={form.descripcion}
                 onChange={set("descripcion")}
                 rows={3}
@@ -855,6 +862,7 @@ function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
               <div className="max-w-xs">
                 <label className="mb-1 block text-sm font-medium text-ink">Unidades a cargar</label>
                 <input
+                  placeholder="0"
                   type="number"
                   min={1}
                   value={cantidad}
@@ -1123,6 +1131,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
                   <input
+                    placeholder="ej. Leche entera 1L"
                     value={r.nombre}
                     onChange={(e) => editar(i, { nombre: e.target.value })}
                     className="w-full rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-primary"
@@ -1130,6 +1139,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                 </div>
                 <Picklist
                   label="Categoría"
+                  addPlaceholder="Ej. Lácteos"
                   value={r.categoria}
                   options={opciones.categorias}
                   required
@@ -1141,6 +1151,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">Cantidad</label>
                   <input
+                    placeholder="0"
                     type="number"
                     min={1}
                     value={r.cantidad}
@@ -1163,7 +1174,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                     inputMode="numeric"
                     value={r.codigo_barras}
                     onChange={(e) => editar(i, { codigo_barras: limpiarCodigo(e.target.value) })}
-                    placeholder="Sin código"
+                    placeholder="Opcional"
                     className="w-full rounded-xl border border-line px-3 py-2 font-mono text-sm outline-none focus:border-primary"
                   />
                 </div>
@@ -1172,6 +1183,7 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
                   value={r.marca}
                   options={opciones.marcas}
                   emptyLabel="Sin marca"
+                  addPlaceholder="Opcional"
                   onChange={(v) => {
                     editar(i, { marca: v });
                     setOpciones({ ...opciones, marcas: addIfMissing(opciones.marcas, v) });
@@ -1299,6 +1311,7 @@ function SalidaCodigo() {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">Unidades a sacar</label>
                   <input
+                    placeholder="0"
                     type="number"
                     min={1}
                     max={match.stock}
@@ -1530,6 +1543,7 @@ function SalidaComprobante({ irASalidaManual }: { irASalidaManual: (p: SalidaPre
                 <div className="mt-3 max-w-xs">
                   <label className="mb-1 block text-sm font-medium text-ink">Unidades a sacar</label>
                   <input
+                    placeholder="0"
                     type="number"
                     min={1}
                     value={r.cantidad}

@@ -142,15 +142,15 @@ describe("Cargar · manual (entrada)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar producto" }));
     expect(await screen.findByText("El nombre ya existe con otra categoría.")).toBeInTheDocument();
 
-    vi.mocked(api.post).mockResolvedValueOnce({ data: { merged: false } });
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { merged: false, stock: 2 } });
     await user.click(screen.getByRole("button", { name: "Guardar producto" }));
-    expect(await screen.findByText("Producto cargado correctamente.")).toBeInTheDocument();
+    expect(await screen.findByText('Se ha registrado la entrada de 2 unidades de "Fideos". Stock actual 2.')).toBeInTheDocument();
   });
 
   it("al sumar stock a un producto existente, muestra el mensaje correspondiente", async () => {
     const user = userEvent.setup();
     defaultGet();
-    vi.mocked(api.post).mockResolvedValueOnce({ data: { merged: true } });
+    vi.mocked(api.post).mockResolvedValueOnce({ data: { merged: true, stock: 9 } });
 
     renderWithProviders(<Cargar />);
     await user.type(label("Nombre"), "Fideos");
@@ -160,7 +160,7 @@ describe("Cargar · manual (entrada)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar producto" }));
 
     expect(
-      await screen.findByText("Se sumó el stock a un producto que ya tenías cargado."),
+      await screen.findByText('Se ha registrado la entrada de 2 unidades de "Fideos". Stock actual 9.'),
     ).toBeInTheDocument();
   });
 });
@@ -210,7 +210,7 @@ describe("Cargar · manual (salida)", () => {
     await user.type(screen.getByPlaceholderText(/vencido en heladera/), "se pasó de fecha");
     await user.click(screen.getByRole("button", { name: "Registrar salida" }));
 
-    expect(await screen.findByText(/Stock actual: 2/)).toBeInTheDocument();
+    expect(await screen.findByText('Se ha registrado la salida de 1 unidad de "Yerba Mate". Stock actual 2.')).toBeInTheDocument();
     expect(api.post).toHaveBeenCalledWith(
       "/me/products/salida",
       expect.objectContaining({ event_type: "expired", note: "se pasó de fecha" }),
@@ -466,8 +466,8 @@ describe("Cargar · archivo (BulkUpload)", () => {
     const ubicacionSelect = screen.getByText("Ubicación").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(ubicacionSelect, "Alacena");
     await user.type(label("Descripción"), "Notas de la fila");
-    await user.type(label("Stock mínimo (días)"), "2");
-    await user.type(label("Aviso de vencimiento (días)"), "5");
+    await user.type(label("Stock mínimo (días de cobertura)"), "2");
+    await user.type(label("Días de anticipación (vencimiento)"), "5");
 
     const stockInput = screen.getByDisplayValue("3");
     await user.clear(stockInput);
@@ -703,12 +703,6 @@ describe("Cargar · imagen como archivo adjunto", () => {
     expect(screen.getByText("Reglas de alerta de producto")).toBeInTheDocument();
     expect(screen.queryByTestId("alerts-section")).not.toBeInTheDocument();
   });
-
-  it("el texto del código de barras dice que alcanzan 8, 12, 13 o 14 dígitos", () => {
-    renderWithProviders(<Cargar />);
-
-    expect(screen.getByText(/8, 12, 13 o 14 dígitos/)).toBeInTheDocument();
-  });
 });
 
 describe("Cargar · el formulario es el de la app", () => {
@@ -940,7 +934,277 @@ describe("Cargar · la salida es la de la app", () => {
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/me/products/salida", expect.objectContaining({ product_id: 1, quantity: 2, event_type: "sold" })),
     );
-    expect(await screen.findByText(/Stock actual: 1/)).toBeInTheDocument();
+    expect(await screen.findByText('Se ha registrado la salida de 2 unidades de "Yerba Mate". Stock actual 1.')).toBeInTheDocument();
     expect(screen.getByTestId("salida-motivo-sold")).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("Cargar · formulario de entrada en renglones", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  const rowOf = (field: HTMLElement) => field.closest("div.grid") as HTMLElement;
+
+  it("nombre y stock, marca y categoría, y fecha de vencimiento y código de barras comparten renglón", async () => {
+    renderWithProviders(<Cargar />);
+
+    const nombre = screen.getByLabelText("Nombre");
+    expect(rowOf(nombre)).toContainElement(screen.getByLabelText("Stock"));
+    const marca = screen.getByText("Marca").nextElementSibling as HTMLElement;
+    const categoria = screen.getByText("Categoría *").nextElementSibling as HTMLElement;
+    expect(rowOf(marca)).toBe(rowOf(categoria));
+    expect(marca.compareDocumentPosition(categoria) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const fecha = screen.getByLabelText("Fecha de vencimiento");
+    expect(rowOf(fecha)).toContainElement(screen.getByLabelText("Código de barras"));
+    expect(new Set([rowOf(nombre), rowOf(marca), rowOf(fecha)]).size).toBe(3);
+    [nombre, marca, fecha].forEach((el) => expect(rowOf(el).className).toContain("md:grid-cols-2"));
+  });
+
+  it("marca y categoría arrancan en «Seleccionar…»", async () => {
+    renderWithProviders(<Cargar />);
+
+    const marca = screen.getByText("Marca").nextElementSibling as HTMLSelectElement;
+    const categoria = screen.getByText("Categoría *").nextElementSibling as HTMLSelectElement;
+    expect(marca.selectedOptions[0]).toHaveTextContent("Seleccionar…");
+    expect(categoria.selectedOptions[0]).toHaveTextContent("Seleccionar…");
+    expect(within(marca).queryByRole("option", { name: "Opcional" })).not.toBeInTheDocument();
+  });
+
+  it("el código de barras usa la misma letra que la descripción (nada de tipografía monoespaciada)", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByLabelText("Código de barras").className).not.toContain("font-mono");
+    expect(screen.getByLabelText("Código de barras")).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.getByLabelText("Descripción")).toHaveAttribute("placeholder", "Opcional");
+  });
+
+  it("a la derecha de la fecha hay un botón de calendario que completa el campo con el día elegido", async () => {
+    const user = userEvent.setup();
+    const showPicker = vi.fn();
+    (HTMLInputElement.prototype as any).showPicker = showPicker;
+    try {
+      renderWithProviders(<Cargar />);
+
+      const fecha = screen.getByLabelText("Fecha de vencimiento");
+      const button = screen.getByTestId("open-calendar");
+      expect(fecha.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await user.click(button);
+      expect(showPicker).toHaveBeenCalledOnce();
+
+      fireEvent.change(screen.getByTestId("calendar-input"), { target: { value: "2027-03-05" } });
+      expect((fecha as HTMLInputElement).value).toBe("05/03/2027");
+      expect((screen.getByTestId("calendar-input") as HTMLInputElement).value).toBe("2027-03-05");
+    } finally {
+      delete (HTMLInputElement.prototype as any).showPicker;
+    }
+  });
+
+  it("si el navegador no sabe abrir el calendario solo, se hace clic en el campo de fecha", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+    const clicked = vi.fn();
+    screen.getByTestId("calendar-input").addEventListener("click", clicked);
+
+    await user.click(screen.getByTestId("open-calendar"));
+    expect(clicked).toHaveBeenCalled();
+
+    (HTMLInputElement.prototype as any).showPicker = () => {
+      throw new Error("bloqueado");
+    };
+    try {
+      clicked.mockClear();
+      await user.click(screen.getByTestId("open-calendar"));
+      expect(clicked).toHaveBeenCalled();
+    } finally {
+      delete (HTMLInputElement.prototype as any).showPicker;
+    }
+  });
+
+  it("si en el calendario no se elige ningún día, no cambia nada", () => {
+    renderWithProviders(<Cargar />);
+
+    fireEvent.change(screen.getByTestId("calendar-input"), { target: { value: "" } });
+
+    expect((screen.getByLabelText("Fecha de vencimiento") as HTMLInputElement).value).toBe("");
+  });
+
+  it("las reglas de alerta tienen los nombres y las descripciones de la app", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("alerts-toggle"));
+
+    expect(screen.getByText("Reglas de alerta de producto")).toBeInTheDocument();
+    expect(screen.getByLabelText("Stock mínimo (días de cobertura)")).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.getByLabelText("Días de anticipación (vencimiento)")).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.getAllByText("Usando tu regla general")).toHaveLength(2);
+    await user.type(screen.getByLabelText("Stock mínimo (días de cobertura)"), "3");
+    expect(screen.getAllByText("Usando tu regla general")).toHaveLength(1);
+    expect(screen.getByText("Regla propia de este producto")).toBeInTheDocument();
+  });
+
+  it("al registrar la entrada el formulario se vacía y el mensaje queda justo encima del formulario", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { merged: false, stock: 15 } });
+    renderWithProviders(<Cargar />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Fideos");
+    await user.selectOptions(screen.getByText("Categoría *").nextElementSibling as HTMLSelectElement, "Almacén");
+    await user.selectOptions(screen.getByText("Marca").nextElementSibling as HTMLSelectElement, "Marca Test");
+    await user.selectOptions(screen.getByText("Ubicación de guardado").nextElementSibling as HTMLSelectElement, "Alacena");
+    await user.type(screen.getByLabelText("Stock"), "5");
+    await user.type(screen.getByLabelText("Fecha de vencimiento"), "05032027");
+    await user.click(screen.getByRole("button", { name: "Guardar producto" }));
+
+    const notice = await screen.findByTestId("flow-success");
+    expect(notice).toHaveTextContent('Se ha registrado la entrada de 5 unidades de "Fideos". Stock actual 15.');
+    expect(notice.nextElementSibling?.tagName).toBe("FORM");
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Stock") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Fecha de vencimiento") as HTMLInputElement).value).toBe("");
+    expect((screen.getByText("Categoría *").nextElementSibling as HTMLSelectElement).value).toBe("");
+    expect((screen.getByText("Marca").nextElementSibling as HTMLSelectElement).value).toBe("");
+    expect((screen.getByText("Ubicación de guardado").nextElementSibling as HTMLSelectElement).value).toBe("");
+  });
+
+  it("con una sola unidad dice «1 unidad»", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { merged: true, stock: 4 } });
+    renderWithProviders(<Cargar />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Fideos");
+    await user.selectOptions(screen.getByText("Categoría *").nextElementSibling as HTMLSelectElement, "Almacén");
+    await user.type(screen.getByLabelText("Stock"), "1");
+    await user.click(screen.getByRole("button", { name: "Guardar producto" }));
+
+    expect(await screen.findByTestId("flow-success")).toHaveTextContent('Se ha registrado la entrada de 1 unidad de "Fideos". Stock actual 4.');
+  });
+});
+
+describe("Cargar · salida: nombre de hasta 20 y aviso arriba", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/me/products/filters/options") return { data: OPCIONES };
+      if (url === "/me/products/suggest") return { data: [suggestion()] };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+  });
+
+  it("el nombre del producto admite hasta 20 caracteres y lo muestra con su contador", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+    await user.click(screen.getByRole("button", { name: "Salida" }));
+
+    const input = screen.getByLabelText("Producto");
+    expect(input).toHaveAttribute("maxLength", "20");
+    await user.type(input, "x".repeat(30));
+    expect((input as HTMLInputElement).value).toHaveLength(20);
+    expect(screen.getByTestId("producto-counter")).toHaveTextContent("20/20");
+  });
+
+  it("al registrar la salida el formulario se vacía y el mensaje queda justo encima del formulario", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { stock: 15 } });
+    renderWithProviders(<Cargar />);
+    await user.click(screen.getByRole("button", { name: "Salida" }));
+
+    await user.type(screen.getByLabelText("Producto"), "Yerba");
+    await user.click(await screen.findByRole("button", { name: /Yerba Mate/ }, { timeout: 2000 }));
+    await user.type(screen.getByLabelText("Stock a sacar"), "3");
+    await user.click(screen.getByTestId("salida-motivo-sold"));
+    await user.type(screen.getByLabelText("Descripción de Motivo"), "se vendió");
+    await user.click(screen.getByRole("button", { name: "Registrar salida" }));
+
+    const notice = await screen.findByTestId("flow-success");
+    expect(notice).toHaveTextContent('Se ha registrado la salida de 3 unidades de "Yerba Mate". Stock actual 15.');
+    expect(notice.nextElementSibling?.tagName).toBe("FORM");
+    expect((screen.getByLabelText("Producto") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Stock a sacar") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Descripción de Motivo") as HTMLTextAreaElement).value).toBe("");
+    expect(screen.getByTestId("salida-motivo-sold")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("salida-selected")).not.toBeInTheDocument();
+  });
+});
+
+describe("Cargar · botones de tipo de flujo y método arriba", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  it("los botones están arriba, a la derecha del título y su descripción, sin títulos ni textos adicionales", () => {
+    renderWithProviders(<Cargar />);
+
+    const direction = screen.getByTestId("flow-direction");
+    const method = screen.getByTestId("flow-method");
+    const header = screen.getByRole("heading", { name: "Flujo de producto" }).parentElement!.parentElement!;
+    expect(header.className).toContain("items-center");
+    expect(header).toContainElement(direction);
+    expect(header).toContainElement(method);
+    expect(direction.textContent).toBe("EntradaSalida");
+    expect(method.textContent).toBe("ManualArchivoProcesamiento");
+    expect(direction.compareDocumentPosition(method) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    [...within(direction).getAllByRole("button"), ...within(method).getAllByRole("button")].forEach((button) =>
+      expect(button.querySelector("svg")).not.toBeNull(),
+    );
+  });
+
+  it("el botón elegido de cada grupo queda relleno: la entrada en verde azulado y la salida en rojo", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByTestId("flow-direction-entrada")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("flow-direction-entrada").className).toContain("bg-primary");
+    expect(screen.getByTestId("flow-method-manual")).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByTestId("flow-direction-salida"));
+    expect(screen.getByTestId("flow-direction-salida")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("flow-direction-salida").className).toContain("bg-critical");
+    expect(screen.getByTestId("flow-direction-entrada")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Registrar salida" })).toBeInTheDocument();
+  });
+
+  it("cambia el método de carga sin perder el tipo de flujo", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("flow-direction-salida"));
+    await user.click(screen.getByTestId("flow-method-archivo"));
+
+    expect(screen.getByTestId("flow-method-archivo")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("flow-direction-salida")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/cantidad a sacar/)).toBeInTheDocument();
+    await user.click(screen.getByTestId("flow-method-procesamiento"));
+    expect(screen.getByTestId("flow-method-procesamiento")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("la descripción de la página sigue al tipo de flujo", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByText(/Alta de productos a tu inventario/)).toBeInTheDocument();
+    await user.click(screen.getByTestId("flow-direction-salida"));
+    expect(screen.getByText(/Registrá salidas de stock/)).toBeInTheDocument();
+  });
+
+  it("debajo del código de barras ya no hay texto descriptivo", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.queryByText(/8, 12, 13 o 14 dígitos/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/escanearlo desde Procesamiento/)).not.toBeInTheDocument();
+  });
+
+  it("los inputs llevan los mismos textos que el flujo de la app", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByLabelText("Nombre")).toHaveAttribute("placeholder", "ej. Leche entera 1L");
+    expect(screen.getByLabelText("Stock")).toHaveAttribute("placeholder", "0");
+    expect(screen.getByLabelText("Fecha de vencimiento")).toHaveAttribute("placeholder", "DD/MM/AAAA");
+    expect(screen.getByLabelText("Código de barras")).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.getByLabelText("Descripción")).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.getByText("Ubicación de guardado").nextElementSibling).toHaveTextContent("Ej. Heladera, Alacena A, Freezer");
   });
 });

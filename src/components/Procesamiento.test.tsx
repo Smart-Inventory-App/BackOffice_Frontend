@@ -375,7 +375,7 @@ describe("Procesamiento · entrada · imagen del producto", () => {
     const marcaSelect = screen.getByText("Marca").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(marcaSelect, "Marca Test");
 
-    const codigoInput = screen.getByPlaceholderText("Sin código");
+    const codigoInput = screen.getAllByPlaceholderText("Opcional").find((el) => el.getAttribute("inputmode") === "numeric")!;
     await user.type(codigoInput, "abc789 123");
     expect((codigoInput as HTMLInputElement).value).toBe("789 123");
 
@@ -716,7 +716,7 @@ describe("Procesamiento · entrada · comprobante", () => {
     const categoriaSelect = screen.getByText("Categoría").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(categoriaSelect, "Almacén");
 
-    const codigoInput = screen.getByPlaceholderText("Sin código");
+    const codigoInput = screen.getAllByPlaceholderText("Opcional").find((el) => el.getAttribute("inputmode") === "numeric")!;
     await user.type(codigoInput, "789");
 
     const vencimientoInputs = document.querySelectorAll('input[type="date"]');

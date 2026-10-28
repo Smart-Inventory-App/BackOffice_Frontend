@@ -52,7 +52,7 @@ describe("las pantallas no se pisan los datos entre sí", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const inventory = visit(client, <MyProducts />);
-    await waitFor(() => expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica"));
+    await waitFor(() => expect(screen.getByTestId("product-row-1")).toBeInTheDocument());
     inventory.unmount();
 
     const alerts = visit(client, <Alertas />);
@@ -61,13 +61,13 @@ describe("las pantallas no se pisan los datos entre sí", () => {
     alerts.unmount();
 
     visit(client, <MyProducts />);
-    await waitFor(() => expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica"));
+    await waitFor(() => expect(screen.getByTestId("product-row-1")).toBeInTheDocument());
   });
 
   it("cada consulta tiene su clave: el Inventario y el Centro de Alertas no comparten ninguna", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const inventory = visit(client, <MyProducts />);
-    await waitFor(() => expect(screen.getByTestId("product-alert-1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("product-row-1")).toBeInTheDocument());
     inventory.unmount();
     visit(client, <Alertas />);
     await screen.findByTestId("alert-item-expiry-1");
@@ -75,7 +75,6 @@ describe("las pantallas no se pisan los datos entre sí", () => {
     const keys = client.getQueryCache().getAll().map((query) => JSON.stringify(query.queryKey));
 
     expect(new Set(keys).size).toBe(keys.length);
-    expect(keys).toContain(JSON.stringify(["my-alert-levels"]));
     expect(keys).toContain(JSON.stringify(["my-alerts", "todas", null]));
   });
 

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronUp, UploadCloud } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, CalendarDays, Camera, ChevronDown, ChevronUp, FileSpreadsheet, PenLine, UploadCloud, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { LARGOS_CODIGO, digitosDelCodigo } from "@/lib/barcode";
 import { displayToIso, formatDateDigits, isoToDisplay } from "@/lib/dateInput";
-import { Card, PageHeader, Segmented } from "@/components/ui";
+import { Card } from "@/components/ui";
 import ImageUpload from "@/components/ImageUpload";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
@@ -40,6 +40,16 @@ export const SALIDA_NOTA_MAX = 50;
 
 const INPUT = "w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary";
 const onlyDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+const unidades = (n: number) => `${n} ${n === 1 ? "unidad" : "unidades"}`;
+
+/** El aviso de que se registró una entrada o una salida: va justo encima del formulario. */
+function SuccessNotice({ children }: { children: string }) {
+  return (
+    <div role="status" data-testid="flow-success" className="mb-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
+      {children}
+    </div>
+  );
+}
 
 /** El rótulo de un campo y, a la derecha, cuántos caracteres lleva de los que admite (como en la app). */
 function FieldLabel({ children, required, counter, counterId }: { children: string; required?: boolean; counter?: string; counterId?: string }) {
@@ -72,6 +82,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
   const [marcaOptions, setMarcaOptions] = useState<string[]>([]);
   const [duplicado, setDuplicado] = useState<ProductSuggestion | null>(null);
   const [codigoError, setCodigoError] = useState<string | null>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
@@ -133,6 +144,17 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
     setVencText(text);
     setForm((f) => ({ ...f, vencimiento: text === "" ? "" : (displayToIso(text) ?? text) }));
   };
+  // Abre el calendario del navegador (si no sabe abrirlo solo, se hace clic en el campo de fecha)
+  const openCalendar = () => {
+    const input = dateRef.current;
+    if (!input) return;
+    try {
+      if (typeof input.showPicker === "function") input.showPicker();
+      else input.click();
+    } catch {
+      input.click();
+    }
+  };
   const vencInvalid = vencText.length === 10 && displayToIso(vencText) === null;
 
   // Si el valor llega de afuera (una sugerencia, el reconocimiento de imagen), se refleja en el campo
@@ -176,16 +198,15 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           dias_alerta_vencimiento: form.dias_alerta_vencimiento ? Number(form.dias_alerta_vencimiento) : null,
         })
       ).data,
-    onSuccess: (data: { merged?: boolean }) => {
+    onSuccess: (data: { merged?: boolean; stock?: number }) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
       invalidateInventory(qc);
-      setForm((f) => ({ ...EMPTY, categoria: f.categoria, ubicacion: f.ubicacion }));
-      setVencText("");
       setOkMessage(
-        data.merged
-          ? "Se sumó el stock a un producto que ya tenías cargado."
-          : "Producto cargado correctamente.",
+        `Se ha registrado la entrada de ${unidades(Number(form.stock))} de "${form.nombre.trim()}". Stock actual ${data.stock ?? form.stock}.`,
       );
+      setForm(EMPTY);
+      setVencText("");
+      setDuplicado(null);
       setError(null);
     },
     onError: (err: any) => {
@@ -222,7 +243,9 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
 
   return (
     <Card className="w-full">
+      {okMessage && <SuccessNotice>{okMessage}</SuccessNotice>}
       <form onSubmit={onSubmit} noValidate className="space-y-4">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         <div className="relative">
           <FieldLabel required counter={`${form.nombre.length}/${NOMBRE_MAX}`} counterId="nombre-counter">
             Nombre
@@ -259,17 +282,6 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             </div>
           )}
         </div>
-        <Picklist
-          label="Categoría *"
-          value={form.categoria}
-          options={categoriaOptions}
-          addPlaceholder="Ej. Lácteos"
-          maxLength={OPTION_MAX}
-          onChange={(v) => {
-            setForm((f) => ({ ...f, categoria: v }));
-            setCategoriaOptions((prev) => addIfMissing(prev, v));
-          }}
-        />
         <div>
           <FieldLabel required>Stock</FieldLabel>
           <input
@@ -281,11 +293,12 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             className={INPUT}
           />
         </div>
+        </div>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         <Picklist
           label="Marca"
           value={form.marca}
           options={marcaOptions}
-          emptyLabel="Opcional"
           addPlaceholder="Opcional"
           maxLength={OPTION_MAX}
           onChange={(v) => {
@@ -293,17 +306,55 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             setMarcaOptions((prev) => addIfMissing(prev, v));
           }}
         />
+        <Picklist
+          label="Categoría *"
+          value={form.categoria}
+          options={categoriaOptions}
+          addPlaceholder="Ej. Lácteos"
+          maxLength={OPTION_MAX}
+          onChange={(v) => {
+            setForm((f) => ({ ...f, categoria: v }));
+            setCategoriaOptions((prev) => addIfMissing(prev, v));
+          }}
+        />
+        </div>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         <div>
           <FieldLabel>Fecha de vencimiento</FieldLabel>
-          <input
-            inputMode="numeric"
-            value={vencText}
-            onChange={(e) => onVencimiento(e.target.value)}
-            placeholder="DD/MM/AAAA"
-            maxLength={10}
-            aria-label="Fecha de vencimiento"
-            className={`${INPUT} ${vencInvalid ? "border-danger" : ""}`}
-          />
+          <div className="flex gap-2">
+            <input
+              inputMode="numeric"
+              value={vencText}
+              onChange={(e) => onVencimiento(e.target.value)}
+              placeholder="DD/MM/AAAA"
+              maxLength={10}
+              aria-label="Fecha de vencimiento"
+              className={`${INPUT} min-w-0 flex-1 ${vencInvalid ? "border-danger" : ""}`}
+            />
+            {/* El calendario del navegador, anclado al botón: elegir un día completa el campo de al lado */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                data-testid="open-calendar"
+                aria-label="Elegir la fecha en el calendario"
+                title="Elegir la fecha en el calendario"
+                onClick={openCalendar}
+                className="flex h-[38px] w-[38px] items-center justify-center rounded-xl border border-line bg-white text-primary transition hover:bg-primary/10"
+              >
+                <CalendarDays size={18} />
+              </button>
+              <input
+                ref={dateRef}
+                type="date"
+                tabIndex={-1}
+                aria-hidden
+                data-testid="calendar-input"
+                value={displayToIso(vencText) ?? ""}
+                onChange={(e) => e.target.value && onVencimiento(isoToDisplay(e.target.value))}
+                className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+              />
+            </div>
+          </div>
         </div>
         <div>
           <FieldLabel>Código de barras</FieldLabel>
@@ -312,8 +363,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             value={form.codigo_barras}
             onChange={(e) => setForm((f) => ({ ...f, codigo_barras: onlyDigits(e.target.value, BARCODE_MAX_DIGITS) }))}
             placeholder="Opcional"
-                        aria-label="Código de barras"
-            className={`${INPUT} font-mono`}
+            aria-label="Código de barras"
+            className={INPUT}
           />
           {codigoError ? (
             <p className="mt-1 text-xs text-danger">{codigoError}</p>
@@ -340,12 +391,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
                 </button>
               </div>
             </div>
-          ) : (
-            <p className="mt-1 text-xs text-muted">
-              El número impreso debajo del código del envase: 8, 12, 13 o 14 dígitos. Cargándolo una vez,
-              después alcanza con escanearlo desde Procesamiento.
-            </p>
-          )}
+          ) : null}
+        </div>
         </div>
         <div>
           <FieldLabel counter={`${form.descripcion.length}/${DESCRIPCION_MAX}`} counterId="descripcion-counter">
@@ -426,12 +473,6 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             {error}
           </div>
         )}
-        {okMessage && (
-          <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
-            {okMessage}
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={create.isPending}
@@ -526,7 +567,7 @@ function SalidaForm({
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
       invalidateInventory(qc);
-      setOkMessage(`Se sacaron ${cantidad} unidades de "${selected?.nombre}". Stock actual: ${data.stock}.`);
+      setOkMessage(`Se ha registrado la salida de ${unidades(Number(cantidad))} de "${selected?.nombre}". Stock actual ${data.stock}.`);
       setError(null);
       setQuery("");
       setSelected(null);
@@ -561,15 +602,19 @@ function SalidaForm({
 
   return (
     <Card className="w-full">
+      {okMessage && <SuccessNotice>{okMessage}</SuccessNotice>}
       <form onSubmit={onSubmit} noValidate className="space-y-4">
         <div className="relative">
-          <FieldLabel required>Producto</FieldLabel>
+          <FieldLabel required counter={`${query.length}/${NOMBRE_MAX}`} counterId="producto-counter">
+            Producto
+          </FieldLabel>
           <input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
             placeholder="Buscá un producto que ya tenés cargado"
+            maxLength={NOMBRE_MAX}
             autoComplete="off"
             aria-label="Producto"
             className={INPUT}
@@ -659,12 +704,6 @@ function SalidaForm({
             {error}
           </div>
         )}
-        {okMessage && (
-          <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-sm text-primaryDark">
-            {okMessage}
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={salida.isPending}
@@ -964,6 +1003,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
                   <input
+                    placeholder="ej. Leche entera 1L"
                     value={active.data.nombre}
                     onChange={(e) => updateRow(active.key, { nombre: e.target.value })}
                     className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
@@ -973,6 +1013,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
                     <input
+                      placeholder="Opcional"
                       value={active.data.marca ?? ""}
                       onChange={(e) => updateRow(active.key, { marca: e.target.value || null })}
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
@@ -981,6 +1022,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                   {direction === "entrada" && (
                     <Picklist
                       label="Categoría"
+                      addPlaceholder="Ej. Lácteos"
                       value={active.data.categoria}
                       options={categoriaOptions}
                       onChange={(v) => {
@@ -997,6 +1039,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                       {direction === "entrada" ? "Stock" : "Cantidad a sacar"}
                     </label>
                     <input
+                      placeholder="0"
                       type="number"
                       min={1}
                       value={active.data.stock}
@@ -1020,7 +1063,8 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                       label="Ubicación"
                       value={active.data.ubicacion ?? ""}
                       options={ubicacionOptions}
-                      emptyLabel="Sin ubicación"
+                      emptyLabel="Ej. Heladera, Alacena A, Freezer"
+                      addPlaceholder="Ej. Heladera, Alacena A, Freezer"
                       onChange={(v) => {
                         updateRow(active.key, { ubicacion: v || null });
                         setUbicacionOptions((prev) => addIfMissing(prev, v));
@@ -1029,6 +1073,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                     <div>
                       <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
                       <textarea
+                        placeholder="Opcional"
                         value={active.data.descripcion ?? ""}
                         onChange={(e) => updateRow(active.key, { descripcion: e.target.value || null })}
                         rows={2}
@@ -1036,12 +1081,10 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                       />
                     </div>
                     <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                        Reglas de alerta de producto (opcional)
-                      </p>
+                      <p className="mb-2 text-sm font-bold text-muted">Reglas de alerta de producto</p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
+                          <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días de cobertura)</label>
                           <input
                             type="number"
                             min={1}
@@ -1051,12 +1094,13 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                                 stock_minimo: e.target.value ? Number(e.target.value) : null,
                               })
                             }
-                            placeholder="Usa tu regla general"
+                            placeholder="Opcional"
                             className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                           />
+                          <p className="mt-1 text-xs text-muted">{active.data.stock_minimo != null ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                         </div>
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
+                          <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación (vencimiento)</label>
                           <input
                             type="number"
                             min={1}
@@ -1066,9 +1110,10 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                                 dias_alerta_vencimiento: e.target.value ? Number(e.target.value) : null,
                               })
                             }
-                            placeholder="Usa tu regla general"
+                            placeholder="Opcional"
                             className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                           />
+                          <p className="mt-1 text-xs text-muted">{active.data.dias_alerta_vencimiento != null ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                         </div>
                       </div>
                     </div>
@@ -1095,11 +1140,54 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   );
 }
 
-const TABS: { value: "manual" | "archivo" | "procesamiento"; label: string }[] = [
-  { value: "manual", label: "Manual" },
-  { value: "archivo", label: "Archivo" },
-  { value: "procesamiento", label: "Procesamiento" },
+const TABS: { value: "manual" | "archivo" | "procesamiento"; label: string; icon: LucideIcon }[] = [
+  { value: "manual", label: "Manual", icon: PenLine },
+  { value: "archivo", label: "Archivo", icon: FileSpreadsheet },
+  { value: "procesamiento", label: "Procesamiento", icon: Camera },
 ];
+
+const DIRECTIONS: { value: "entrada" | "salida"; label: string; icon: LucideIcon; active: string }[] = [
+  { value: "entrada", label: "Entrada", icon: ArrowDownToLine, active: "bg-primary text-white shadow-card" },
+  { value: "salida", label: "Salida", icon: ArrowUpFromLine, active: "bg-critical text-white shadow-card" },
+];
+
+/** Un selector de botones con ícono, sin título: el elegido va relleno (de color propio si lo tiene). */
+function FlowSwitch<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  testId,
+}: {
+  label: string;
+  options: { value: T; label: string; icon: LucideIcon; active?: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  testId: string;
+}) {
+  return (
+    <div role="group" aria-label={label} data-testid={testId} className="inline-flex gap-1 rounded-2xl border border-line/70 bg-white p-1 shadow-card">
+      {options.map(({ value: key, label: text, icon: Icon, active }) => {
+        const selected = key === value;
+        return (
+          <button
+            key={key}
+            type="button"
+            data-testid={`${testId}-${key}`}
+            aria-pressed={selected}
+            onClick={() => onChange(key)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              selected ? active ?? "bg-primary text-white shadow-card" : "text-muted hover:bg-canvas hover:text-primaryDark"
+            }`}
+          >
+            <Icon size={16} />
+            {text}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Cargar() {
   const [tab, setTab] = useState<"manual" | "archivo" | "procesamiento">("manual");
@@ -1121,36 +1209,20 @@ export default function Cargar() {
 
   return (
     <div>
-      <PageHeader
-        title="Flujo de producto"
-        subtitle={
-          direction === "entrada"
-            ? "Alta de productos a tu inventario: a mano, por archivo o sacándoles una foto"
-            : "Registrá salidas de stock: a mano, por archivo o sacándoles una foto"
-        }
-      />
-
-      <div className="mb-3 flex gap-2">
-        <button
-          onClick={() => setDirection("entrada")}
-          className={`rounded-full px-5 py-1.5 text-sm font-semibold transition ${
-            direction === "entrada" ? "bg-primary text-white shadow-card" : "border border-line bg-white text-muted hover:text-primaryDark"
-          }`}
-        >
-          Entrada
-        </button>
-        <button
-          onClick={() => setDirection("salida")}
-          className={`rounded-full px-5 py-1.5 text-sm font-semibold transition ${
-            direction === "salida" ? "bg-critical text-white shadow-card" : "border border-line bg-white text-muted hover:text-primaryDark"
-          }`}
-        >
-          Salida
-        </button>
-      </div>
-
-      <div className="mb-4">
-        <Segmented options={TABS.map((t) => ({ key: t.value, label: t.label }))} value={tab} onChange={setTab} />
+      {/* El título y su descripción a la izquierda; a la derecha, solo los botones del tipo de flujo y del método de carga */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-[14rem] flex-1">
+          <h1 className="text-2xl font-bold text-ink">Flujo de producto</h1>
+          <p className="mt-1 text-sm text-muted">
+            {direction === "entrada"
+              ? "Alta de productos a tu inventario: a mano, por archivo o sacándoles una foto"
+              : "Registrá salidas de stock: a mano, por archivo o sacándoles una foto"}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <FlowSwitch label="Tipo de flujo" testId="flow-direction" options={DIRECTIONS} value={direction} onChange={setDirection} />
+          <FlowSwitch label="Método de carga" testId="flow-method" options={TABS} value={tab} onChange={setTab} />
+        </div>
       </div>
 
       {tab === "manual" ? (

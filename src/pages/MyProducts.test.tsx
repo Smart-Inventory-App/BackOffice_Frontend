@@ -80,19 +80,17 @@ describe("MyProducts", () => {
     expect(screen.getByText("01/01/2020")).toBeInTheDocument();
   });
 
-  it("marca cada producto con el nivel de alerta que le corresponde según sus reglas", async () => {
-    const alert = (key: string, product_id: number, level: string) => ({ key, product_id, level, type: "expiry" });
-    mockGets(
-      [product({ id: 1, nombre: "Crítico" }), product({ id: 2, nombre: "Aviso" }), product({ id: 3, nombre: "Tranquilo" })],
-      [alert("a", 1, "warning"), alert("b", 1, "critical"), alert("c", 2, "warning")],
-    );
-
+  it("la lista no tiene la columna ALERTA y todos los títulos van en mayúsculas", async () => {
+    mockGets([product()]);
     renderWithProviders(<MyProducts />);
-    await screen.findByText("Crítico");
+    await screen.findByText("Yerba Mate");
 
-    await waitFor(() => expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica"));
-    expect(screen.getByTestId("product-alert-2")).toHaveTextContent("Advertencia");
-    expect(screen.getByTestId("product-alert-3")).toHaveTextContent("—");
+    const headers = within(screen.getByRole("table")).getAllByRole("columnheader");
+    expect(headers.map((h) => h.textContent?.toUpperCase())).toEqual(["", "IMAGEN", "PRODUCTO", "CATEGORÍA", "STOCK", "VENCIMIENTO", "ACCIONES"]);
+    expect(screen.queryByTestId("product-alert-1")).not.toBeInTheDocument();
+    // Los títulos que se ordenan son botones: no heredan la mayúscula si no se la piden
+    headers.filter((h) => h.querySelector("button")).forEach((h) => expect(h.querySelector("button")!.className).toContain("uppercase"));
+    expect(screen.getByRole("table").querySelector("thead tr")!.className).toContain("uppercase");
   });
 
   it("al tocar el nombre abre la información del producto, con sus accesos", async () => {
@@ -326,12 +324,12 @@ describe("MyProducts", () => {
     const vencimientoInput = modalScope.getByText("Vencimiento").nextElementSibling as HTMLInputElement;
     await user.type(vencimientoInput, "2026-09-01");
     await user.selectOptions(modalScope.getByText("Ubicación").nextElementSibling as HTMLSelectElement, "Alacena");
-    await user.type(modalScope.getByPlaceholderText("Sin código"), "1");
+    await user.type(modalScope.getAllByPlaceholderText("Opcional").find((el) => el.getAttribute("inputmode") === "numeric")!, "1");
     expect(modalScope.queryByText("URL de imagen")).not.toBeInTheDocument();
     expect(modalScope.getByTestId("image-upload")).toBeInTheDocument();
     await user.type(modalScope.getByText("Descripción").nextElementSibling as HTMLTextAreaElement, "Notas");
-    await user.type(modalScope.getByText("Stock mínimo (días)").nextElementSibling as HTMLInputElement, "2");
-    await user.type(modalScope.getByText("Aviso de vencimiento (días)").nextElementSibling as HTMLInputElement, "3");
+    await user.type(modalScope.getByText("Stock mínimo (días de cobertura)").nextElementSibling as HTMLInputElement, "2");
+    await user.type(modalScope.getByText("Días de anticipación (vencimiento)").nextElementSibling as HTMLInputElement, "3");
 
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("El código de barras ya está en uso.")).toBeInTheDocument();
