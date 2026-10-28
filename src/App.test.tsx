@@ -113,7 +113,7 @@ describe("App", () => {
     renderApp(["/"]);
     await waitFor(() => expect(screen.getByText("user@test.com")).toBeInTheDocument());
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido, Ana · Tu estado");
+    expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Tu estado, Ana");
   });
 
   it("un usuario no admin no puede entrar a /usuarios: es redirigido a la raíz", async () => {
@@ -167,7 +167,7 @@ describe("App", () => {
   it("un administrador ve las tendencias de toda la plataforma", async () => {
     mockAdmin(ADMIN);
     renderApp(["/metricas"]);
-    expect(await screen.findByText("Cuánto se consume y se repone en toda la plataforma")).toBeInTheDocument();
+    expect(await screen.findByText("Cuánto se consume y cuánto ingresa en toda la plataforma")).toBeInTheDocument();
   });
 });
 

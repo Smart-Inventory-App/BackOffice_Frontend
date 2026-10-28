@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -5,6 +6,7 @@ import { Boxes, Clock, Cuboid, TrendingDown, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import type { DashboardStats } from "@/lib/types";
 import { formatThousands } from "@/lib/format";
+import { clearWelcome } from "@/lib/welcome";
 import { Button, Card, PageHeader, Spinner, StatCard, StatTile } from "@/components/ui";
 
 const CATEGORY_COLORS = ["#2CC4B4", "#1B3A8F", "#5BC0BE", "#3A86FF", "#8AC926", "#FFB703", "#FB5607"];
@@ -15,6 +17,10 @@ const CATEGORY_COLORS = ["#2CC4B4", "#1B3A8F", "#5BC0BE", "#3A86FF", "#8AC926", 
  */
 export default function Dashboard() {
   const navigate = useNavigate();
+  // El aviso de «recién ingresó» es de un solo uso: ya pasó por el dashboard
+  useEffect(() => {
+    clearWelcome();
+  }, []);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["stats"],
     queryFn: async () => (await api.get<DashboardStats>("/admin/stats/")).data,

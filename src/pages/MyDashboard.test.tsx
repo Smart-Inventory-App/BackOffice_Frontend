@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
 import MyDashboard from "./MyDashboard";
 import { PILL_WIDTH } from "@/components/ui";
+import { clearWelcome, markJustLoggedIn } from "@/lib/welcome";
 import type { AlertOut, MyProduct, MyProfile, MyStats, StockChange } from "@/lib/types";
 
 vi.mock("@/lib/api", () => ({
@@ -125,6 +126,7 @@ interface Setup {
   expiring?: AlertOut[];
   restock?: AlertOut[];
   consumption?: number[];
+  incomes?: number[];
 }
 
 const days = (quantities: number[]) =>
@@ -146,12 +148,15 @@ function mockApi(setup: Setup = {}) {
     }
     if (url === "/me/metrics") {
       const quantities = setup.consumption ?? [0, 2, 5, 0, 7, 3, 1];
+      const incomes = setup.incomes ?? [4, 0, 10, 0, 0, 6, 0];
       return {
         data: {
           period_days: config.params.period,
           total_consumido: quantities.reduce((a, b) => a + b, 0),
           total_entradas: 0,
+          total_ingresos: incomes.reduce((a, b) => a + b, 0),
           consumo_por_dia: days(quantities),
+          ingresos_por_dia: days(incomes),
           top_productos: [],
         },
       };
@@ -186,23 +191,36 @@ function renderDashboard() {
 describe("MyDashboard · encabezado y tarjetas", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearWelcome();
   });
 
-  it("es un dashboard, no un inicio: título «Dashboard» y el saludo con el nombre", async () => {
+  it("es un dashboard, no un inicio: título «Dashboard» y «Tu estado» con el nombre al volver a la página", async () => {
     mockApi();
     renderDashboard();
 
     expect(await screen.findByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido, Ana · Tu estado");
+    expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Tu estado, Ana");
     expect(screen.queryByText("Inicio")).not.toBeInTheDocument();
+  });
+
+  it("recién iniciada la sesión dice «Bienvenido», y al cambiar de página y volver, «Tu estado»", async () => {
+    markJustLoggedIn();
+    mockApi();
+    const { unmount } = renderDashboard();
+    await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido, Ana"));
+    unmount();
+
+    renderDashboard();
+    await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Tu estado, Ana"));
   });
 
   it("sin nombre cargado, solo saluda; con un nombre largo lo corta a 20 caracteres", async () => {
     mockApi({ profile: profile({ first_name: null }) });
     const { unmount } = renderDashboard();
-    await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido · Tu estado"));
+    await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent(/^Tu estado$/));
     unmount();
 
+    markJustLoggedIn();
     mockApi({ profile: profile({ first_name: "Maximiliano Alejandro Gonzalez" }) });
     renderDashboard();
     await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido, Maximiliano Alejandr..."));
@@ -289,7 +307,44 @@ describe("MyDashboard · gráficos e información adicional", () => {
     await user.click(screen.getByTestId("dashboard-period-30"));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 30 } }));
     expect(screen.getByTestId("dashboard-period-30")).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByTestId("dashboard-period-90")).not.toBeInTheDocument();
+  });
+
+  it("los gráficos también se pueden ver con 90 días", async () => {
+    const user = userEvent.setup();
+    mockApi();
+    renderDashboard();
+
+    await user.click(await screen.findByTestId("dashboard-period-90"));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 90 } }));
+    expect(screen.getByTestId("dashboard-period-90")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("el gráfico de consumo no trae el aviso de pasar el mouse por el gráfico", async () => {
+    mockApi();
+    renderDashboard();
+
+    await screen.findByTestId("dashboard-consumption-chart");
+    expect(screen.queryByText(/Pasá el mouse/)).not.toBeInTheDocument();
+  });
+
+  it("junto al consumo hay un gráfico de ingresos por día que suma toda la carga de stock", async () => {
+    mockApi();
+    renderDashboard();
+
+    const section = await screen.findByTestId("dashboard-incomes");
+    expect(within(section).getByRole("heading", { name: "Ingresos por día" })).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-incomes-chart")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("dashboard-incomes-total")).toHaveTextContent("20"));
+    expect(screen.getByTestId("dashboard-incomes-average")).toHaveTextContent("1,4");
+    expect(screen.getByTestId("dashboard-incomes-peak")).toHaveTextContent("12 oct (10)");
+  });
+
+  it("sin ingresos, el día de mayor ingreso dice «Sin ingresos»", async () => {
+    mockApi({ incomes: [0, 0, 0] });
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId("dashboard-incomes-peak")).toHaveTextContent("Sin ingresos"));
   });
 
   it("sin consumo, el día pico dice «Sin consumo»", async () => {
@@ -312,28 +367,14 @@ describe("MyDashboard · gráficos e información adicional", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("las alertas se muestran por nivel y tocar una lleva al centro de alertas con ese nivel", async () => {
-    const user = userEvent.setup();
+  it("ya no hay gráfico de alertas: las alertas se ven desde las tarjetas", async () => {
     mockApi();
-    const { unmount } = renderDashboard();
-    await screen.findByTestId("dashboard-alerts");
-
-    expect(screen.getByTestId("dashboard-alerts-critical")).toHaveTextContent("3");
-    expect(screen.getByTestId("dashboard-alerts-warning")).toHaveTextContent("1");
-    await user.click(screen.getByTestId("dashboard-alerts-warning"));
-    expect(await screen.findByText(/ALERTAS/)).toHaveTextContent('{"level":"warning"}');
-    unmount();
-
-    renderDashboard();
-    await user.click(await screen.findByTestId("dashboard-alerts-critical"));
-    expect(await screen.findByText(/ALERTAS/)).toHaveTextContent('{"level":"critical"}');
-  });
-
-  it("sin alertas lo dice", async () => {
-    mockApi({ stats: stats({ critical_alerts: 0, warning_alerts: 0 }) });
     renderDashboard();
 
-    expect(await screen.findByText("No tenés alertas: todo en orden.")).toBeInTheDocument();
+    await screen.findByTestId("dashboard-consumption-chart");
+    expect(screen.queryByTestId("dashboard-alerts")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-alerts-critical")).not.toBeInTheDocument();
+    expect(screen.queryByText("No tenés alertas: todo en orden.")).not.toBeInTheDocument();
   });
 
   it("el gráfico de vencimientos aparece cuando hay productos con stock, y si no, un aviso", async () => {
@@ -361,6 +402,52 @@ describe("MyDashboard · gráficos e información adicional", () => {
     await user.click(screen.getByTestId("dashboard-category-1"));
 
     expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"categoria":"Lácteos"}');
+  });
+
+  it("muestra las 5 categorías con más stock y «Ver más» lista todas, de mayor a menor", async () => {
+    const user = userEvent.setup();
+    const categories = [
+      { label: "Bebidas", count: 50 },
+      { label: "Almacén", count: 900 },
+      { label: "Limpieza", count: 34 },
+      { label: "Lácteos", count: 300 },
+      { label: "Frutas", count: 120 },
+      { label: "Verduras", count: 80 },
+      { label: "Panadería", count: 10 },
+    ];
+    mockApi({ stats: stats({ stock_by_category: categories }) });
+    renderDashboard();
+
+    await screen.findByTestId("dashboard-category-4");
+    expect(screen.queryByTestId("dashboard-category-5")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-category-0")).toHaveTextContent("Almacén");
+    expect(screen.getByTestId("dashboard-category-4")).toHaveTextContent("Bebidas");
+    expect(screen.queryByText("Panadería")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("dashboard-categories-more"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Stock por categoría" });
+    const items = within(dialog).getAllByTestId(/^categories-modal-item-/);
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Almacén900 u.",
+      "Lácteos300 u.",
+      "Frutas120 u.",
+      "Verduras80 u.",
+      "Bebidas50 u.",
+      "Limpieza34 u.",
+      "Panadería10 u.",
+    ]);
+
+    await user.click(within(dialog).getByTestId("categories-modal-item-6"));
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"categoria":"Panadería"}');
+  });
+
+  it("con 5 categorías o menos no hay «Ver más»", async () => {
+    mockApi();
+    renderDashboard();
+
+    await screen.findByTestId("dashboard-category-0");
+    expect(screen.queryByTestId("dashboard-categories-more")).not.toBeInTheDocument();
   });
 
   it("sin productos, los gráficos de categoría y de ubicación lo dicen", async () => {
@@ -458,7 +545,7 @@ describe("MyDashboard · últimos cambios y productos recientes", () => {
     const recent = await screen.findByTestId("recent-1");
     expect(recent).toHaveTextContent("Cargado el 27/10/2026 19:30");
     expect(recent).toHaveTextContent("Vence: 01/12/2026");
-    expect(api.get).toHaveBeenCalledWith("/me/products", { params: { limit: 3 } });
+    expect(api.get).toHaveBeenCalledWith("/me/products", { params: { limit: 5 } });
 
     await user.click(recent);
     expect(screen.getByRole("dialog", { name: "Información del Producto" })).toBeInTheDocument();

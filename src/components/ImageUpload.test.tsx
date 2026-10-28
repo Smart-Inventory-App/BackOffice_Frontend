@@ -57,6 +57,20 @@ describe("ImageUpload", () => {
     expect(screen.getByRole("button", { name: "Cambiar imagen" })).toBeInTheDocument();
   });
 
+  it("la vista previa se puede ampliar y se cierra con la «X»", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { url: "https://img.example/p.png" } });
+    render(<Harness />);
+    await user.upload(input(), file());
+    await screen.findByTestId("image-upload-preview");
+
+    await user.click(screen.getByRole("button", { name: "Ampliar la vista previa" }));
+    expect(screen.getByRole("dialog", { name: "Imagen de Vista previa de la imagen" })).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("image-viewer-close"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("mientras sube, lo informa y no deja cambiar la imagen", async () => {
     const user = userEvent.setup();
     let release: (value: unknown) => void = () => {};

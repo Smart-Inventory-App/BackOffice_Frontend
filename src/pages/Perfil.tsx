@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Store, User } from "lucide-react";
+import { Pencil, Store, User } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Card, Field, Notice, PageHeader, Segmented, Spinner } from "@/components/ui";
 import NumberStepper, { inRange } from "@/components/NumberStepper";
@@ -30,8 +30,21 @@ const initials = (profile: MyProfile) => {
     .join("");
 };
 
+/** Un dato del perfil en la vista de solo lectura: vacío se muestra como un guion. */
+function Info({ label, value, testId }: { label: string; value: string; testId: string }) {
+  return (
+    <div className="rounded-xl bg-canvas px-3 py-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dd data-testid={testId} className="mt-0.5 break-words text-sm font-medium text-ink">
+        {value || "–"}
+      </dd>
+    </div>
+  );
+}
+
 /**
- * Mi perfil: los datos personales, el tipo de cuenta y las reglas de alerta. Los límites son los de la app: nombre,
+ * Mi perfil: los datos personales, el tipo de cuenta y las reglas de alerta. Se ve primero con los datos cargados y, con
+ * el lápiz de arriba a la derecha, se pasa a editar cada campo (con «Guardar cambios» y «Cancelar»). Los límites son los de la app: nombre,
  * apellido y usuario hasta 20 caracteres (con contador), los días de las alertas de 2 a 90 y la hora del chequeo diario
  * de 0 a 23 en hora de Argentina. El usuario tiene que ser único: se consulta mientras se escribe.
  */
@@ -52,9 +65,10 @@ export default function Perfil() {
   const [usernameTaken, setUsernameTaken] = useState(false);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
-    if (!profile) return;
+  // Vuelve el formulario a lo guardado (al cargar, al guardar y al cancelar)
+  const fill = (profile: MyProfile) => {
     setFirstName(profile.first_name ?? "");
     setLastName(profile.last_name ?? "");
     setUsername(profile.username ?? "");
@@ -62,6 +76,10 @@ export default function Perfil() {
     setStockMinimo(String(profile.stock_minimo));
     setDiasAlerta(String(profile.dias_alerta_vencimiento));
     setCheckHour(String(profile.alert_check_hour));
+  };
+
+  useEffect(() => {
+    if (profile) fill(profile);
   }, [profile]);
 
   // ¿Ya tiene ese usuario otra cuenta? Se pregunta cuando el usuario deja de escribir
@@ -107,6 +125,7 @@ export default function Perfil() {
       qc.invalidateQueries({ queryKey: ["my-alerts"] });
       setOkMessage("Cambios guardados.");
       setError(null);
+      setEditing(false);
     },
     onError: (err: any) => {
       setError(apiErrorMessage(err, "No se pudo guardar."));
@@ -125,6 +144,18 @@ export default function Perfil() {
 
   if (isLoading || !profile) return <Spinner />;
 
+  const startEditing = () => {
+    fill(profile);
+    setOkMessage(null);
+    setError(null);
+    setEditing(true);
+  };
+  const cancelEditing = () => {
+    fill(profile);
+    setError(null);
+    setEditing(false);
+  };
+
   const counter = (value: string) => `${value.length}/${TEXT_MAX}`;
 
   return (
@@ -138,7 +169,7 @@ export default function Perfil() {
         >
           {initials(profile)}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-bold text-ink">
             {[profile.first_name, profile.last_name].filter(Boolean).join(" ") || "Sin nombre cargado"}
           </p>
@@ -148,8 +179,50 @@ export default function Perfil() {
             {profile.user_type === "comercio" ? "Comercio" : "Individuo"}
           </span>
         </div>
+        {!editing && (
+          <button
+            type="button"
+            data-testid="profile-edit"
+            aria-label="Editar perfil"
+            title="Editar perfil"
+            onClick={startEditing}
+            className="shrink-0 rounded-full border border-line p-2.5 text-primaryDark transition hover:bg-primary/10"
+          >
+            <Pencil size={18} />
+          </button>
+        )}
       </Card>
 
+      {okMessage && !editing && (
+        <div className="mb-4">
+          <Notice tone="ok">{okMessage}</Notice>
+        </div>
+      )}
+
+      {!editing ? (
+        <div className="space-y-4" data-testid="profile-view">
+          <Card className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Datos personales</p>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Info label="Nombre" value={profile.first_name ?? ""} testId="profile-view-first-name" />
+              <Info label="Apellido" value={profile.last_name ?? ""} testId="profile-view-last-name" />
+              <Info label="Usuario" value={profile.username ?? ""} testId="profile-view-username" />
+              <Info label="Tipo de cuenta" value={profile.user_type === "comercio" ? "Comercio" : "Individuo"} testId="profile-view-type" />
+            </dl>
+          </Card>
+          <Card className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reglas de alerta</p>
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Info label="Stock mínimo" value={`${profile.stock_minimo} días`} testId="profile-view-stock-days" />
+              <Info label="Aviso de vencimiento" value={`${profile.dias_alerta_vencimiento} días`} testId="profile-view-expiry-days" />
+              <Info label="Chequeo diario" value={`${profile.alert_check_hour} h (Argentina)`} testId="profile-view-check-hour" />
+            </dl>
+            <p className="text-xs text-muted">
+              Estas reglas valen para todos tus productos; si un producto tiene la suya, esa es la que manda.
+            </p>
+          </Card>
+        </div>
+      ) : (
       <form onSubmit={onSubmit} className="space-y-4">
         <Card className="space-y-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Datos personales</p>
@@ -223,12 +296,17 @@ export default function Perfil() {
         </Card>
 
         {error && <Notice tone="error">{error}</Notice>}
-        {okMessage && <Notice tone="ok">{okMessage}</Notice>}
 
-        <Button type="submit" className="w-full" disabled={!canSave}>
-          {save.isPending ? "Guardando…" : "Guardar cambios"}
-        </Button>
+        <div className="flex gap-3">
+          <Button type="button" tone="outline" className="flex-1" data-testid="profile-cancel" onClick={cancelEditing}>
+            Cancelar
+          </Button>
+          <Button type="submit" className="flex-1" disabled={!canSave}>
+            {save.isPending ? "Guardando…" : "Guardar cambios"}
+          </Button>
+        </div>
       </form>
+      )}
     </div>
   );
 }

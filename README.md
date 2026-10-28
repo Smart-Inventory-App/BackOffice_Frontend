@@ -31,7 +31,7 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | `/login`, `/register`, `/forgot-password`, `/set-password` | Ingreso en dos pasos (email y contraseña, con el ojo para mostrarla), registro, **recuperar o crear la contraseña** con un código por mail (también para cuentas de Google) y la contraseña del primer ingreso de un administrador |
 | `/` | **Dashboard**. Usuario: las cuatro tarjetas de la app, gráficos interactivos, lo que hay que atender, últimos cambios y productos recientes. Administrador: el estado de la plataforma |
 | `/alertas` | Centro de Alertas (usuario) |
-| `/metricas` | Tendencias de Consumo: las del usuario o, para un administrador, las de toda la plataforma |
+| `/metricas` | Tendencias, en dos mitades: **Tendencias de consumo** y **Tendencias de ingresos** (las del usuario o, para un administrador, las de toda la plataforma) |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
 | `/usuarios/:id` | Detalle de usuario: unidades, alertas, consumo de 30 días, sus alertas y sus productos con el nivel de cada uno |
 | `/productos` | Productos cargados (con imagen y nivel de alerta), búsqueda, filtros, orden, exportación, eliminación y **stock total por producto**; el usuario ve su inventario y abre la **información de cada producto** |
@@ -43,11 +43,11 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 
 #### Dashboard del usuario
 
-No es un «inicio»: es un dashboard con la información de su inventario, esté o no en la app del celular. «Dashboard», con «Bienvenido, <nombre> · Tu estado»; cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock») con los números con puntos de miles y los cuatro comentarios del mismo largo y centrados; el comentario de Productos va con el fondo del color de su ícono y letra blanca. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, **gráficos que se pueden recorrer y tocar**: consumo por día (7, 14 o 30 días, con el detalle de cada día al pasar el mouse y el botón «Tendencias»), alertas por nivel (tocar «Críticas» o «Advertencias» abre el Centro de Alertas con ese nivel), vencimientos por tramo (vencidos, de la semana, del mes...), stock por categoría (tocar una abre el inventario de esa categoría) y productos por ubicación. Después, «Un vistazo más» (vencidos con stock, productos con imagen), «Para atender primero» (lo que vence y lo que se acaba, con su detalle), **Últimos Cambios** (5, con «Ver más» al historial con «Cargar más») y **Productos Recientes** (3).
+No es un «inicio»: es un dashboard con la información de su inventario, esté o no en la app del celular. «Dashboard», con **«Bienvenido, <nombre>»** si la persona acaba de iniciar sesión o **«Tu estado, <nombre>»** si cambió de página y volvió (`src/lib/welcome.ts`: un aviso de un solo uso que se deja al ingresar y el dashboard borra); cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock», esta última con letra blanca) con los números con puntos de miles. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, un selector de período (**7, 14, 30 o 90 días**, el 90 es solo del dashboard) y **gráficos que se pueden recorrer y tocar**: consumo por día (con el detalle de cada día al pasar el mouse y el botón «Tendencias») e **ingresos por día** (todas las cargas de stock: reposiciones y el stock inicial de los productos nuevos, con el total, el promedio y el día de mayor ingreso), vencimientos por tramo, **stock por categoría** (las 5 con más stock; «Ver más» abre la lista completa de mayor a menor, y tocar una abre el inventario de esa categoría) y productos por ubicación. No hay gráfico de alertas: se llega a ellas desde las tarjetas. Después, «Un vistazo más», «Para atender primero», **Últimos Cambios** y **Productos Recientes** (hasta 5 cada uno).
 
-#### Tendencias de Consumo
+#### Tendencias (consumo e ingresos)
 
-Períodos de **7, 14 y 30 días** (sin 90), gráfico por día que se ve **entero, sin desplazarse**, con el día elegido y su detalle **centrado** entre las flechas «<» y «>» que retroceden y avanzan un día, «Promedio de consumidos por día», «Día de mayor consumo: 21 de octubre» (dos renglones), comparación con el período anterior y los **5 productos más consumidos** (sin «Menos usados»). Los días son los de Argentina. Está en `src/components/TrendsPanel.tsx`.
+La página se divide en dos: **Tendencias de consumo** y **Tendencias de ingresos**, con un único selector de período (**7, 14, 30 o 90 días**; con 90 el gráfico rotula una barra por semana). Cada mitad tiene su gráfico por día que se ve **entero, sin desplazarse**, con el día elegido y su detalle **centrado** entre las flechas «<» y «>», el promedio por día, el día de mayor valor (dos renglones) y la comparación con el período anterior; el consumo suma «Consumido», «Repuesto» y los **5 productos más consumidos**, y los ingresos suman «Ingresado». Los días son los de Argentina. Está en `src/components/TrendsPanel.tsx` (`kind="consumo" | "ingresos"`) y `src/pages/Metricas.tsx`.
 
 #### Centro de Alertas
 
@@ -65,9 +65,13 @@ Para quien lo usa, el panel se llama **Dashboard** (el nombre «backoffice» es 
 
 La imagen se **adjunta como archivo** (se elige o se arrastra; JPG, PNG o WebP de hasta 10 MB) con vista previa; el archivo viaja por `POST /me/products/image` y el producto guarda la dirección que devuelve. Ya no se escribe un enlace (`src/components/ImageUpload.tsx`).
 
+#### Imágenes de productos
+
+Toda imagen de un producto se puede tocar para verla **en grande**, en el centro de la pantalla sin ocuparla toda (`src/components/ImageViewer.tsx`, usado por `ProductImage` y por la vista previa de `ImageUpload`): la rueda del mouse hace zoom, una **X** arriba a la derecha (o Escape, o tocar el fondo) la cierra y, desde el celular, **dos toques y arrastrar hacia afuera** agranda la imagen y **al soltar vuelve a su tamaño normal**. En el Detalle de Alerta, los datos del producto muy largos se cortan a 50 caracteres con «...» (como en el resto del dashboard).
+
 #### Perfil
 
-Nombre, apellido y usuario de hasta 20 caracteres con contador; el usuario se consulta mientras se escribe (**único**, sin distinguir mayúsculas); días de las alertas de 2 a 90 y hora del chequeo de 0 a 23 en hora de Argentina, con botones para subir y bajar; tipo de cuenta (Individuo / Comercio).
+Se ve primero con los datos ya cargados (nombre, apellido, usuario, tipo de cuenta y reglas de alerta) y, a la derecha del encabezado (nombre, mail y tipo de cuenta), un **lápiz** pasa a editar **todos** los campos: nombre, apellido y usuario de hasta 20 caracteres con contador; el usuario se consulta mientras se escribe (**único**, sin distinguir mayúsculas); días de las alertas de 2 a 90 y hora del chequeo de 0 a 23 en hora de Argentina, con botones para subir y bajar; tipo de cuenta (Individuo / Comercio). «Guardar cambios» vuelve a la vista; «Cancelar» descarta lo escrito.
 
 #### Stock total por producto
 

@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent } from "react";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import ImageViewer from "@/components/ImageViewer";
 import { apiErrorMessage } from "@/lib/errors";
 
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -26,6 +27,7 @@ export default function ImageUpload({
   const [fileName, setFileName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const upload = async (file: File | undefined) => {
@@ -91,7 +93,14 @@ export default function ImageUpload({
       >
         <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-canvas text-muted">
           {shown ? (
-            <img data-testid="image-upload-preview" src={shown} alt="Vista previa de la imagen" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              aria-label="Ampliar la vista previa"
+              onClick={() => setViewing(true)}
+              className="h-full w-full cursor-zoom-in"
+            >
+              <img data-testid="image-upload-preview" src={shown} alt="Vista previa de la imagen" className="h-full w-full object-cover" />
+            </button>
           ) : (
             <ImagePlus size={26} />
           )}
@@ -138,6 +147,7 @@ export default function ImageUpload({
           onChange={(e) => upload(e.target.files?.[0])}
         />
       </div>
+      {viewing && shown && <ImageViewer url={shown} alt="Vista previa de la imagen" onClose={() => setViewing(false)} />}
       {error && (
         <p role="alert" className="mt-1 text-xs text-danger">
           {error}

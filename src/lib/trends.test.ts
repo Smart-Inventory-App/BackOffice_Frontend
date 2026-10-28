@@ -24,8 +24,8 @@ const days = (quantities: number[], start = "2026-10-20") =>
   });
 
 describe("trends", () => {
-  it("ofrece 7, 14 y 30 días: no hay opción de 90", () => {
-    expect([...TREND_PERIODS]).toEqual([7, 14, 30]);
+  it("ofrece 7, 14, 30 y 90 días (el 90 es solo del dashboard)", () => {
+    expect([...TREND_PERIODS]).toEqual([7, 14, 30, 90]);
   });
 
   it("parseDay arma la fecha local sin correrla de día", () => {

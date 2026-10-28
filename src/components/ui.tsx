@@ -44,7 +44,7 @@ const TILE_TONES = {
   teal: { color: "#2CC4B4", pillBg: "#2db7a352", pillText: "#14554b" },
   blue: { color: "#1B3A8F", pillBg: "#1B3A8F", pillText: "#ffffff" },
   yellow: { color: "#f59e0b", pillBg: "#fbbc059d", pillText: "#564209" },
-  red: { color: "#e5484d", pillBg: "#e5484d8f", pillText: "#671a1c" },
+  red: { color: "#e5484d", pillBg: "#e5484d", pillText: "#ffffff" },
 } as const;
 
 export type TileTone = keyof typeof TILE_TONES;

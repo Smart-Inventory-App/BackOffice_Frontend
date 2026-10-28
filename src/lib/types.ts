@@ -290,6 +290,9 @@ export interface MyMetrics {
   total_entradas: number;
   consumo_por_dia: ConsumoPorDia[];
   top_productos: ProductoConsumo[];
+  /** Todo lo que ingresó al stock: reposiciones y el stock con el que se cargaron los productos nuevos. */
+  total_ingresos: number;
+  ingresos_por_dia: ConsumoPorDia[];
 }
 
 export interface ConsumptionEvent {

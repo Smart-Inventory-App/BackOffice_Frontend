@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { api, getToken, setToken } from "@/lib/api";
 import type { Admin } from "@/lib/types";
 import { signOutFromGoogle } from "@/lib/google";
+import { markJustLoggedIn } from "@/lib/welcome";
 
 const VIEW_AS_USER_KEY = "backoffice_view_as_user";
 
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await api.get<Admin>("/admin/auth/me");
     setAdmin(me.data);
     setViewAsUser(false);
+    markJustLoggedIn();
   };
 
   const loginWithGoogle = async (idToken: string) => {
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await api.get<Admin>("/admin/auth/me");
     setAdmin(me.data);
     setViewAsUser(false);
+    markJustLoggedIn();
   };
 
   const refresh = async () => {

@@ -20,7 +20,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import type { AlertSummary } from "@/lib/types";
 import AddAdminModal from "@/components/AddAdminModal";
-import logo from "../../assets/brand/logo_con_texto/logo_horizontal_color.png";
+import logo from "../../assets/logo_sidebar.png";
 
 const ADMIN_NAV = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -72,7 +72,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen bg-canvas text-ink">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-line/70 bg-white p-5 md:flex">
         <div className="mb-7 flex flex-col items-center px-1 text-center">
-          <img src={logo} alt="Smart Inventory" className="h-24 w-auto object-contain" />
+          <img src={logo} alt="Smart Inventory" className="mx-auto h-auto w-44 object-contain" />
           <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Dashboard</p>
         </div>
 

@@ -26,7 +26,9 @@ function metrics(overrides: Partial<MyMetrics> = {}): MyMetrics {
     period_days: 14,
     total_consumido: 10,
     total_entradas: 20,
+    total_ingresos: 15,
     consumo_por_dia: lastDays(14, { 12: 7, 13: 3 }),
+    ingresos_por_dia: lastDays(14, { 11: 5, 13: 10 }),
     top_productos: [
       { product_id: 1, nombre: "Leche", cantidad: 8 },
       { product_id: 2, nombre: "Pan", cantidad: 4 },
@@ -65,14 +67,27 @@ describe("TrendsPanel · períodos", () => {
     vi.clearAllMocks();
   });
 
-  it("ofrece 7, 14 y 30 días, arranca en 14 y no tiene la opción de 90", async () => {
+  it("ofrece 7, 14, 30 y 90 días y arranca en 14", async () => {
     serve();
     await open();
 
-    [7, 14, 30].forEach((n) => expect(screen.getByTestId(`trends-period-${n}`)).toBeInTheDocument());
-    expect(screen.queryByTestId("trends-period-90")).not.toBeInTheDocument();
-    expect(screen.queryByText("90 días")).not.toBeInTheDocument();
+    [7, 14, 30, 90].forEach((n) => expect(screen.getByTestId(`trends-period-${n}`)).toBeInTheDocument());
     expect(screen.getByTestId("trends-period-14")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("con 90 días pide 90 y 180 y rotula una barra por semana", async () => {
+    const user = userEvent.setup();
+    serve();
+    await open();
+
+    await user.click(screen.getByTestId("trends-period-90"));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 90 } }));
+    expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 180 } });
+    await screen.findByTestId("trends-bar-89");
+    expect(screen.getByTestId("trends-day-label-0")).toBeInTheDocument();
+    expect(screen.getByTestId("trends-day-label-7")).toBeInTheDocument();
+    expect(screen.queryByTestId("trends-day-label-1")).not.toBeInTheDocument();
   });
 
   it("pide el período elegido y el doble, para comparar con el anterior", async () => {
@@ -334,5 +349,99 @@ describe("TrendsPanel · errores", () => {
 
     expect(screen.getByTestId("trends-period-7")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
+  });
+});
+
+describe("TrendsPanel · ingresos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // El período pedido trae 15 ingresados; el doble, 15 + los del período anterior
+  function serveIncomes(previous = 5, current = 15) {
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => {
+      const period = config.params.period as number;
+      const wide = period === 28;
+      return { data: metrics({ period_days: period, total_ingresos: wide ? current + previous : current }) };
+    });
+  }
+
+  async function openIncomes(props: Partial<React.ComponentProps<typeof TrendsPanel>> = {}) {
+    renderWithProviders(<TrendsPanel kind="ingresos" {...props} />);
+    await screen.findByTestId("incomes-panel");
+  }
+
+  it("resume lo ingresado, el promedio por día y el día de mayor ingreso", async () => {
+    serveIncomes();
+    await openIncomes();
+
+    expect(screen.getByTestId("incomes-total")).toHaveTextContent("15");
+    expect(screen.getByTestId("incomes-average")).toHaveTextContent("1,1");
+    expect(screen.getByTestId("incomes-peak")).toHaveTextContent("10");
+    expect(screen.getByTestId("incomes-peak-label")).toHaveTextContent("Día de mayor ingreso: 22 de octubre");
+    expect(screen.queryByTestId("trends-consumed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Más consumidos")).not.toBeInTheDocument();
+    expect(screen.getByText("Ingresos por día")).toBeInTheDocument();
+  });
+
+  it("compara con el período anterior", async () => {
+    serveIncomes(5, 15);
+    await openIncomes();
+
+    await waitFor(() => expect(screen.getByTestId("incomes-change")).toHaveTextContent("Ingresaste 200% más que en los 14 días anteriores."));
+  });
+
+  it("de toda la plataforma habla en tercera persona", async () => {
+    serveIncomes(30, 15);
+    await openIncomes({ audience: "platform" });
+
+    await waitFor(() => expect(screen.getByTestId("incomes-change")).toHaveTextContent("Ingresó 50% menos que en los 14 días anteriores."));
+  });
+
+  it("sin ingresos en el período anterior no hay con qué comparar", async () => {
+    serveIncomes(0, 15);
+    await openIncomes();
+
+    await waitFor(() => expect(screen.getByTestId("incomes-change")).toHaveTextContent("Todavía no hubo ingresos en el período anterior para comparar."));
+  });
+
+  it("el gráfico arranca en el día de mayor ingreso y las flechas recorren los días", async () => {
+    const user = userEvent.setup();
+    serveIncomes();
+    await openIncomes();
+
+    await waitFor(() => expect(screen.getByTestId("incomes-day-title")).toHaveTextContent("Jueves 22 de octubre"));
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresaron 10 unidades");
+    await user.click(screen.getByTestId("incomes-day-prev"));
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ese día no ingresó stock");
+    await user.click(screen.getByTestId("incomes-bar-11"));
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresaron 5 unidades");
+  });
+
+  it("un solo ingreso se dice en singular", async () => {
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+      data: metrics({ period_days: config.params.period, total_ingresos: 1, ingresos_por_dia: lastDays(14, { 13: 1 }) }),
+    }));
+    await openIncomes();
+
+    await waitFor(() => expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresó 1 unidad"));
+  });
+
+  it("sin ingresos en el período lo avisa", async () => {
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+      data: metrics({ period_days: config.params.period, total_ingresos: 0, ingresos_por_dia: lastDays(14) }),
+    }));
+    await openIncomes();
+
+    expect(screen.getByTestId("incomes-empty-period")).toHaveTextContent("No hubo ingresos de stock en estos 14 días.");
+    expect(screen.getByTestId("incomes-peak")).toHaveTextContent("–");
+    expect(screen.getByTestId("incomes-peak-label")).toHaveTextContent("Sin ingresos");
+  });
+
+  it("si el período lo elige la página, el panel no muestra su propio selector", async () => {
+    serveIncomes();
+    await openIncomes({ period: 14, onPeriodChange: vi.fn() });
+
+    expect(screen.queryByTestId("trends-period-14")).not.toBeInTheDocument();
   });
 });

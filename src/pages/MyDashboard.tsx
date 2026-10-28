@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3, Boxes, Clock, Cuboid, TrendingDown } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AlertLevel, AlertList, AlertOut, MyMetrics, MyProduct, MyProfile, MyStats, Paginated, StockChange } from "@/lib/types";
+import type { AlertList, AlertOut, MyMetrics, MyProduct, MyProfile, MyStats, Paginated, StockChange } from "@/lib/types";
 import { formatDateTime, formatThousands } from "@/lib/format";
+import { clearWelcome, justLoggedIn } from "@/lib/welcome";
 import { TREND_PERIODS, averagePerDay, formatDayLong, formatDayShort, peakIndex, type TrendPeriod } from "@/lib/trends";
 import { Button, Card, EmptyState, Segmented, Spinner, StatTile } from "@/components/ui";
 import AlertDetailModal from "@/components/AlertDetailModal";
 import AlertRow from "@/components/AlertRow";
+import CategoriesModal from "@/components/CategoriesModal";
 import ChangeRow from "@/components/ChangeRow";
 import ChangesModal from "@/components/ChangesModal";
 import ProductDetailModal from "@/components/ProductDetailModal";
@@ -17,7 +19,9 @@ import ProductRow from "@/components/ProductRow";
 import TrendsModal from "@/components/TrendsModal";
 
 const RECENT_CHANGES = 5;
-const RECENT_PRODUCTS = 3;
+const RECENT_PRODUCTS = 5;
+// Las categorías con más stock que se ven de entrada; el resto, en «Ver más»
+const TOP_CATEGORIES = 5;
 const UPCOMING = 3;
 // El nombre del saludo se corta, como en la app
 const NAME_MAX = 20;
@@ -55,8 +59,9 @@ function Section({ title, hint, children, action, testId }: { title: string; hin
 
 /**
  * Dashboard del usuario: el estado de su inventario de un vistazo. Arriba, las cuatro tarjetas de la app (cada una lleva a
- * su pantalla); debajo, gráficos que se pueden recorrer y tocar (consumo por día, vencimientos, alertas, stock por
- * categoría y ubicación), lo próximo a vencer y a reponerse, y los últimos cambios y productos cargados.
+ * su pantalla); debajo, gráficos que se pueden recorrer y tocar (consumo e ingresos por día, vencimientos, stock por
+ * categoría y ubicación), lo próximo a vencer y a reponerse, y los últimos cambios y productos cargados (hasta 5 cada uno).
+ * El encabezado dice «Bienvenido» si la persona acaba de iniciar sesión y «Tu estado» si cambió de página y volvió.
  */
 export default function MyDashboard() {
   const navigate = useNavigate();
@@ -65,6 +70,12 @@ export default function MyDashboard() {
   const [showChanges, setShowChanges] = useState(false);
   const [detail, setDetail] = useState<MyProduct | null>(null);
   const [alert, setAlert] = useState<AlertOut | null>(null);
+  const [showCategories, setShowCategories] = useState(false);
+  // Se mira una sola vez al entrar y se borra: al volver a esta página ya no es «recién ingresó»
+  const [justArrived] = useState(() => justLoggedIn());
+  useEffect(() => {
+    clearWelcome();
+  }, []);
 
   const stats = useQuery({
     queryKey: ["my-stats"],
@@ -102,20 +113,20 @@ export default function MyDashboard() {
 
   const data = stats.data;
   const name = profile.data?.first_name?.trim();
-  const greeting = name ? `Bienvenido, ${name.length > NAME_MAX ? `${name.slice(0, NAME_MAX)}...` : name}` : "Bienvenido";
-  // Las tarjetas y los gráficos de alertas abren el Centro de Alertas con esa opción ya elegida
-  const goToAlerts = (state: { tipo?: "stock" | "vencimiento"; level?: AlertLevel }) => navigate("/alertas", { state });
+  const lead = justArrived ? "Bienvenido" : "Tu estado";
+  const greeting = name ? `${lead}, ${name.length > NAME_MAX ? `${name.slice(0, NAME_MAX)}...` : name}` : lead;
+  // Las tarjetas abren el Centro de Alertas con ese tipo ya elegido
+  const goToAlerts = (state: { tipo?: "stock" | "vencimiento" }) => navigate("/alertas", { state });
   const goToInventory = (state?: { categoria?: string; vencido?: "si"; porVencer?: boolean }) => navigate("/productos", { state });
 
   const days = metrics.data?.consumo_por_dia ?? [];
   const peak = peakIndex(days);
   const consumed = metrics.data?.total_consumido ?? 0;
-  const alertSlices = [
-    { key: "critical" as const, label: "Críticas", value: data.critical_alerts, color: RED },
-    { key: "warning" as const, label: "Advertencias", value: data.warning_alerts, color: YELLOW },
-  ];
-  const withAlerts = alertSlices.some((slice) => slice.value > 0);
-  const categories = data.stock_by_category.slice(0, 6);
+  const incomeDays = metrics.data?.ingresos_por_dia ?? [];
+  const incomePeak = peakIndex(incomeDays);
+  const incomes = metrics.data?.total_ingresos ?? 0;
+  const sortedCategories = [...data.stock_by_category].sort((a, b) => b.count - a.count);
+  const categories = sortedCategories.slice(0, TOP_CATEGORIES);
   const maxStock = Math.max(1, ...categories.map((c) => c.count));
   const noExpiry = data.expiry_buckets.every((bucket) => bucket.count === 0);
 
@@ -124,7 +135,7 @@ export default function MyDashboard() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
         <p data-testid="dashboard-greeting" className="mt-1 text-sm text-muted">
-          {greeting} · Tu estado
+          {greeting}
         </p>
       </div>
 
@@ -169,109 +180,95 @@ export default function MyDashboard() {
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Section
-            testId="dashboard-consumption"
-            title="Consumo por día"
-            hint="Pasá el mouse por el gráfico para ver cada día"
-            action={
-              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="home-trends" onClick={() => setShowTrends(true)}>
-                <BarChart3 size={16} /> Tendencias
-              </Button>
-            }
-          >
-            <div className="mb-3">
-              <Segmented
-                testIdPrefix="dashboard-period"
-                value={period}
-                onChange={setPeriod}
-                options={TREND_PERIODS.map((p) => ({ key: p, label: `${p} días` }))}
-              />
-            </div>
-            {metrics.isLoading ? (
-              <Spinner />
-            ) : (
-              <>
-                <div data-testid="dashboard-consumption-chart" className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={days} margin={{ left: -20, right: 8, top: 8 }}>
-                      <defs>
-                        <linearGradient id="consumo" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={TEAL} stopOpacity={0.45} />
-                          <stop offset="95%" stopColor={TEAL} stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" vertical={false} />
-                      <XAxis dataKey="day" tickFormatter={formatDayShort} fontSize={11} stroke="#6E6E6E" minTickGap={18} />
-                      <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
-                      <Tooltip labelFormatter={(day) => formatDayLong(String(day))} formatter={(value) => [`${value} unidades`, "Consumo"]} />
-                      <Area type="monotone" dataKey="quantity" stroke={TEAL} strokeWidth={2.5} fill="url(#consumo)" activeDot={{ r: 5, fill: BLUE }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <dl className="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
-                  <div className="rounded-xl bg-canvas px-2 py-2">
-                    <dt className="text-[11px] text-muted">Consumido</dt>
-                    <dd data-testid="dashboard-consumed" className="font-bold text-primary">{formatThousands(consumed)}</dd>
-                  </div>
-                  <div className="rounded-xl bg-canvas px-2 py-2">
-                    <dt className="text-[11px] text-muted">Promedio por día</dt>
-                    <dd data-testid="dashboard-average" className="font-bold text-primaryDark">{formatThousands(averagePerDay(consumed, period))}</dd>
-                  </div>
-                  <div className="rounded-xl bg-canvas px-2 py-2">
-                    <dt className="text-[11px] text-muted">Día de mayor consumo</dt>
-                    <dd data-testid="dashboard-peak" className="font-bold text-ink">
-                      {peak !== null ? `${formatDayShort(days[peak].day)} (${days[peak].quantity})` : "Sin consumo"}
-                    </dd>
-                  </div>
-                </dl>
-              </>
-            )}
-          </Section>
-        </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <Segmented
+          testIdPrefix="dashboard-period"
+          value={period}
+          onChange={setPeriod}
+          options={TREND_PERIODS.map((p) => ({ key: p, label: `${p} días` }))}
+        />
+        <Button tone="ghost" className="!px-3 !py-1.5" data-testid="home-trends" onClick={() => setShowTrends(true)}>
+          <BarChart3 size={16} /> Tendencias
+        </Button>
+      </div>
 
-        <Section testId="dashboard-alerts" title="Alertas" hint="Tocá un nivel para verlas">
-          {withAlerts ? (
-            <div className="h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={alertSlices.filter((slice) => slice.value > 0)}
-                    dataKey="value"
-                    nameKey="label"
-                    innerRadius={42}
-                    outerRadius={66}
-                    paddingAngle={3}
-                    onClick={(slice) => goToAlerts({ level: (slice as unknown as { key: AlertLevel }).key })}
-                  >
-                    {alertSlices.filter((slice) => slice.value > 0).map((slice) => (
-                      <Cell key={slice.key} fill={slice.color} className="cursor-pointer" />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Section testId="dashboard-consumption" title="Consumo por día">
+          {metrics.isLoading ? (
+            <Spinner />
           ) : (
-            <EmptyState>No tenés alertas: todo en orden.</EmptyState>
+            <>
+              <div data-testid="dashboard-consumption-chart" className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={days} margin={{ left: -20, right: 8, top: 8 }}>
+                    <defs>
+                      <linearGradient id="consumo" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={TEAL} stopOpacity={0.45} />
+                        <stop offset="95%" stopColor={TEAL} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" vertical={false} />
+                    <XAxis dataKey="day" tickFormatter={formatDayShort} fontSize={11} stroke="#6E6E6E" minTickGap={18} />
+                    <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
+                    <Tooltip labelFormatter={(day) => formatDayLong(String(day))} formatter={(value) => [`${value} unidades`, "Consumo"]} />
+                    <Area type="monotone" dataKey="quantity" stroke={TEAL} strokeWidth={2.5} fill="url(#consumo)" activeDot={{ r: 5, fill: BLUE }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <dl className="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Consumido</dt>
+                  <dd data-testid="dashboard-consumed" className="font-bold text-primary">{formatThousands(consumed)}</dd>
+                </div>
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Promedio por día</dt>
+                  <dd data-testid="dashboard-average" className="font-bold text-primaryDark">{formatThousands(averagePerDay(consumed, period))}</dd>
+                </div>
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Día de mayor consumo</dt>
+                  <dd data-testid="dashboard-peak" className="font-bold text-ink">
+                    {peak !== null ? `${formatDayShort(days[peak].day)} (${days[peak].quantity})` : "Sin consumo"}
+                  </dd>
+                </div>
+              </dl>
+            </>
           )}
-          <ul className="mt-2 space-y-2">
-            {alertSlices.map((slice) => (
-              <li key={slice.key}>
-                <button
-                  type="button"
-                  data-testid={`dashboard-alerts-${slice.key}`}
-                  onClick={() => goToAlerts({ level: slice.key })}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition hover:bg-canvas"
-                >
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: slice.color }} />
-                  <span className="flex-1 text-left text-muted">{slice.label}</span>
-                  <span className="font-bold text-ink">{slice.value}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        </Section>
+
+        <Section testId="dashboard-incomes" title="Ingresos por día" hint="Todo el stock que se cargó: reposiciones y productos nuevos">
+          {metrics.isLoading ? (
+            <Spinner />
+          ) : (
+            <>
+              <div data-testid="dashboard-incomes-chart" className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={incomeDays} margin={{ left: -20, right: 8, top: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" vertical={false} />
+                    <XAxis dataKey="day" tickFormatter={formatDayShort} fontSize={11} stroke="#6E6E6E" minTickGap={18} />
+                    <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
+                    <Tooltip labelFormatter={(day) => formatDayLong(String(day))} formatter={(value) => [`${value} unidades`, "Ingresos"]} />
+                    <Bar dataKey="quantity" fill={BLUE} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <dl className="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Ingresado</dt>
+                  <dd data-testid="dashboard-incomes-total" className="font-bold text-primary">{formatThousands(incomes)}</dd>
+                </div>
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Promedio por día</dt>
+                  <dd data-testid="dashboard-incomes-average" className="font-bold text-primaryDark">{formatThousands(averagePerDay(incomes, period))}</dd>
+                </div>
+                <div className="rounded-xl bg-canvas px-2 py-2">
+                  <dt className="text-[11px] text-muted">Día de mayor ingreso</dt>
+                  <dd data-testid="dashboard-incomes-peak" className="font-bold text-ink">
+                    {incomePeak !== null ? `${formatDayShort(incomeDays[incomePeak].day)} (${incomeDays[incomePeak].quantity})` : "Sin ingresos"}
+                  </dd>
+                </div>
+              </dl>
+            </>
+          )}
         </Section>
       </div>
 
@@ -306,7 +303,18 @@ export default function MyDashboard() {
           )}
         </Section>
 
-        <Section testId="dashboard-categories" title="Stock por categoría" hint="Unidades en stock; tocá una para ver sus productos">
+        <Section
+          testId="dashboard-categories"
+          title="Stock por categoría"
+          hint="Las 5 con más unidades en stock; tocá una para ver sus productos"
+          action={
+            sortedCategories.length > TOP_CATEGORIES ? (
+              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-categories-more" onClick={() => setShowCategories(true)}>
+                Ver más
+              </Button>
+            ) : undefined
+          }
+        >
           {categories.length === 0 ? (
             <EmptyState>Todavía no hay productos cargados.</EmptyState>
           ) : (
@@ -429,6 +437,14 @@ export default function MyDashboard() {
         </section>
       </div>
 
+      {showCategories && (
+        <CategoriesModal
+          categories={sortedCategories}
+          colors={PALETTE}
+          onSelect={(label) => goToInventory({ categoria: label })}
+          onClose={() => setShowCategories(false)}
+        />
+      )}
       {showTrends && <TrendsModal onClose={() => setShowTrends(false)} />}
       {showChanges && <ChangesModal onClose={() => setShowChanges(false)} />}
       {detail && <ProductDetailModal product={detail} onClose={() => setDetail(null)} />}

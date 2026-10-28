@@ -1,5 +1,8 @@
+/** Cuántos caracteres de un dato largo se muestran en todo el dashboard antes del «...». */
+export const FIELD_MAX = 50;
+
 /** Trunca un texto a `max` caracteres y agrega "..." si lo excede. */
-export function truncate(value: string | null | undefined, max = 50): string {
+export function truncate(value: string | null | undefined, max = FIELD_MAX): string {
   if (!value) return "—";
   return value.length > max ? `${value.slice(0, max)}...` : value;
 }

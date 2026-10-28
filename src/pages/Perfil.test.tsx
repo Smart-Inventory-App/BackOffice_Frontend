@@ -35,10 +35,12 @@ function mockApi(value: MyProfile = profile(), taken = false) {
 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 
-async function show(value?: MyProfile, taken = false) {
+// Por defecto se pasa a editar (con el lápiz), que es donde están los campos
+async function show(value?: MyProfile, taken = false, edit = true) {
   mockApi(value, taken);
   renderWithProviders(<Perfil />);
   await screen.findByTestId("profile-avatar");
+  if (edit) await userEvent.setup().click(screen.getByTestId("profile-edit"));
 }
 
 describe("Perfil", () => {
@@ -46,7 +48,58 @@ describe("Perfil", () => {
     vi.clearAllMocks();
   });
 
-  it("precarga el formulario con el perfil actual y muestra el resumen de la cuenta", async () => {
+  it("primero muestra los datos ya cargados, sin campos para escribir, y un lápiz a la derecha del encabezado", async () => {
+    await show(undefined, false, false);
+
+    expect(screen.getByTestId("profile-view-first-name")).toHaveTextContent("Ana");
+    expect(screen.getByTestId("profile-view-last-name")).toHaveTextContent("Gómez");
+    expect(screen.getByTestId("profile-view-username")).toHaveTextContent("anag");
+    expect(screen.getByTestId("profile-view-type")).toHaveTextContent("Individuo");
+    expect(screen.getByTestId("profile-view-stock-days")).toHaveTextContent("7 días");
+    expect(screen.getByTestId("profile-view-expiry-days")).toHaveTextContent("10 días");
+    expect(screen.getByTestId("profile-view-check-hour")).toHaveTextContent("5 h");
+    expect(screen.getByTestId("profile-avatar")).toHaveTextContent("AG");
+    expect(screen.getByText("ana@test.com")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guardar cambios" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Editar perfil" })).toBeInTheDocument();
+  });
+
+  it("los datos que faltan se ven con un guion", async () => {
+    await show(profile({ first_name: null, last_name: null, username: null }), false, false);
+
+    expect(screen.getByTestId("profile-view-first-name")).toHaveTextContent("–");
+    expect(screen.getByTestId("profile-view-username")).toHaveTextContent("–");
+  });
+
+  it("el lápiz pasa a editar y «Cancelar» vuelve a la vista descartando lo escrito", async () => {
+    const user = userEvent.setup();
+    await show();
+
+    expect(screen.queryByTestId("profile-edit")).not.toBeInTheDocument();
+    await user.clear(field("Nombre"));
+    await user.type(field("Nombre"), "Otro");
+    await user.click(screen.getByTestId("profile-cancel"));
+
+    expect(screen.getByTestId("profile-view-first-name")).toHaveTextContent("Ana");
+    expect(api.put).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("profile-edit"));
+    expect(field("Nombre").value).toBe("Ana");
+  });
+
+  it("después de guardar vuelve a la vista con los datos nuevos y el aviso", async () => {
+    const user = userEvent.setup();
+    await show();
+    vi.mocked(api.put).mockResolvedValue({ data: profile({ first_name: "Anabel" }) });
+
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(await screen.findByTestId("profile-view")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-view-first-name")).toHaveTextContent("Anabel");
+    expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+  });
+
+  it("al editar, el formulario trae el perfil actual y muestra el resumen de la cuenta", async () => {
     await show();
 
     expect(field("Nombre").value).toBe("Ana");
@@ -186,6 +239,7 @@ describe("Perfil", () => {
     });
     renderWithProviders(<Perfil />);
     await screen.findByTestId("profile-avatar");
+    await user.click(screen.getByTestId("profile-edit"));
 
     await user.type(field("Usuario"), "x");
     await new Promise((resolve) => setTimeout(resolve, 450));

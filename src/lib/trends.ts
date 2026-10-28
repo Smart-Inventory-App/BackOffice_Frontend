@@ -11,7 +11,8 @@ export interface DayPoint {
 }
 
 /** Los períodos que se pueden elegir, en días. */
-export const TREND_PERIODS = [7, 14, 30] as const;
+// El dashboard suma los 90 días (en la app son 7, 14 y 30)
+export const TREND_PERIODS = [7, 14, 30, 90] as const;
 export type TrendPeriod = (typeof TREND_PERIODS)[number];
 
 /** Una fecha AAAA-MM-DD como fecha local (sin correrse de día por la zona horaria). */
