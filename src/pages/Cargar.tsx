@@ -959,17 +959,19 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
       <p className="mb-4 text-sm text-muted">
         {direction === "entrada" ? (
           <>
-            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca,
-            categoria, stock, vencimiento, descripcion, imagen_url, ubicacion, codigo_barras,
-            stock_minimo, dias_alerta_vencimiento (las últimas tres son opcionales). Es el
-            mismo formato que genera la exportación. Cada producto que se lea
-            aparece como una pestaña que podés revisar y modificar antes de confirmar la carga.
+            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, stock y
+            categoria (obligatorias) y, si querés, marca, vencimiento, codigo_barras, descripcion,
+            ubicacion, dias_stock_minimo y dias_alerta_vencimiento. Las opcionales pueden ir en
+            cualquier orden o faltar: quedan vacías. Es el mismo formato que genera la exportación.
+            Cada producto que se lea aparece como una pestaña que podés revisar y modificar antes de
+            confirmar la carga.
           </>
         ) : (
           <>
-            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre, marca, stock
-            (cantidad a sacar), vencimiento (opcional, para identificar el lote si hay más de uno
-            con ese nombre). Cada fila tiene que coincidir con un producto que ya tengas cargado.
+            Subí uno o varios archivos CSV o Excel (.xlsx) con las columnas: nombre y stock
+            (cantidad a sacar), obligatorias, y marca y vencimiento (opcionales, para identificar el
+            lote si hay más de uno con ese nombre). Cada fila tiene que coincidir con un producto que
+            ya tengas cargado.
           </>
         )}
       </p>

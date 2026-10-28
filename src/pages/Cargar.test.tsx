@@ -1367,3 +1367,51 @@ describe("Cargar · color de los botones de producto existente", () => {
     }
   });
 });
+
+describe("Cargar · archivo: columnas de la carga", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  it("la entrada pide nombre, stock y categoría, y deja las demás en cualquier orden o ausentes", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("flow-method-archivo"));
+
+    const texto = screen.getByText(/Subí uno o varios archivos CSV o Excel/).textContent!.replace(/\s+/g, " ");
+    expect(texto).toContain("nombre, stock y categoria (obligatorias)");
+    expect(texto).toContain("marca, vencimiento, codigo_barras, descripcion, ubicacion, dias_stock_minimo y dias_alerta_vencimiento");
+    expect(texto).toContain("cualquier orden o faltar");
+    expect(texto).toContain("el mismo formato que genera la exportación");
+    expect(texto).not.toContain("imagen_url");
+  });
+
+  it("la salida pide nombre y stock, y marca y vencimiento son opcionales", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("flow-direction-salida"));
+    await user.click(screen.getByTestId("flow-method-archivo"));
+
+    const texto = screen.getByText(/Subí uno o varios archivos CSV o Excel/).textContent!.replace(/\s+/g, " ");
+    expect(texto).toContain("nombre y stock (cantidad a sacar), obligatorias");
+    expect(texto).toContain("marca y vencimiento (opcionales");
+  });
+
+  it("si al archivo le faltan columnas obligatorias, lo avisa con cuáles", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockImplementation(async () => {
+      const err: any = new Error("fallo");
+      err.response = { status: 400, data: { detail: "Al archivo le faltan columnas obligatorias: stock" } };
+      throw err;
+    });
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("flow-method-archivo"));
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(["nombre,categoria\nLeche,Lácteos\n"], "productos.csv", { type: "text/csv" }));
+
+    expect(await screen.findByText(/Al archivo le faltan columnas obligatorias: stock/)).toBeInTheDocument();
+  });
+});

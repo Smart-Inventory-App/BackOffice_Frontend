@@ -796,3 +796,33 @@ it("el texto del stock total es un poco más grande", async () => {
   expect(summary.className).toContain("text-base");
   expect(screen.getByTestId("inventory-total-value").className).toContain("text-2xl");
 });
+
+describe("MyProducts · nombre de los archivos exportados", () => {
+  it("se descargan como «productos.csv» y «productos.xlsx»", async () => {
+    vi.clearAllMocks();
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/me/products/filters/options") return { data: OPCIONES };
+      if (url === "/me/products") return { data: paginated([product()]) };
+      if (url === "/me/products/stock-total") return { data: { stock_total: 5, products: 1 } };
+      if (url === "/me/profile") return { data: PERFIL };
+      if (url === "/me/products/export") return { data: new Blob(["x"]) };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const nombres: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      nombres.push(this.download);
+    });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("button", { name: /CSV/ }));
+    await waitFor(() => expect(nombres).toContain("productos.csv"));
+    await user.click(screen.getByRole("button", { name: /Excel/ }));
+    await waitFor(() => expect(nombres).toContain("productos.xlsx"));
+    expect(nombres.some((n) => n.startsWith("mis_"))).toBe(false);
+  });
+});

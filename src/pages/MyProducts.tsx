@@ -178,7 +178,7 @@ export default function MyProducts() {
       await downloadFile(
         "/me/products/export",
         { ...buildFilterParams(), format },
-        `mis_productos.${format}`,
+        `productos.${format}`,
       );
     } finally {
       setExporting(null);
