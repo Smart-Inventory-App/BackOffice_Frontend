@@ -1,33 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Barcode,
-  Camera,
-  CheckCircle2,
-  FileText,
-  RotateCcw,
-  ScanLine,
-} from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, FileText, RotateCcw, Tag } from "lucide-react";
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { Card } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
+import ProductoExistente from "@/components/ExistingProduct";
+import { BotonProcesar, ErrorScan, FotoInput, Progreso, detalle, unidades, useScan } from "@/components/scanTools";
 import type {
   BulkCommitResult,
   BulkProductRow,
-  OCRDocType,
   ProductDraft,
   ProductMatch,
+  ProductSuggestion,
   SalidaOCRResult,
   ScanResult,
-  ScanState,
 } from "@/lib/types";
-import { apiErrorMessage } from "@/lib/errors";
 import { invalidateInventory } from "@/lib/queries";
-
-/** Cada cuánto se le pregunta al módulo si ya terminó. */
-const POLL_MS = 1500;
 
 /** El mismo motivo que asienta el backend para una salida por comprobante. */
 const MOTIVO_COMPROBANTE = "Documento Comercial";
@@ -38,10 +27,15 @@ export type Prefill = {
   marca?: string;
   categoria?: string;
   ubicacion?: string;
+  vencimiento?: string;
+  descripcion?: string;
 };
 
-/** Lo que llega a la salida manual desde un renglón que no se pudo identificar. */
-export type SalidaPrefill = { busqueda: string; nota?: string };
+/**
+ * Lo que llega a la salida manual: el producto ya elegido (de una etiqueta o un código leídos) o, desde un renglón que no
+ * se pudo identificar, el texto a buscar.
+ */
+export type SalidaPrefill = { busqueda?: string; nota?: string; producto?: ProductSuggestion };
 
 type Opciones = { categorias: string[]; ubicaciones: string[]; marcas: string[] };
 
@@ -51,193 +45,6 @@ type Opciones = { categorias: string[]; ubicaciones: string[]; marcas: string[] 
 function refrescarInventario(qc: ReturnType<typeof useQueryClient>) {
   invalidateInventory(qc);
   qc.invalidateQueries({ queryKey: ["my-products-filter-options"] });
-}
-
-const OCR_NO_DISPONIBLE =
-  "El módulo de OCR no está disponible en este momento. Probá de nuevo en unos minutos o cargalo a mano.";
-
-function detalle(err: any, fallback: string): string {
-  // Un 502/503/504 trae el error de red crudo del gateway («[Errno -2] Name or
-  // service not known»): al usuario sólo le sirve saber que el módulo no responde.
-  if ([502, 503, 504].includes(err?.response?.status)) return OCR_NO_DISPONIBLE;
-  const mensaje = apiErrorMessage(err, fallback);
-  // El coordinador calcula cuánto falta para recuperar el cupo: sin ese dato,
-  // «superaste el límite» no dice cuándo volver a intentar.
-  const espera = Number(err?.response?.headers?.["retry-after"]);
-  if (err?.response?.status === 429 && espera > 0) {
-    return `${mensaje} Podés volver a intentar en ${formatEspera(espera).replace("~", "")}.`;
-  }
-  return mensaje;
-}
-
-function unidades(n: number | string): string {
-  return Number(n) === 1 ? "1 unidad" : `${n} unidades`;
-}
-
-function formatEspera(segundos: number | null): string {
-  if (segundos === null) return "";
-  if (segundos < 60) return `~${segundos} s`;
-  return `~${Math.round(segundos / 60)} min`;
-}
-
-/* ── el escaneo, y la espera ────────────────────────────────────────────── */
-
-/**
- * Manda una foto al módulo y sigue el trabajo hasta que termina.
- *
- * Un código de barras vuelve resuelto en la misma llamada; los demás tipos se
- * encolan y hay que consultarlos. Las dos formas se ven igual desde afuera para
- * que cada flujo no tenga que saber cuál le tocó.
- */
-function useScan(docType: OCRDocType) {
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [directo, setDirecto] = useState<ScanState | null>(null);
-  const [errorSubida, setErrorSubida] = useState<string | null>(null);
-
-  const subida = useMutation({
-    mutationFn: async (file: File) => {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("doc_type", docType);
-      const { data } = await api.post<ScanState>("/me/products/ocr/scan", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      return data;
-    },
-    onMutate: () => {
-      setErrorSubida(null);
-      setDirecto(null);
-      setJobId(null);
-    },
-    onSuccess: (data) =>
-      data.status === "done" ? setDirecto(data) : setJobId(data.job_id),
-    onError: (err: any) =>
-      setErrorSubida(detalle(err, "No se pudo enviar la foto al módulo de OCR.")),
-  });
-
-  const consulta = useQuery({
-    queryKey: ["ocr-scan", jobId],
-    queryFn: async () => (await api.get<ScanState>(`/me/products/ocr/scan/${jobId}`)).data,
-    enabled: Boolean(jobId),
-    refetchInterval: (query) => {
-      // Si la consulta falló —el trabajo expiró, no es de este usuario o el
-      // módulo se cayó a mitad de camino— seguir preguntando no lo arregla.
-      if (query.state.status === "error") return false;
-      const estado = query.state.data?.status;
-      return estado === "done" || estado === "failed" ? false : POLL_MS;
-    },
-  });
-
-  const estado = directo ?? consulta.data ?? null;
-  const terminado = estado?.status === "done" || estado?.status === "failed";
-  // Sin esto, un error al consultar dejaba la pantalla en "procesando…" para
-  // siempre y sin decir nada: el trabajo seguía "sin terminar" desde acá.
-  const errorConsulta = consulta.isError
-    ? detalle(consulta.error, "Se perdió el seguimiento del escaneo. Probá subir la foto de nuevo.")
-    : null;
-
-  return {
-    estado,
-    resultado: estado?.status === "done" ? estado.result : null,
-    error: errorSubida ?? errorConsulta ?? (estado?.status === "failed" ? estado.error : null),
-    procesando: subida.isPending || (Boolean(jobId) && !terminado && !consulta.isError),
-    enviado: subida.isPending || Boolean(jobId) || Boolean(directo) || Boolean(errorSubida),
-    subir: (file: File) => subida.mutate(file),
-    reiniciar: () => {
-      setJobId(null);
-      setDirecto(null);
-      setErrorSubida(null);
-      subida.reset();
-    },
-  };
-}
-
-type Scan = ReturnType<typeof useScan>;
-
-function Progreso({ scan, etiqueta }: { scan: Scan; etiqueta: string }) {
-  if (!scan.procesando) return null;
-
-  const posicion = scan.estado?.queue_position ?? null;
-  const espera = scan.estado?.estimated_wait_seconds ?? null;
-
-  return (
-    <p className="flex items-center gap-2 text-sm text-muted">
-      <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-line border-t-primary" />
-      {posicion
-        ? `${etiqueta}: ${posicion}º en la fila${espera !== null ? `, ${formatEspera(espera)}` : ""}`
-        : `${etiqueta}: procesando…`}
-    </p>
-  );
-}
-
-function FotoInput({
-  label,
-  hint,
-  file,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  hint: string;
-  file: File | null;
-  onChange: (file: File | null) => void;
-  disabled?: boolean;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-
-  // La vista previa vive sólo en esta pestaña y se libera al cambiar de foto.
-  useEffect(() => {
-    if (!file) {
-      setPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  return (
-    <div className="rounded-xl border border-line p-3">
-      <p className="text-sm font-medium text-ink">{label}</p>
-      <p className="mt-0.5 text-xs text-muted">{hint}</p>
-
-      {preview ? (
-        <div className="mt-2 flex items-start gap-3">
-          <img src={preview} alt={label} className="h-24 w-24 rounded-lg border border-line object-cover" />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => {
-                onChange(null);
-                if (ref.current) ref.current.value = "";
-              }}
-              className="text-xs font-medium text-muted underline hover:text-danger"
-            >
-              Quitar
-            </button>
-          )}
-        </div>
-      ) : (
-        <label
-          className={`mt-2 flex cursor-pointer items-center gap-2 rounded-xl border-2 border-dashed border-line px-4 py-3 text-sm text-muted transition hover:border-primary hover:bg-primary/5 ${
-            disabled ? "pointer-events-none opacity-50" : ""
-          }`}
-        >
-          <Camera size={16} />
-          Elegí una foto
-          <input
-            ref={ref}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-          />
-        </label>
-      )}
-    </div>
-  );
 }
 
 /* ── elegir a qué producto se refiere lo leído ──────────────────────────── */
@@ -319,65 +126,6 @@ function MatchPicker({
   );
 }
 
-/**
- * Qué producto corresponde a un código leído, cuando puede ser más de uno.
- *
- * Dos lotes del mismo producto comparten código y difieren en el vencimiento.
- * Antes se tomaba el primero sin preguntar, y la salida descontaba de un lote
- * cualquiera. Ahora vienen ordenados —primero el que vence antes— y, si hay más
- * de uno, se muestran para elegir.
- */
-function LoteDelCodigo({
-  coincidencias,
-  elegido,
-  onElegir,
-}: {
-  coincidencias: ProductMatch[];
-  elegido: number | null;
-  onElegir: (id: number) => void;
-}) {
-  if (coincidencias.length === 1) {
-    const m = coincidencias[0];
-    return (
-      <div className="rounded-xl border border-primary/40 bg-primary/5 p-4">
-        <p className="text-sm text-muted">Corresponde a</p>
-        <p className="text-lg font-semibold text-ink">{m.nombre}</p>
-        <p className="text-sm text-muted">
-          {m.marca ? `${m.marca} · ` : ""}stock actual {m.stock}
-          {m.vencimiento ? ` · vence ${m.vencimiento}` : ""}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-sm text-ink">
-        Tenés <span className="font-medium">{coincidencias.length} lotes</span> con este código.
-        Elegí de cuál se trata:
-      </p>
-      {coincidencias.map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          onClick={() => onElegir(m.id)}
-          className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 text-left text-sm transition ${
-            elegido === m.id ? "border-primary bg-primary/5" : "border-line hover:border-primary/50 hover:bg-canvas"
-          }`}
-        >
-          <span>
-            <span className="font-medium text-ink">{m.nombre}</span>
-            {m.marca && <span className="text-muted"> · {m.marca}</span>}
-          </span>
-          <span className="shrink-0 text-xs text-muted">
-            stock {m.stock} · {m.vencimiento ? `vence ${m.vencimiento}` : "sin vencimiento"}
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Aviso({ resultado }: { resultado: ScanResult }) {
   if (!resultado.needs_review && resultado.advertencias.length === 0) return null;
   return (
@@ -387,15 +135,6 @@ function Aviso({ resultado }: { resultado: ScanResult }) {
         La lectura salió con {Math.round(resultado.confianza * 100)} % de confianza: revisá los
         campos antes de confirmar.
       </span>
-    </p>
-  );
-}
-
-function ErrorScan({ scan }: { scan: Scan }) {
-  if (!scan.error) return null;
-  return (
-    <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
-      {scan.error}
     </p>
   );
 }
@@ -417,508 +156,103 @@ function Confirmado({ texto, onSeguir }: { texto: string; onSeguir: () => void }
   );
 }
 
-function BotonProcesar({
-  onClick,
-  disabled,
-  procesando,
-  children,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-  procesando: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || procesando}
-      className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-    >
-      <ScanLine size={16} />
-      {procesando ? "Procesando…" : children}
-    </button>
-  );
-}
+/* ── entrada · etiqueta del producto (siempre un producto nuevo) ───────── */
 
-/* ── entrada · imagen del producto ──────────────────────────────────────── */
+type Borrador = { nombre: string; marca: string; vencimiento: string; codigo_barras: string; descripcion: string };
 
-const BORRADOR_VACIO = {
-  nombre: "",
-  marca: "",
-  categoria: "",
-  stock: "1",
-  vencimiento: "",
-  codigo_barras: "",
-  descripcion: "",
-  ubicacion: "",
-};
-
-function EntradaProducto({ opciones, setOpciones }: { opciones: Opciones; setOpciones: (o: Opciones) => void }) {
-  const qc = useQueryClient();
+/**
+ * Se escanea la etiqueta de un producto NUEVO: lo leído se muestra para corregirlo y, cuando la persona lo valida, pasa
+ * todo al formulario de entrada del flujo de producto, donde se completa lo que falte (categoría, stock...) y se guarda.
+ * Los productos que ya están cargados se buscan en «Producto existente».
+ */
+function EntradaEtiqueta({ irAManual }: { irAManual: (p: Prefill) => void }) {
   const etiqueta = useScan("product_label");
-  const vencimiento = useScan("expiry_date");
-  const codigo = useScan("barcode");
+  const [foto, setFoto] = useState<File | null>(null);
+  const [form, setForm] = useState<Borrador | null>(null);
 
-  const [fotos, setFotos] = useState<{ producto: File | null; vencimiento: File | null; codigo: File | null }>({
-    producto: null,
-    vencimiento: null,
-    codigo: null,
-  });
-  const [form, setForm] = useState<typeof BORRADOR_VACIO | null>(null);
-  const [draft, setDraft] = useState<ProductDraft | null>(null);
-  const [elegido, setElegido] = useState<number | null>(null);
-  const [hecho, setHecho] = useState<string | null>(null);
-
-  const procesando = etiqueta.procesando || vencimiento.procesando || codigo.procesando;
-  const listo = Boolean(etiqueta.resultado) && !procesando;
-
-  // El borrador se arma una sola vez, cuando terminaron todas las fotos que se
-  // mandaron: a partir de ahí es del usuario y no se lo pisa.
+  const resultado = etiqueta.resultado;
+  // El borrador se arma una sola vez, cuando termina la lectura: a partir de ahí es de la persona y no se lo pisa.
   useEffect(() => {
-    if (!listo || form) return;
-    const principal = etiqueta.resultado?.draft;
-    if (!principal) return;
-
-    setDraft(principal);
-    setElegido(principal.coincidencia_id);
-
-    const match = principal.coincidencias.find((m) => m.id === principal.coincidencia_id);
+    const draft = resultado?.draft;
+    if (!draft || form) return;
     setForm({
-      ...BORRADOR_VACIO,
-      nombre: match?.nombre ?? principal.nombre ?? "",
-      marca: match?.marca ?? principal.marca ?? "",
-      categoria: match?.categoria ?? "",
-      ubicacion: match?.ubicacion ?? "",
-      descripcion: principal.descripcion ?? "",
-      vencimiento:
-        vencimiento.resultado?.draft?.vencimiento ?? match?.vencimiento ?? "",
-      codigo_barras:
-        codigo.resultado?.draft?.codigo_barras ?? match?.codigo_barras ?? "",
+      nombre: draft.nombre ?? "",
+      marca: draft.marca ?? "",
+      vencimiento: draft.vencimiento ?? "",
+      codigo_barras: draft.codigo_barras ?? "",
+      descripcion: draft.descripcion ?? "",
     });
-  }, [listo, form, etiqueta.resultado, vencimiento.resultado, codigo.resultado]);
-
-  const cargar = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post<{ merged?: boolean; nombre: string }>("/me/products", {
-        nombre: form!.nombre,
-        marca: form!.marca || null,
-        categoria: form!.categoria,
-        stock: Number(form!.stock),
-        vencimiento: form!.vencimiento || null,
-        descripcion: form!.descripcion || null,
-        ubicacion: form!.ubicacion || null,
-        codigo_barras: form!.codigo_barras || null,
-      });
-      return data;
-    },
-    onSuccess: (data) => {
-      refrescarInventario(qc);
-      setHecho(
-        data.merged
-          ? `Se ${Number(form!.stock) === 1 ? "sumó" : "sumaron"} ${unidades(form!.stock)} a «${data.nombre}», que ya tenías cargado.`
-          : `«${data.nombre}» quedó cargado con ${unidades(form!.stock)}.`,
-      );
-    },
-  });
+  }, [resultado, form]);
 
   const reiniciar = () => {
     etiqueta.reiniciar();
-    vencimiento.reiniciar();
-    codigo.reiniciar();
-    setFotos({ producto: null, vencimiento: null, codigo: null });
+    setFoto(null);
     setForm(null);
-    setDraft(null);
-    setElegido(null);
-    setHecho(null);
-    cargar.reset();
   };
 
-  const procesar = () => {
-    if (fotos.producto) etiqueta.subir(fotos.producto);
-    if (fotos.vencimiento) vencimiento.subir(fotos.vencimiento);
-    if (fotos.codigo) codigo.subir(fotos.codigo);
-  };
-
-  const elegirMatch = (match: ProductMatch | null) => {
-    setElegido(match?.id ?? null);
-    if (!match || !form) return;
-    // Tomar la coincidencia es decir «es este producto»: los datos del que ya
-    // está cargado mandan, para que el alta lo encuentre y le sume stock en vez
-    // de crear un duplicado con el nombre que leyó la cámara.
-    setForm({
-      ...form,
-      nombre: match.nombre,
-      marca: match.marca ?? "",
-      categoria: match.categoria ?? form.categoria,
-      ubicacion: match.ubicacion ?? form.ubicacion,
-      codigo_barras: form.codigo_barras || match.codigo_barras || "",
-    });
-  };
-
-  if (hecho) return <Confirmado texto={hecho} onSeguir={reiniciar} />;
-
-  const set = (campo: keyof typeof BORRADOR_VACIO) => (e: { target: { value: string } }) =>
+  const set = (campo: keyof Borrador) => (e: { target: { value: string } }) =>
     setForm((f) => (f ? { ...f, [campo]: e.target.value } : f));
 
   return (
     <div className="space-y-4">
       {!form && (
         <>
-          <div className="grid gap-3 md:grid-cols-3">
-            <FotoInput
-              label="Foto del producto *"
-              hint="El envase o su etiqueta, de frente"
-              file={fotos.producto}
-              disabled={procesando}
-              onChange={(f) => setFotos((s) => ({ ...s, producto: f }))}
-            />
-            <FotoInput
-              label="Fecha de vencimiento"
-              hint="El sello impreso, si está en otra cara"
-              file={fotos.vencimiento}
-              disabled={procesando}
-              onChange={(f) => setFotos((s) => ({ ...s, vencimiento: f }))}
-            />
-            <FotoInput
-              label="Código de barras"
-              hint="Para que el producto se reconozca solo la próxima vez"
-              file={fotos.codigo}
-              disabled={procesando}
-              onChange={(f) => setFotos((s) => ({ ...s, codigo: f }))}
-            />
+          <div className="max-w-sm">
+            <FotoInput label="Foto de la etiqueta del producto" hint="El envase o su etiqueta, de frente" file={foto} disabled={etiqueta.procesando} onChange={setFoto} />
           </div>
-
-          <BotonProcesar onClick={procesar} disabled={!fotos.producto} procesando={procesando}>
-            Procesar fotos
+          <BotonProcesar onClick={() => foto && etiqueta.subir(foto)} disabled={!foto} procesando={etiqueta.procesando}>
+            Leer etiqueta
           </BotonProcesar>
-
           <Progreso scan={etiqueta} etiqueta="Etiqueta" />
-          <Progreso scan={vencimiento} etiqueta="Vencimiento" />
-          <Progreso scan={codigo} etiqueta="Código de barras" />
-          {/* Con el módulo caído las tres fotos fallan igual: un aviso, no tres. */}
-          {[...new Set([etiqueta.error, vencimiento.error, codigo.error].filter(Boolean))].map((e) => (
-            <p
-              key={e}
-              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger"
-            >
-              {e}
-            </p>
-          ))}
+          <ErrorScan scan={etiqueta} />
         </>
       )}
 
-      {form && draft && (
+      {form && resultado && (
         <div className="space-y-4">
-          {etiqueta.resultado && <Aviso resultado={etiqueta.resultado} />}
-
-          {/* Que una foto secundaria falle no cancela el alta: el resto del
-              borrador sirve igual y el campo que faltó se completa a mano. */}
-          {(vencimiento.error || codigo.error) && (
-            <p className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              <span>
-                {vencimiento.error && codigo.error
-                  ? "No se pudieron leer la fecha de vencimiento ni el código de barras."
-                  : vencimiento.error
-                    ? "No se pudo leer la fecha de vencimiento."
-                    : "No se pudo leer el código de barras."}{" "}
-                Podés completarlo a mano acá abajo.
-              </span>
-            </p>
-          )}
-
-          <MatchPicker draft={draft} elegido={elegido} onElegir={elegirMatch} contexto="entrada" />
-
+          <Aviso resultado={resultado} />
+          <p className="text-sm font-semibold text-ink">Revisá lo que se leyó</p>
+          {resultado.draft?.texto_leido && <p className="text-xs text-muted">Texto leído: {resultado.draft.texto_leido}</p>}
           <div className="space-y-4 rounded-xl border border-line p-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
-                <input
-                  placeholder="ej. Leche entera 1L"
-                  value={form.nombre}
-                  onChange={set("nombre")}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-                {draft.texto_leido && draft.texto_leido !== form.nombre && (
-                  <p className="mt-1 text-xs text-muted">Se leyó: «{draft.texto_leido}»</p>
-                )}
+                <input placeholder="ej. Leche entera 1L" value={form.nombre} onChange={set("nombre")} className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary" />
               </div>
-              <Picklist
-                label="Marca"
-                value={form.marca}
-                options={opciones.marcas}
-                emptyLabel="Sin marca"
-                addPlaceholder="Opcional"
-                onChange={(v) => {
-                  setForm((f) => (f ? { ...f, marca: v } : f));
-                  setOpciones({ ...opciones, marcas: addIfMissing(opciones.marcas, v) });
-                }}
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Picklist
-                label="Categoría"
-                addPlaceholder="Ej. Lácteos"
-                value={form.categoria}
-                options={opciones.categorias}
-                required
-                onChange={(v) => {
-                  setForm((f) => (f ? { ...f, categoria: v } : f));
-                  setOpciones({ ...opciones, categorias: addIfMissing(opciones.categorias, v) });
-                }}
-              />
               <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Unidades a cargar</label>
-                <input
-                  placeholder="0"
-                  type="number"
-                  min={1}
-                  value={form.stock}
-                  onChange={set("stock")}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
+                <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
+                <input placeholder="Opcional" value={form.marca} onChange={set("marca")} className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary" />
               </div>
             </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Vencimiento</label>
-                <input
-                  type="date"
-                  value={form.vencimiento}
-                  onChange={set("vencimiento")}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
+                <label className="mb-1 block text-sm font-medium text-ink">Fecha de vencimiento</label>
+                <input type="date" value={form.vencimiento} onChange={set("vencimiento")} className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Código de barras</label>
-                <input
-                  inputMode="numeric"
-                  value={form.codigo_barras}
-                  onChange={(e) =>
-                    setForm((f) => (f ? { ...f, codigo_barras: limpiarCodigo(e.target.value) } : f))
-                  }
-                  placeholder="Opcional"
-                  className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
-                />
+                <input inputMode="numeric" placeholder="Opcional" value={form.codigo_barras} onChange={(e) => setForm((f) => (f ? { ...f, codigo_barras: e.target.value.replace(/\D/g, "").slice(0, 14) } : f))} className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary" />
               </div>
             </div>
-
-            <Picklist
-              label="Ubicación"
-              emptyLabel="Ej. Heladera, Alacena A, Freezer"
-              addPlaceholder="Ej. Heladera, Alacena A, Freezer"
-              value={form.ubicacion}
-              options={opciones.ubicaciones}
-              onChange={(v) => {
-                setForm((f) => (f ? { ...f, ubicacion: v } : f));
-                setOpciones({ ...opciones, ubicaciones: addIfMissing(opciones.ubicaciones, v) });
-              }}
-            />
-
             <div>
               <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
-              <textarea
-                placeholder="Opcional"
-                value={form.descripcion}
-                onChange={set("descripcion")}
-                rows={3}
-                className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-              />
+              <textarea placeholder="Opcional" value={form.descripcion} onChange={set("descripcion")} rows={3} className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary" />
             </div>
           </div>
-
-          {cargar.isError && (
-            <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
-              {detalle(cargar.error, "No se pudo cargar el producto.")}
-            </p>
-          )}
-
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => cargar.mutate()}
-              disabled={cargar.isPending || !form.nombre || !form.categoria || !form.stock}
+              data-testid="etiqueta-confirmar"
+              onClick={() => irAManual({ ...form })}
+              disabled={!form.nombre.trim()}
               className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
-              {cargar.isPending ? "Cargando…" : "Confirmar carga"}
+              Confirmar y pasar al formulario
             </button>
-            <button
-              type="button"
-              onClick={reiniciar}
-              className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-            >
+            <button type="button" onClick={reiniciar} className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas">
               Descartar y escanear otra
             </button>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── entrada · código de barras ─────────────────────────────────────────── */
-
-function EntradaCodigo({ irAManual }: { irAManual: (p: Prefill) => void }) {
-  const qc = useQueryClient();
-  const codigo = useScan("barcode");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [cantidad, setCantidad] = useState("1");
-  const [hecho, setHecho] = useState<string | null>(null);
-  const [elegido, setElegido] = useState<number | null>(null);
-
-  const draft = codigo.resultado?.draft ?? null;
-  useEffect(() => setElegido(draft?.coincidencia_id ?? null), [draft]);
-  const match = draft?.coincidencias.find((m) => m.id === elegido) ?? null;
-
-  const cargar = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post<{ merged?: boolean; nombre: string }>("/me/products", {
-        nombre: match!.nombre,
-        marca: match!.marca,
-        categoria: match!.categoria,
-        stock: Number(cantidad),
-        vencimiento: match!.vencimiento,
-        ubicacion: match!.ubicacion,
-        codigo_barras: draft!.codigo_barras,
-      });
-      return data;
-    },
-    onSuccess: (data) => {
-      refrescarInventario(qc);
-      setHecho(`Se ${Number(cantidad) === 1 ? "sumó" : "sumaron"} ${unidades(cantidad)} a «${data.nombre}».`);
-    },
-  });
-
-  const reiniciar = () => {
-    codigo.reiniciar();
-    setFoto(null);
-    setCantidad("1");
-    setHecho(null);
-    cargar.reset();
-    setElegido(null);
-  };
-
-  if (hecho) return <Confirmado texto={hecho} onSeguir={reiniciar} />;
-
-  return (
-    <div className="space-y-4">
-      <div className="max-w-sm">
-        <FotoInput
-          label="Foto del código de barras"
-          hint="De cerca y derecho: se decodifica en menos de un segundo"
-          file={foto}
-          disabled={codigo.procesando}
-          onChange={setFoto}
-        />
-      </div>
-
-      {!draft && (
-        <BotonProcesar
-          onClick={() => foto && codigo.subir(foto)}
-          disabled={!foto}
-          procesando={codigo.procesando}
-        >
-          Leer código
-        </BotonProcesar>
-      )}
-
-      <ErrorScan scan={codigo} />
-
-      {draft && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-line p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Código leído</p>
-            <p className="font-mono text-xl font-semibold text-ink">{draft.codigo_barras}</p>
-            {draft.pais_registro && (
-              <p className="mt-1 text-xs text-muted">Registrado en {draft.pais_registro}</p>
-            )}
-          </div>
-
-          {match ? (
-            <>
-              <LoteDelCodigo coincidencias={draft.coincidencias} elegido={elegido} onElegir={setElegido} />
-
-              {/* Sumar al lote elegido conserva su vencimiento. Si la caja que
-                  llegó vence en otra fecha, es otro lote y va por el alta. */}
-              <button
-                type="button"
-                onClick={() =>
-                  irAManual({
-                    codigo_barras: draft.codigo_barras ?? "",
-                    nombre: match.nombre,
-                    marca: match.marca ?? "",
-                    categoria: match.categoria ?? "",
-                    ubicacion: match.ubicacion ?? "",
-                  })
-                }
-                className="text-xs font-medium text-muted underline hover:text-primaryDark"
-              >
-                ¿Vence en otra fecha? Cargalo como lote nuevo
-              </button>
-
-              <div className="max-w-xs">
-                <label className="mb-1 block text-sm font-medium text-ink">Unidades a cargar</label>
-                <input
-                  placeholder="0"
-                  type="number"
-                  min={1}
-                  value={cantidad}
-                  onChange={(e) => setCantidad(e.target.value)}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
-
-              {cargar.isError && (
-                <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
-                  {detalle(cargar.error, "No se pudo cargar el stock.")}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => cargar.mutate()}
-                  disabled={cargar.isPending || Number(cantidad) < 1}
-                  className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {cargar.isPending ? "Cargando…" : "Confirmar entrada"}
-                </button>
-                <button
-                  type="button"
-                  onClick={reiniciar}
-                  className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-                >
-                  Leer otro código
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-3">
-              <p className="rounded-xl bg-canvas px-4 py-3 text-sm text-muted">
-                No tenés ningún producto con este código. Cargalo una vez y las próximas veces la
-                foto del código va a alcanzar.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => irAManual({ codigo_barras: draft.codigo_barras ?? "" })}
-                  className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                >
-                  Cargar producto nuevo con este código
-                </button>
-                <button
-                  type="button"
-                  onClick={reiniciar}
-                  className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-                >
-                  Leer otro código
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -1232,153 +566,6 @@ function EntradaComprobante({ opciones, setOpciones }: { opciones: Opciones; set
   );
 }
 
-/* ── salida · código de barras ──────────────────────────────────────────── */
-
-function SalidaCodigo() {
-  const qc = useQueryClient();
-  const codigo = useScan("barcode");
-  const [foto, setFoto] = useState<File | null>(null);
-  const [cantidad, setCantidad] = useState("1");
-  const [motivo, setMotivo] = useState<"consumed" | "expired">("consumed");
-  const [hecho, setHecho] = useState<string | null>(null);
-  const [elegido, setElegido] = useState<number | null>(null);
-
-  const draft = codigo.resultado?.draft ?? null;
-  useEffect(() => setElegido(draft?.coincidencia_id ?? null), [draft]);
-  const match = draft?.coincidencias.find((m) => m.id === elegido) ?? null;
-
-  const descargar = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post<{ nombre: string; stock: number }>("/me/products/salida", {
-        product_id: match!.id,
-        quantity: Number(cantidad),
-        event_type: motivo,
-      });
-      return data;
-    },
-    onSuccess: (data) => {
-      refrescarInventario(qc);
-      setHecho(`${Number(cantidad) === 1 ? "Salió" : "Salieron"} ${unidades(cantidad)} de «${data.nombre}». Quedan ${data.stock}.`);
-    },
-  });
-
-  const reiniciar = () => {
-    codigo.reiniciar();
-    setFoto(null);
-    setCantidad("1");
-    setHecho(null);
-    descargar.reset();
-  };
-
-  if (hecho) return <Confirmado texto={hecho} onSeguir={reiniciar} />;
-
-  return (
-    <div className="space-y-4">
-      <div className="max-w-sm">
-        <FotoInput
-          label="Foto del código de barras"
-          hint="De cerca y derecho: se decodifica en menos de un segundo"
-          file={foto}
-          disabled={codigo.procesando}
-          onChange={setFoto}
-        />
-      </div>
-
-      {!draft && (
-        <BotonProcesar
-          onClick={() => foto && codigo.subir(foto)}
-          disabled={!foto}
-          procesando={codigo.procesando}
-        >
-          Leer código
-        </BotonProcesar>
-      )}
-
-      <ErrorScan scan={codigo} />
-
-      {draft && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-line p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Código leído</p>
-            <p className="font-mono text-xl font-semibold text-ink">{draft.codigo_barras}</p>
-          </div>
-
-          {match ? (
-            <>
-              <LoteDelCodigo coincidencias={draft.coincidencias} elegido={elegido} onElegir={setElegido} />
-
-              <div className="grid max-w-md gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Unidades a sacar</label>
-                  <input
-                    placeholder="0"
-                    type="number"
-                    min={1}
-                    max={match.stock}
-                    value={cantidad}
-                    onChange={(e) => setCantidad(e.target.value)}
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Motivo</label>
-                  <select
-                    value={motivo}
-                    onChange={(e) => setMotivo(e.target.value as "consumed" | "expired")}
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  >
-                    <option value="consumed">Consumido</option>
-                    <option value="expired">Vencido</option>
-                  </select>
-                </div>
-              </div>
-
-              {descargar.isError && (
-                <p className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
-                  {detalle(descargar.error, "No se pudo registrar la salida.")}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => descargar.mutate()}
-                  disabled={descargar.isPending || Number(cantidad) < 1}
-                  className="rounded-xl bg-danger px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {descargar.isPending ? "Registrando…" : "Confirmar salida"}
-                </button>
-                <button
-                  type="button"
-                  onClick={reiniciar}
-                  className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-                >
-                  Leer otro código
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-3">
-              <p className="rounded-xl bg-canvas px-4 py-3 text-sm text-muted">
-                No tenés ningún producto con este código, así que no hay nada que descargar. Si es
-                un producto que sí tenés, cargale el código desde su ficha y la próxima vez lo
-                vamos a reconocer.
-              </p>
-              <button
-                type="button"
-                onClick={reiniciar}
-                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-              >
-                Leer otro código
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ── salida · comprobante ───────────────────────────────────────────────── */
 
 function SalidaComprobante({ irASalidaManual }: { irASalidaManual: (p: SalidaPrefill) => void }) {
@@ -1592,13 +779,16 @@ function SalidaComprobante({ irASalidaManual }: { irASalidaManual: (p: SalidaPre
 
 type Modo = "producto" | "comprobante" | "codigo";
 
+// Una entrada por imagen es siempre de productos nuevos: solo se escanea la etiqueta (el código de barras y el vencimiento
+// se escanean desde su campo del formulario) o un comprobante con muchos productos. La salida, como en la app, se arma con el
+// código de barras, la etiqueta o un comprobante.
 const MODOS: Record<"entrada" | "salida", { value: Modo; label: string; hint: string; icon: typeof Camera }[]> = {
   entrada: [
     {
       value: "producto",
-      label: "Imagen del producto",
-      hint: "El envase o su etiqueta. Podés sumar la fecha de vencimiento y el código",
-      icon: Camera,
+      label: "Etiqueta de producto",
+      hint: "El envase o su etiqueta: lo leído pasa al formulario de un producto nuevo",
+      icon: Tag,
     },
     {
       value: "comprobante",
@@ -1606,19 +796,19 @@ const MODOS: Record<"entrada" | "salida", { value: Modo; label: string; hint: st
       hint: "Carga todos los productos de una compra de una sola vez",
       icon: FileText,
     },
-    {
-      value: "codigo",
-      label: "Código de barras",
-      hint: "Lo más rápido si el producto ya lo tenés cargado con su código",
-      icon: Barcode,
-    },
   ],
   salida: [
     {
       value: "codigo",
       label: "Código de barras",
-      hint: "Escaneás el envase y elegís cuántas unidades salen",
-      icon: Barcode,
+      hint: "Escaneás el envase y elegís el producto que sale",
+      icon: Camera,
+    },
+    {
+      value: "producto",
+      label: "Etiqueta de producto",
+      hint: "Se busca el producto con la etiqueta y se indica cuántas unidades salen",
+      icon: Tag,
     },
     {
       value: "comprobante",
@@ -1642,8 +832,7 @@ export default function Procesamiento({
   const [modo, setModo] = useState<Modo>(modos[0].value);
   const [opciones, setOpciones] = useState<Opciones>({ categorias: [], ubicaciones: [], marcas: [] });
 
-  // Si se cambia de entrada a salida, el subflujo elegido puede no existir del
-  // otro lado: no hay salida por imagen de producto.
+  // Si se cambia de entrada a salida, el subflujo elegido puede no existir del otro lado
   useEffect(() => {
     if (!modos.some((m) => m.value === modo)) setModo(modos[0].value);
   }, [modos, modo]);
@@ -1657,19 +846,6 @@ export default function Procesamiento({
 
   return (
     <div className="space-y-4">
-      <Card>
-        <p className="text-sm text-ink">
-          Sacale una foto a lo que quieras {direction === "entrada" ? "cargar" : "descargar"} y el
-          sistema la lee por vos: reconoce el producto, lo busca entre los que ya tenés y te deja{" "}
-          <span className="font-medium">revisar y corregir todo</span> antes de confirmar. Nada se
-          guarda hasta que lo confirmás.
-        </p>
-        <p className="mt-2 text-sm text-muted">
-          Las fotos <span className="font-medium text-ink">no se almacenan</span>: se procesan y se
-          descartan. De cada lectura queda sólo un registro breve en la auditoría del módulo.
-        </p>
-      </Card>
-
       <div className={`grid gap-3 ${modos.length === 3 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         {modos.map((m) => {
           const Icon = m.icon;
@@ -1696,14 +872,14 @@ export default function Procesamiento({
       <Card>
         {direction === "entrada" ? (
           modo === "producto" ? (
-            <EntradaProducto opciones={opciones} setOpciones={setOpciones} />
-          ) : modo === "comprobante" ? (
-            <EntradaComprobante opciones={opciones} setOpciones={setOpciones} />
+            <EntradaEtiqueta irAManual={irAManual} />
           ) : (
-            <EntradaCodigo irAManual={irAManual} />
+            <EntradaComprobante opciones={opciones} setOpciones={setOpciones} />
           )
         ) : modo === "codigo" ? (
-          <SalidaCodigo />
+          <ProductoExistente key="codigo" mode="exit" method="codigo" onSelectProduct={(producto) => irASalidaManual({ producto })} />
+        ) : modo === "producto" ? (
+          <ProductoExistente key="etiqueta" mode="exit" method="etiqueta" onSelectProduct={(producto) => irASalidaManual({ producto })} />
         ) : (
           <SalidaComprobante irASalidaManual={irASalidaManual} />
         )}

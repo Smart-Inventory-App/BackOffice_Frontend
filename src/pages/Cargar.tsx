@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, CalendarDays, Camera, ChevronDown, ChevronUp, FileSpreadsheet, PenLine, UploadCloud, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Barcode, CalendarDays, Camera, ChevronDown, ChevronUp, FileSpreadsheet, PackageSearch, PenLine, Tag, UploadCloud, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { LARGOS_CODIGO, digitosDelCodigo } from "@/lib/barcode";
 import { displayToIso, formatDateDigits, isoToDisplay } from "@/lib/dateInput";
@@ -8,7 +8,9 @@ import { Card } from "@/components/ui";
 import ImageUpload from "@/components/ImageUpload";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
-import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
+import ProductoExistente, { type ExistingMethod } from "@/components/ExistingProduct";
+import { useScan } from "@/components/scanTools";
+import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductDraft, ProductSuggestion } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
 import { invalidateInventory } from "@/lib/queries";
 
@@ -68,6 +70,66 @@ function FieldLabel({ children, required, counter, counterId }: { children: stri
   );
 }
 
+/**
+ * Un botón con una cámara al lado de un campo: se elige una foto, el módulo de OCR la lee y lo leído completa el campo (la
+ * fecha de vencimiento o el código de barras), que sigue siendo editable. Es el mismo botón que tiene la app en esos campos.
+ */
+function ScanFieldButton({
+  docType,
+  label,
+  onRead,
+  onFail,
+}: {
+  docType: "expiry_date" | "barcode";
+  label: string;
+  onRead: (draft: ProductDraft | null) => void;
+  onFail: (message: string) => void;
+}) {
+  const scan = useScan(docType);
+  const input = useRef<HTMLInputElement>(null);
+  const resultado = scan.resultado;
+
+  useEffect(() => {
+    if (!resultado) return;
+    onRead(resultado.draft);
+    scan.reiniciar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultado]);
+
+  useEffect(() => {
+    if (scan.error) onFail(scan.error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scan.error]);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        data-testid={`scan-${docType}`}
+        aria-label={label}
+        title={label}
+        disabled={scan.procesando}
+        onClick={() => input.current?.click()}
+        className="flex h-[38px] w-[38px] items-center justify-center rounded-xl border border-line bg-white text-primary transition hover:bg-primary/10 disabled:opacity-60"
+      >
+        {scan.procesando ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-primary" /> : <Camera size={18} />}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        data-testid={`scan-${docType}-input`}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) scan.subir(file);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
 function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPrefillUsed?: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
@@ -83,6 +145,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
   const [duplicado, setDuplicado] = useState<ProductSuggestion | null>(null);
   const [codigoError, setCodigoError] = useState<string | null>(null);
   const dateRef = useRef<HTMLInputElement>(null);
+  // Lo que salió mal al leer una foto, debajo del campo escaneado
+  const [scanNote, setScanNote] = useState<{ field: "vencimiento" | "codigo"; text: string } | null>(null);
 
   useEffect(() => {
     api
@@ -354,18 +418,48 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
                 className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
               />
             </div>
+            <ScanFieldButton
+              docType="expiry_date"
+              label="Escanear fecha de vencimiento"
+              onRead={(draft) => {
+                if (draft?.vencimiento) {
+                  onVencimiento(isoToDisplay(draft.vencimiento));
+                  setScanNote(null);
+                } else {
+                  setScanNote({ field: "vencimiento", text: "No se pudo leer una fecha en la foto" });
+                }
+              }}
+              onFail={(text) => setScanNote({ field: "vencimiento", text })}
+            />
           </div>
+          {scanNote?.field === "vencimiento" && <p data-testid="scan-note" className="mt-1 text-xs text-amber-700">{scanNote.text}</p>}
         </div>
         <div>
           <FieldLabel>Código de barras</FieldLabel>
-          <input
-            inputMode="numeric"
-            value={form.codigo_barras}
-            onChange={(e) => setForm((f) => ({ ...f, codigo_barras: onlyDigits(e.target.value, BARCODE_MAX_DIGITS) }))}
-            placeholder="Opcional"
-            aria-label="Código de barras"
-            className={INPUT}
-          />
+          <div className="flex gap-2">
+            <input
+              inputMode="numeric"
+              value={form.codigo_barras}
+              onChange={(e) => setForm((f) => ({ ...f, codigo_barras: onlyDigits(e.target.value, BARCODE_MAX_DIGITS) }))}
+              placeholder="Opcional"
+              aria-label="Código de barras"
+              className={`${INPUT} min-w-0 flex-1`}
+            />
+            <ScanFieldButton
+              docType="barcode"
+              label="Escanear código de barras"
+              onRead={(draft) => {
+                if (draft?.codigo_barras) {
+                  setForm((f) => ({ ...f, codigo_barras: onlyDigits(draft.codigo_barras ?? "", BARCODE_MAX_DIGITS) }));
+                  setScanNote(null);
+                } else {
+                  setScanNote({ field: "codigo", text: "No se pudo leer un código de barras: podés escribirlo" });
+                }
+              }}
+              onFail={(text) => setScanNote({ field: "codigo", text })}
+            />
+          </div>
+          {scanNote?.field === "codigo" && <p data-testid="scan-note" className="mt-1 text-xs text-amber-700">{scanNote.text}</p>}
           {codigoError ? (
             <p className="mt-1 text-xs text-danger">{codigoError}</p>
           ) : duplicado ? (
@@ -514,12 +608,20 @@ function SalidaForm({
 
   useEffect(() => {
     if (!prefill) return;
-    setSelected(null);
-    setQuery(prefill.busqueda);
     setNota((prefill.nota ?? "").slice(0, SALIDA_NOTA_MAX));
-    setShowSuggestions(true);
     setOkMessage(null);
     setError(null);
+    if (prefill.producto) {
+      // Un producto ya reconocido (por su etiqueta o su código de barras): queda elegido, como en la app
+      setSelected(prefill.producto);
+      setQuery(prefill.producto.nombre);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    } else {
+      setSelected(null);
+      setQuery(prefill.busqueda ?? "");
+      setShowSuggestions(true);
+    }
     onPrefillUsed?.();
   }, [prefill, onPrefillUsed]);
 
@@ -1139,13 +1241,24 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   );
 }
 
-const TABS: { value: "manual" | "archivo" | "procesamiento"; label: string; icon: LucideIcon }[] = [
+type Direction = "existente" | "entrada" | "salida";
+type Tab = "manual" | "archivo" | "procesamiento";
+
+const TABS: { value: Tab; label: string; icon: LucideIcon }[] = [
   { value: "manual", label: "Manual", icon: PenLine },
   { value: "archivo", label: "Archivo", icon: FileSpreadsheet },
   { value: "procesamiento", label: "Procesamiento", icon: Camera },
 ];
 
-const DIRECTIONS: { value: "entrada" | "salida"; label: string; icon: LucideIcon; active: string }[] = [
+// Cómo se busca un producto que ya está cargado: por su nombre, por su etiqueta o por su código de barras
+const EXISTING_METHODS: { value: ExistingMethod; label: string; icon: LucideIcon }[] = [
+  { value: "nombre", label: "Nombre", icon: PenLine },
+  { value: "etiqueta", label: "Etiqueta", icon: Tag },
+  { value: "codigo", label: "Código de barras", icon: Barcode },
+];
+
+const DIRECTIONS: { value: Direction; label: string; icon: LucideIcon; active: string }[] = [
+  { value: "existente", label: "Producto existente", icon: PackageSearch, active: "bg-primaryDark text-white shadow-card" },
   { value: "entrada", label: "Entrada", icon: ArrowDownToLine, active: "bg-primary text-white shadow-card" },
   { value: "salida", label: "Salida", icon: ArrowUpFromLine, active: "bg-critical text-white shadow-card" },
 ];
@@ -1189,8 +1302,9 @@ function FlowSwitch<T extends string>({
 }
 
 export default function Cargar() {
-  const [tab, setTab] = useState<"manual" | "archivo" | "procesamiento">("manual");
-  const [direction, setDirection] = useState<"entrada" | "salida">("entrada");
+  const [tab, setTab] = useState<Tab>("manual");
+  const [direction, setDirection] = useState<Direction>("entrada");
+  const [existingMethod, setExistingMethod] = useState<ExistingMethod>("nombre");
 
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const irAManual = (valores: Prefill) => {
@@ -1212,19 +1326,23 @@ export default function Cargar() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-[14rem] flex-1">
           <h1 className="text-2xl font-bold text-ink">Flujo de producto</h1>
-          <p className="mt-1 text-sm text-muted">
-            {direction === "entrada"
-              ? "Alta de productos a tu inventario: a mano, por archivo o sacándoles una foto"
-              : "Registrá salidas de stock: a mano, por archivo o sacándoles una foto"}
-          </p>
+          <p className="mt-1 text-sm text-muted">Alta y baja de productos a tu inventario</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
           <FlowSwitch label="Tipo de flujo" testId="flow-direction" options={DIRECTIONS} value={direction} onChange={setDirection} />
-          <FlowSwitch label="Método de carga" testId="flow-method" options={TABS} value={tab} onChange={setTab} />
+          {direction === "existente" ? (
+            <FlowSwitch label="Cómo buscar el producto" testId="flow-existing" options={EXISTING_METHODS} value={existingMethod} onChange={setExistingMethod} />
+          ) : (
+            <FlowSwitch label="Método de carga" testId="flow-method" options={TABS} value={tab} onChange={setTab} />
+          )}
         </div>
       </div>
 
-      {tab === "manual" ? (
+      {direction === "existente" ? (
+        <Card className="w-full">
+          <ProductoExistente key={existingMethod} mode="entry" method={existingMethod} onLoadAsNew={irAManual} />
+        </Card>
+      ) : tab === "manual" ? (
         direction === "entrada" ? (
           <ManualForm prefill={prefill} onPrefillUsed={() => setPrefill(null)} />
         ) : (

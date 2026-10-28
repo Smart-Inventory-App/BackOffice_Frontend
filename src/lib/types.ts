@@ -219,6 +219,8 @@ export interface ProductSuggestion {
   stock: number;
   stock_minimo: number | null;
   dias_alerta_vencimiento: number | null;
+  codigo_barras?: string | null;
+  imagen_url?: string | null;
 }
 
 export interface MyDefaults {
