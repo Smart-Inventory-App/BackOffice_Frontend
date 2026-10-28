@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History } from "lucide-react";
+import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History, Layers } from "lucide-react";
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
-import type { MyProduct, Paginated } from "@/lib/types";
-import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import type { AlertList, AlertOut, MyProduct, Paginated } from "@/lib/types";
+import { Badge, Button, Card, PageHeader, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import ProductImage from "@/components/ProductImage";
-import { truncate } from "@/lib/format";
+import ImageUpload from "@/components/ImageUpload";
+import ProductDetailModal from "@/components/ProductDetailModal";
+import StockTotalModal, { type StockTotalTarget } from "@/components/StockTotalModal";
+import { formatDate, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
@@ -16,16 +19,9 @@ import { apiErrorMessage } from "@/lib/errors";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
-function isExpiringSoon(date: string | null): boolean {
-  if (!date) return false;
-  const d = new Date(date).getTime();
-  const now = Date.now();
-  return d >= now && d <= now + 7 * 24 * 60 * 60 * 1000;
-}
-function isExpired(date: string | null): boolean {
-  if (!date) return false;
-  return new Date(date).getTime() < Date.now();
-}
+// Cada producto tiene su nivel de alerta según SUS reglas (la propia o la del perfil), el mismo del Centro de Alertas
+const LEVEL_BADGE = { critical: "off", warning: "warn" } as const;
+const LEVEL_TEXT = { critical: "Crítica", warning: "Advertencia" } as const;
 
 const EDIT_EMPTY = {
   nombre: "",
@@ -47,11 +43,14 @@ export default function MyProducts() {
   const [categoria, setCategoria] = useState("");
   const [vencido, setVencido] = useState<"" | "si" | "no">("");
   const [bajoStock, setBajoStock] = useState(false);
+  const [porVencer, setPorVencer] = useState(false);
   const [sortBy, setSortBy] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<MyProduct | null>(null);
   const [historialProduct, setHistorialProduct] = useState<MyProduct | null>(null);
+  const [detail, setDetail] = useState<MyProduct | null>(null);
+  const [stockTotal, setStockTotal] = useState<{ open: boolean; initial: StockTotalTarget | null }>({ open: false, initial: null });
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editError, setEditError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -61,7 +60,7 @@ export default function MyProducts() {
   const [bulkMarca, setBulkMarca] = useState("");
   const [bulkError, setBulkError] = useState<string | null>(null);
 
-  useEffect(() => setPage(0), [search, categoria, vencido, bajoStock]);
+  useEffect(() => setPage(0), [search, categoria, vencido, bajoStock, porVencer]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["my-products-filter-options"],
@@ -89,6 +88,7 @@ export default function MyProducts() {
     if (categoria) params.categoria = categoria;
     if (vencido) params.vencido = vencido === "si";
     if (bajoStock) params.bajo_stock = true;
+    if (porVencer) params.por_vencer = true;
     if (sortBy) {
       params.sort_by = sortBy;
       params.sort_dir = sortDir;
@@ -97,7 +97,7 @@ export default function MyProducts() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-products", search, categoria, vencido, bajoStock, sortBy, sortDir, page],
+    queryKey: ["my-products", search, categoria, vencido, bajoStock, porVencer, sortBy, sortDir, page],
     queryFn: async () => {
       const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<MyProduct>>("/me/products", { params })).data;
@@ -194,6 +194,17 @@ export default function MyProducts() {
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
 
+  // El nivel de alerta de cada producto, para marcarlo en la lista
+  const alerts = useQuery({
+    queryKey: ["my-alerts", "todas", null],
+    queryFn: async () => (await api.get<AlertList>("/me/alerts/")).data.items,
+  });
+  const alertByProduct = new Map<number, AlertOut>();
+  for (const alert of alerts.data ?? []) {
+    const current = alertByProduct.get(alert.product_id);
+    if (!current || (current.level === "warning" && alert.level === "critical")) alertByProduct.set(alert.product_id, alert);
+  }
+
   const toggleSelected = (id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -246,8 +257,11 @@ export default function MyProducts() {
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="Productos" subtitle="Tus productos cargados" />
+        <PageHeader title="Inventario" subtitle="Tus productos cargados" />
         <div className="flex gap-2">
+          <Button tone="outline" data-testid="open-stock-total" onClick={() => setStockTotal({ open: true, initial: null })}>
+            <Layers size={14} /> Stock total
+          </Button>
           <button
             type="button"
             onClick={() => exportProducts("csv")}
@@ -297,7 +311,11 @@ export default function MyProducts() {
         </select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
-          Bajo stock
+          Stock bajo
+        </label>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={porVencer} onChange={(e) => setPorVencer(e.target.checked)} />
+          Por vencer
         </label>
       </div>
 
@@ -333,42 +351,51 @@ export default function MyProducts() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAllOnPage} />
                   </th>
-                  <th className="px-5 py-3 text-center">Imagen</th>
-                  <th className="px-5 py-3">
+                  <th className="px-3 py-3 text-center">Imagen</th>
+                  <th className="px-3 py-3">
                     <SortHeader field="nombre" label="Producto" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="categoria" label="Categoría" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="stock" label="Stock" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="vencimiento" label="Vencimiento" />
                   </th>
-                  <th className="px-5 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-3 text-center">Alerta</th>
+                  <th className="px-3 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <input
                         type="checkbox"
                         checked={selected.has(p.id)}
                         onChange={() => toggleSelected(p.id)}
                       />
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex justify-center">
-                        <ProductImage url={p.imagen_url} alt={p.nombre} />
+                        <ProductImage url={p.imagen_url} alt={p.nombre} className="h-14 w-14" />
                       </div>
                     </td>
-                    <td className="px-5 py-3">
-                      <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        data-testid={`product-open-${p.id}`}
+                        onClick={() => setDetail(p)}
+                        className="text-left font-semibold text-ink hover:text-primaryDark hover:underline"
+                        title={p.nombre}
+                      >
+                        {truncate(p.nombre)}
+                      </button>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
                       {p.codigo_barras && (
                         <p
@@ -379,24 +406,23 @@ export default function MyProducts() {
                         </p>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
-                    <td className="px-5 py-3 text-center">
-                      {p.stock <= 1 ? <Badge tone="off">{p.stock}</Badge> : p.stock}
+                    <td className="px-3 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
+                    <td className="px-3 py-3 text-center font-semibold" data-testid={`product-stock-${p.id}`}>
+                      {p.stock}
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      {p.vencimiento ? (
-                        isExpired(p.vencimiento) ? (
-                          <Badge tone="off">{p.vencimiento}</Badge>
-                        ) : isExpiringSoon(p.vencimiento) ? (
-                          <Badge tone="warn">{p.vencimiento}</Badge>
-                        ) : (
-                          <span className="text-muted">{p.vencimiento}</span>
-                        )
+                    <td className="px-3 py-3 text-center">
+                      {p.vencimiento ? <span className="text-muted">{formatDate(p.vencimiento)}</span> : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-center" data-testid={`product-alert-${p.id}`}>
+                      {alertByProduct.get(p.id) ? (
+                        <Badge tone={LEVEL_BADGE[alertByProduct.get(p.id)!.level]}>
+                          {LEVEL_TEXT[alertByProduct.get(p.id)!.level]}
+                        </Badge>
                       ) : (
-                        "—"
+                        <span className="text-muted">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <div className="flex justify-center gap-2">
                         <button
                           onClick={() => openEdit(p)}
@@ -416,7 +442,7 @@ export default function MyProducts() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted">
                       No se encontraron productos.
                     </td>
                   </tr>
@@ -430,7 +456,7 @@ export default function MyProducts() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Editar producto</h3>
             <div className="mt-4 space-y-3">
               <div>
@@ -506,14 +532,7 @@ export default function MyProducts() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">URL de imagen</label>
-                <input
-                  value={editForm.imagen_url}
-                  onChange={editSet("imagen_url")}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
+              <ImageUpload value={editForm.imagen_url} onChange={(url) => setEditForm((f) => ({ ...f, imagen_url: url }))} />
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
                 <textarea
@@ -525,14 +544,15 @@ export default function MyProducts() {
               </div>
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Alertas para este producto (opcional)
+                  Reglas de alerta de producto (opcional)
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
                     <input
                       type="number"
                       min={1}
+                      max={9999999}
                       value={editForm.stock_minimo}
                       onChange={editSet("stock_minimo")}
                       placeholder="Usa tu regla general"
@@ -540,10 +560,11 @@ export default function MyProducts() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
                     <input
                       type="number"
                       min={1}
+                      max={999}
                       value={editForm.dias_alerta_vencimiento}
                       onChange={editSet("dias_alerta_vencimiento")}
                       placeholder="Usa tu regla general"
@@ -581,7 +602,7 @@ export default function MyProducts() {
 
       {showBulkEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Editar {selected.size} productos</h3>
             <p className="mt-1 text-sm text-muted">
               Solo se cambian los campos que completes acá — dejá "No cambiar" en los demás.
@@ -652,6 +673,32 @@ export default function MyProducts() {
           </div>
         </div>
       )}
+
+      {detail && (
+        <ProductDetailModal
+          product={detail}
+          onClose={() => setDetail(null)}
+          onStockTotal={() => {
+            setStockTotal({ open: true, initial: { nombre: detail.nombre, categoria: detail.categoria } });
+            setDetail(null);
+          }}
+          onHistory={() => {
+            setHistorialProduct(detail);
+            setDetail(null);
+          }}
+          onEdit={() => {
+            openEdit(detail);
+            setDetail(null);
+          }}
+        />
+      )}
+
+      <StockTotalModal
+        scope="me"
+        open={stockTotal.open}
+        initial={stockTotal.initial}
+        onClose={() => setStockTotal({ open: false, initial: null })}
+      />
 
       {historialProduct && (
         <HistorialModal

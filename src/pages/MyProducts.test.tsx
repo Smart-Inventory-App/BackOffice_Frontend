@@ -36,10 +36,11 @@ function paginated(items: MyProduct[], total = items.length): Paginated<MyProduc
   return { items, total };
 }
 
-function mockGets(items: MyProduct[]) {
+function mockGets(items: MyProduct[], alerts: unknown[] = []) {
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === "/me/products/filters/options") return { data: OPCIONES };
     if (url === "/me/products") return { data: paginated(items) };
+    if (url === "/me/alerts/") return { data: { items: alerts, summary: { critical: 0, warning: 0, total: 0, expiring: 0, low_stock: 0 } } };
     throw new Error(`GET no mockeado: ${url}`);
   });
 }
@@ -69,7 +70,88 @@ describe("MyProducts", () => {
     expect(screen.getByText("La Merced")).toBeInTheDocument();
     expect(screen.getByText("7791234567890")).toBeInTheDocument();
     expect(screen.getByText("Leche")).toBeInTheDocument();
-    expect(screen.getByText("2020-01-01")).toBeInTheDocument();
+    expect(screen.getByText("01/01/2020")).toBeInTheDocument();
+  });
+
+  it("marca cada producto con el nivel de alerta que le corresponde según sus reglas", async () => {
+    const alert = (key: string, product_id: number, level: string) => ({ key, product_id, level, type: "expiry" });
+    mockGets(
+      [product({ id: 1, nombre: "Crítico" }), product({ id: 2, nombre: "Aviso" }), product({ id: 3, nombre: "Tranquilo" })],
+      [alert("a", 1, "warning"), alert("b", 1, "critical"), alert("c", 2, "warning")],
+    );
+
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Crítico");
+
+    await waitFor(() => expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica"));
+    expect(screen.getByTestId("product-alert-2")).toHaveTextContent("Advertencia");
+    expect(screen.getByTestId("product-alert-3")).toHaveTextContent("—");
+  });
+
+  it("al tocar el nombre abre la información del producto, con sus accesos", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ descripcion: "Yerba suave", stock_minimo: 3 })]);
+    renderWithProviders(<MyProducts />);
+
+    await user.click(await screen.findByTestId("product-open-1"));
+
+    const dialog = screen.getByRole("dialog", { name: "Información del Producto" });
+    expect(within(dialog).getByTestId("product-detail-name")).toHaveTextContent("Yerba Mate");
+    expect(within(dialog).getByText("Yerba suave")).toBeInTheDocument();
+    expect(within(dialog).getByText("3 días (regla de este producto)")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Editar/ }));
+    expect(screen.getByText("Editar producto")).toBeInTheDocument();
+  });
+
+  it("desde la información del producto se ve su stock total entre sus lotes", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
+      if (url === "/me/products/filters/options") return { data: OPCIONES };
+      if (url === "/me/products") return { data: paginated([product()]) };
+      if (url === "/me/alerts/") return { data: { items: [], summary: {} } };
+      if (url === "/me/products/group") {
+        expect(config.params).toEqual({ nombre: "Yerba Mate", categoria: "Almacén" });
+        return {
+          data: {
+            nombre: "Yerba Mate", categoria: "Almacén", stock_total: 12, lotes: 2, usuarios: 1, proximo_vencimiento: null,
+            productos: [
+              { ...product({ id: 1, stock: 5 }), owner: { user_id: "u1", email: "yo@test.com" } },
+              { ...product({ id: 2, stock: 7, vencimiento: "2026-12-01" }), owner: { user_id: "u1", email: "yo@test.com" } },
+            ],
+          },
+        };
+      }
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<MyProducts />);
+
+    await user.click(await screen.findByTestId("product-open-1"));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Stock total/ }));
+
+    expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("12 unidades");
+  });
+
+  it("el botón «Stock total» del encabezado abre la búsqueda por nombre", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByTestId("open-stock-total"));
+
+    expect(await screen.findByLabelText(/producto/i, { selector: "#stock-total-input" })).toBeInTheDocument();
+  });
+
+  it("el historial se abre desde la información del producto", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+
+    await user.click(await screen.findByTestId("product-open-1"));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Historial/ }));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/me/products/1/consumption"));
   });
 
   it("sin resultados, muestra el estado vacío", async () => {
@@ -111,11 +193,19 @@ describe("MyProducts", () => {
       ),
     );
 
-    await user.click(screen.getByLabelText("Bajo stock"));
+    await user.click(screen.getByLabelText("Stock bajo"));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/me/products",
         expect.objectContaining({ params: expect.objectContaining({ bajo_stock: true }) }),
+      ),
+    );
+
+    await user.click(screen.getByLabelText("Por vencer"));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(
+        "/me/products",
+        expect.objectContaining({ params: expect.objectContaining({ por_vencer: true }) }),
       ),
     );
   });
@@ -158,17 +248,17 @@ describe("MyProducts", () => {
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
 
-    // checkboxes[0] es el filtro "Bajo stock", [1] es "seleccionar todos" de
+    // checkboxes[0] y [1] son los filtros "Stock bajo" y "Por vencer", [2] es "seleccionar todos" de
     // la tabla y el resto son las filas.
     const checkboxes = screen.getAllByRole("checkbox");
-    await user.click(checkboxes[2]);
+    await user.click(checkboxes[3]);
     expect(screen.getByText("1 producto seleccionado")).toBeInTheDocument();
 
-    await user.click(checkboxes[1]);
+    await user.click(checkboxes[2]);
     expect(screen.getByText("2 productos seleccionados")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Editar en lote" }));
-    const modal = screen.getByText("Editar 2 productos").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Editar 2 productos").closest(".rounded-3xl") as HTMLElement;
     const categoriaSelect = within(modal).getByText("Categoría").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(categoriaSelect, "Limpieza");
     await user.click(screen.getByRole("button", { name: "Aplicar" }));
@@ -193,7 +283,7 @@ describe("MyProducts", () => {
 
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
-    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getAllByRole("checkbox")[3]);
     await user.click(screen.getByRole("button", { name: "Editar en lote" }));
 
     expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
@@ -223,7 +313,7 @@ describe("MyProducts", () => {
     await screen.findByText("Yerba Mate");
     await user.click(screen.getByRole("button", { name: /Editar/ }));
 
-    const modal = screen.getByText("Editar producto").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Editar producto").closest(".rounded-3xl") as HTMLElement;
     const modalScope = within(modal);
 
     const nombreInput = modalScope.getByText("Nombre").nextElementSibling as HTMLInputElement;
@@ -241,10 +331,11 @@ describe("MyProducts", () => {
     await user.type(vencimientoInput, "2026-09-01");
     await user.selectOptions(modalScope.getByText("Ubicación").nextElementSibling as HTMLSelectElement, "Alacena");
     await user.type(modalScope.getByPlaceholderText("Sin código"), "1");
-    await user.type(modalScope.getByText("URL de imagen").nextElementSibling as HTMLInputElement, "https://img");
+    expect(modalScope.queryByText("URL de imagen")).not.toBeInTheDocument();
+    expect(modalScope.getByTestId("image-upload")).toBeInTheDocument();
     await user.type(modalScope.getByText("Descripción").nextElementSibling as HTMLTextAreaElement, "Notas");
-    await user.type(modalScope.getByText("Stock mínimo").nextElementSibling as HTMLInputElement, "2");
-    await user.type(modalScope.getByText("Días de anticipación").nextElementSibling as HTMLInputElement, "3");
+    await user.type(modalScope.getByText("Stock mínimo (días)").nextElementSibling as HTMLInputElement, "2");
+    await user.type(modalScope.getByText("Aviso de vencimiento (días)").nextElementSibling as HTMLInputElement, "3");
 
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("El código de barras ya está en uso.")).toBeInTheDocument();

@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
 import UserDetail from "./UserDetail";
-import type { AppUserDetail } from "@/lib/types";
+import type { AlertOut, AppUserDetail } from "@/lib/types";
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn() },
@@ -25,6 +26,29 @@ function renderDetail(id = "u1") {
   );
 }
 
+const ALERT: AlertOut = {
+  key: "expiry-1",
+  product_id: 1,
+  type: "expiry",
+  level: "critical",
+  origin: "rule",
+  days_to_expiry: 2,
+  days_until_stockout: null,
+  units_wasted: null,
+  suggested_qty: null,
+  limit_days: 7,
+  rule_scope: "general",
+  predictive: false,
+  product_name: "Yerba Mate",
+  product_brand: null,
+  product_category: "Almacén",
+  product_location: null,
+  product_stock: 3,
+  product_expiry: "2026-05-01",
+  image_url: null,
+  user_id: "u1",
+};
+
 function userDetail(overrides: Partial<AppUserDetail> = {}): AppUserDetail {
   return {
     id: "u1",
@@ -36,6 +60,12 @@ function userDetail(overrides: Partial<AppUserDetail> = {}): AppUserDetail {
     first_name: "Ana",
     last_name: "Gómez",
     product_count: 1,
+    total_units: 3,
+    critical_alerts: 1,
+    warning_alerts: 0,
+    consumed_last_30d: 12,
+    restocked_last_30d: 20,
+    alerts: [ALERT],
     products: [
       {
         id: 1,
@@ -49,6 +79,8 @@ function userDetail(overrides: Partial<AppUserDetail> = {}): AppUserDetail {
         ubicacion: null,
         codigo_barras: null,
         created_at: null,
+        alert_level: "critical",
+        alert_types: ["expiry"],
         owner: { user_id: "u1", email: "usuario@test.com" },
       },
     ],
@@ -65,11 +97,43 @@ describe("UserDetail", () => {
     vi.mocked(api.get).mockResolvedValue({ data: userDetail() });
     renderDetail();
 
-    expect(await screen.findByText("usuario@test.com")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "usuario@test.com" })).toBeInTheDocument();
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
-    expect(screen.getByText("Yerba Mate")).toBeInTheDocument();
-    expect(screen.getByText(/Almacén · stock 3 · vence 2026-05-01/)).toBeInTheDocument();
+    const product = screen.getByTestId("user-product-1");
+    expect(within(product).getByText("Yerba Mate")).toBeInTheDocument();
+    expect(product).toHaveTextContent("Almacén · vence 01/05/2026");
+    expect(within(product).getByText("Crítica")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith("/admin/users/u1");
+  });
+
+  it("resume las unidades, las alertas y el consumo de los últimos 30 días", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: userDetail() });
+    renderDetail();
+
+    await screen.findByRole("heading", { name: "usuario@test.com" });
+    expect(screen.getByText("Unidades en stock").nextElementSibling).toHaveTextContent("3");
+    expect(screen.getByText("Alertas críticas").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Advertencias").nextElementSibling).toHaveTextContent("0");
+    expect(screen.getByText("Consumido (30 días)").nextElementSibling).toHaveTextContent("12");
+    expect(screen.getByText("20 repuestas")).toBeInTheDocument();
+  });
+
+  it("lista sus alertas y abre el detalle de una", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: userDetail() });
+    renderDetail();
+
+    await user.click(await screen.findByTestId("alert-item-expiry-1"));
+
+    expect(screen.getByRole("dialog", { name: "Detalle de Alerta" })).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Volver"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sin alertas lo dice", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: userDetail({ alerts: [], critical_alerts: 0 }) });
+    renderDetail();
+    expect(await screen.findByText("Este usuario no tiene alertas.")).toBeInTheDocument();
   });
 
   it("sin productos, muestra el estado vacío", async () => {
@@ -96,7 +160,7 @@ describe("UserDetail", () => {
       }),
     });
     renderDetail();
-    expect(await screen.findByText("u1")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "u1" })).toBeInTheDocument();
     expect(screen.getByText("Deshabilitado")).toBeInTheDocument();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });

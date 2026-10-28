@@ -125,7 +125,7 @@ describe("Users", () => {
     expect(screen.getByText("Deshabilitar usuario")).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/actividad sospechosa/), "cuenta duplicada");
 
-    const modal = screen.getByText("Deshabilitar usuario").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Deshabilitar usuario").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Deshabilitar" }));
 
     await waitFor(() =>
@@ -162,7 +162,7 @@ describe("Users", () => {
     expect(screen.getByText("Admin")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Quitar admin/ }));
-    const modal = screen.getByText("Quitar administrador").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Quitar administrador").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Quitar admin" }));
 
     expect(
@@ -228,7 +228,7 @@ describe("Users", () => {
     await screen.findByText("u3");
 
     await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
-    expect(within(screen.getByText("Deshabilitar usuario").closest(".rounded-2xl") as HTMLElement).getByText("u3")).toBeInTheDocument();
+    expect(within(screen.getByText("Deshabilitar usuario").closest(".rounded-3xl") as HTMLElement).getByText("u3")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     await user.click(screen.getByRole("button", { name: /Quitar admin/ }));

@@ -192,3 +192,26 @@ describe("StockTotalModal", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("StockTotalModal · alcance del usuario", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("con scope «me» busca y arma el grupo con los endpoints propios, sin mandar un usuario", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/me/products/groups") return { data: [{ ...GRUPO }] };
+      if (url === "/me/products/group") return { data: GRUPO };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<StockTotalModal open onClose={() => {}} scope="me" />);
+
+    await user.type(screen.getByLabelText("Nombre del producto"), "Lec");
+    await user.click(await screen.findByRole("button", { name: /Leche/ }));
+
+    expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("12 unidades");
+    expect(api.get).toHaveBeenCalledWith("/me/products/groups", { params: { q: "Lec" } });
+    expect(api.get).toHaveBeenCalledWith("/me/products/group", { params: { nombre: "Leche", categoria: "Lácteos" } });
+  });
+});

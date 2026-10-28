@@ -467,8 +467,8 @@ describe("Cargar · archivo (BulkUpload)", () => {
     const ubicacionSelect = screen.getByText("Ubicación").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(ubicacionSelect, "Alacena");
     await user.type(label("Descripción"), "Notas de la fila");
-    await user.type(label("Stock mínimo"), "2");
-    await user.type(label("Días de anticipación"), "5");
+    await user.type(label("Stock mínimo (días)"), "2");
+    await user.type(label("Aviso de vencimiento (días)"), "5");
 
     const stockInput = screen.getByDisplayValue("3");
     await user.clear(stockInput);
@@ -656,5 +656,61 @@ describe("Cargar · navegación de pestañas y flujo de procesamiento", () => {
 
     expect(await screen.findByDisplayValue("Producto raro")).toBeInTheDocument();
     expect(screen.getByDisplayValue(/Documento Comercial - Kiosco/)).toBeInTheDocument();
+  });
+});
+
+describe("Cargar · imagen como archivo adjunto", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  it("no pide la URL de la imagen: ofrece adjuntar un archivo", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.queryByText("URL de imagen")).not.toBeInTheDocument();
+    expect(screen.getByTestId("image-upload")).toBeInTheDocument();
+    expect(screen.getByTestId("image-upload-input")).toHaveAttribute("type", "file");
+  });
+
+  it("sube la foto elegida y carga el producto con la dirección que devuelve el servicio", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/image") return { data: { url: "https://img.example/yerba.png" } };
+      if (url === "/me/products") return { data: { merged: false } };
+      throw new Error(`POST no mockeado: ${url}`);
+    });
+    renderWithProviders(<Cargar />);
+
+    await user.type(label("Nombre"), "Yerba");
+    await user.selectOptions(within(screen.getByText("Categoría").parentElement as HTMLElement).getByRole("combobox"), "Almacén");
+    await user.type(label("Stock"), "4");
+    await user.upload(screen.getByTestId("image-upload-input"), new File(["x"], "yerba.png", { type: "image/png" }));
+    await waitFor(() => expect(screen.getByText("yerba.png")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cambiar imagen" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Cargar producto" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/me/products",
+        expect.objectContaining({ nombre: "Yerba", imagen_url: "https://img.example/yerba.png" }),
+      ),
+    );
+  });
+
+  it("pide las reglas de alerta del producto con los textos de la app", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByText("Reglas de alerta de producto")).toBeInTheDocument();
+    expect(screen.getByText("Stock mínimo (días)")).toBeInTheDocument();
+    expect(screen.getByText("Aviso de vencimiento (días)")).toBeInTheDocument();
+    expect(screen.getByText("Se avisa si el stock alcanza para menos días.")).toBeInTheDocument();
+    expect(screen.getByText("Se avisa si faltan menos días para que venza.")).toBeInTheDocument();
+  });
+
+  it("el texto del código de barras dice que alcanzan 8, 12, 13 o 14 dígitos", () => {
+    renderWithProviders(<Cargar />);
+
+    expect(screen.getByText(/8, 12, 13 o 14 dígitos/)).toBeInTheDocument();
   });
 });

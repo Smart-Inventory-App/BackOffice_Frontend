@@ -1,71 +1,54 @@
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import Metricas from "./Metricas";
-import type { MyMetrics } from "@/lib/types";
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn() },
 }));
 
+const auth = vi.hoisted(() => ({ effectiveIsAdmin: false }));
+vi.mock("@/context/AuthContext", () => ({
+  useAuth: () => auth,
+}));
+
 import { api } from "@/lib/api";
 
-function metrics(overrides: Partial<MyMetrics> = {}): MyMetrics {
-  return {
-    period_days: 30,
-    total_consumido: 12,
-    total_entradas: 20,
-    consumo_por_dia: [{ day: "2026-01-01", quantity: 3 }],
-    top_productos: [{ product_id: 1, nombre: "Yerba Mate", cantidad: 8 }],
-    productos_menos_usados: [{ product_id: 2, nombre: "Sal", cantidad: 1 }],
-    ...overrides,
-  };
+function serve() {
+  vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+    data: {
+      period_days: config.params.period,
+      total_consumido: 0,
+      total_entradas: 0,
+      consumo_por_dia: [],
+      top_productos: [],
+    },
+  }));
 }
 
-describe("Metricas", () => {
+describe("Metricas (Tendencias de Consumo)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
   });
 
-  it("muestra el consumo del período y permite cambiarlo", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.get).mockResolvedValue({ data: metrics() });
+  it("para un usuario muestra las tendencias de su inventario", async () => {
     renderWithProviders(<Metricas />);
 
-    expect(await screen.findByText("12")).toBeInTheDocument();
-    expect(screen.getByText("Consumido en el período")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "7 días" }));
-    await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 7 } }),
-    );
+    expect(await screen.findByRole("heading", { name: "Tendencias de Consumo" })).toBeInTheDocument();
+    expect(screen.getByText("Mirá cuánto consumís y reponés")).toBeInTheDocument();
+    await screen.findByTestId("trends-panel");
+    expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 14 } });
+    expect(api.get).not.toHaveBeenCalledWith("/admin/metrics", expect.anything());
   });
 
-  it("si falla la carga, muestra el mensaje de error", async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error("fallo"));
-    renderWithProviders(<Metricas />);
-    expect(await screen.findByText("No se pudieron cargar las métricas.")).toBeInTheDocument();
-  });
-
-  it("sin consumo, sin top productos, muestra los estados vacíos correspondientes", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: metrics({ total_consumido: 0, top_productos: [], productos_menos_usados: [] }),
-    });
+  it("para un administrador muestra el consumo de toda la plataforma", async () => {
+    auth.effectiveIsAdmin = true;
     renderWithProviders(<Metricas />);
 
-    expect(await screen.findByText("Sin consumo registrado todavía")).toBeInTheDocument();
-    expect(screen.getAllByText("Sin datos todavía").length).toBe(2);
-  });
-
-  it("con top productos pero sin datos suficientes para comparar, lo indica", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: metrics({ productos_menos_usados: [] }),
-    });
-    renderWithProviders(<Metricas />);
-    expect(
-      await screen.findByText("No hay suficientes productos para comparar"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Cuánto se consume y se repone en toda la plataforma")).toBeInTheDocument();
+    await screen.findByTestId("trends-panel");
+    expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });
   });
 });

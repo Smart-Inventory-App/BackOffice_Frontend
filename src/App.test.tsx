@@ -40,6 +40,12 @@ const EMPTY_STATS = {
   low_stock_products: 0,
   expiring_soon_products: 0,
   expired_products: 0,
+  total_units: 0,
+  critical_alerts: 0,
+  warning_alerts: 0,
+  users_with_alerts: 0,
+  consumed_last_7d: 0,
+  restocked_last_7d: 0,
   products_by_category: [],
   top_users_by_products: [],
   products_per_day_last_14d: [],
@@ -47,10 +53,13 @@ const EMPTY_STATS = {
 
 const EMPTY_MY_STATS = {
   total_products: 0,
+  total_units: 0,
   products_with_image: 0,
   low_stock_products: 0,
   expiring_soon_products: 0,
   expired_products: 0,
+  critical_alerts: 0,
+  warning_alerts: 0,
   products_by_category: [],
 };
 
@@ -60,6 +69,12 @@ function mockAdmin(user: typeof ADMIN | typeof REGULAR) {
     if (url === "/admin/auth/me") return { data: user };
     if (url === "/admin/stats/") return { data: EMPTY_STATS };
     if (url === "/me/stats") return { data: EMPTY_MY_STATS };
+    if (url === "/me/changes") return { data: [] };
+    if (url === "/me/products") return { data: { items: [], total: 0 } };
+    if (url === "/me/alerts/summary") return { data: { critical: 0, warning: 0, total: 0, expiring: 0, low_stock: 0 } };
+    if (url === "/me/profile") {
+      return { data: { email: "user@test.com", first_name: "Ana", last_name: null, username: null, stock_minimo: 7, dias_alerta_vencimiento: 7, alert_check_hour: 5, user_type: "individuo" } };
+    }
     if (url === "/admin/ocr/status") return { data: { available: true, checks: {}, engines: [] } };
     if (url === "/admin/ocr/stats") {
       return { data: { dias: 7, ejecuciones: 0, exitosas: 0, fallidas: 0, usuarios: 0, ms_promedio: null, confianza_promedio: null, por_tipo: [] } };
@@ -78,7 +93,7 @@ describe("App", () => {
   it("sin sesión, cualquier ruta protegida redirige a /login", async () => {
     vi.mocked(getToken).mockReturnValue(null);
     renderApp(["/"]);
-    await waitFor(() => expect(screen.getByPlaceholderText("admin@smartinventory.com")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("tu@email.com")).toBeInTheDocument());
   });
 
   it("un admin ve el Dashboard de admin en la raíz, con navegación de administrador", async () => {
@@ -93,8 +108,8 @@ describe("App", () => {
     mockAdmin(REGULAR);
     renderApp(["/"]);
     await waitFor(() => expect(screen.getByText("user@test.com")).toBeInTheDocument());
-    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByText("Estado de tu inventario")).toBeInTheDocument();
+    expect(await screen.findByText("Bienvenido, Ana")).toBeInTheDocument();
+    expect(screen.getByText("Tu estado")).toBeInTheDocument();
   });
 
   it("un usuario no admin no puede entrar a /usuarios: es redirigido a la raíz", async () => {
@@ -129,13 +144,25 @@ describe("App", () => {
   it("una ruta desconocida redirige a la raíz", async () => {
     mockAdmin(REGULAR);
     renderApp(["/esto-no-existe"]);
-    await waitFor(() => expect(screen.getByText("Estado de tu inventario")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Tu estado")).toBeInTheDocument());
   });
 
   it("la ruta /set-password se muestra sin el shell del backoffice", async () => {
     vi.mocked(getToken).mockReturnValue(null);
     renderApp(["/set-password"]);
     // Sin email en el estado de navegación, SetPassword redirige a /login.
-    await waitFor(() => expect(screen.getByPlaceholderText("admin@smartinventory.com")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("tu@email.com")).toBeInTheDocument());
+  });
+
+  it("la ruta /forgot-password se muestra sin el shell del backoffice", async () => {
+    vi.mocked(getToken).mockReturnValue(null);
+    renderApp(["/forgot-password"]);
+    expect(await screen.findByText("Recuperá el acceso a tu cuenta")).toBeInTheDocument();
+  });
+
+  it("un administrador ve las tendencias de toda la plataforma", async () => {
+    mockAdmin(ADMIN);
+    renderApp(["/metricas"]);
+    expect(await screen.findByText("Cuánto se consume y se repone en toda la plataforma")).toBeInTheDocument();
   });
 });

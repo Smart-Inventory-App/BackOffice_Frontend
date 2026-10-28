@@ -89,7 +89,8 @@ describe("Products (admin)", () => {
 
     await user.selectOptions(screen.getByDisplayValue("Todas las categorías"), "Almacén");
     await user.selectOptions(screen.getByDisplayValue("Vencimiento: todos"), "no");
-    await user.click(screen.getByLabelText("Bajo stock"));
+    await user.click(screen.getByLabelText("Stock bajo"));
+    await user.selectOptions(screen.getByLabelText("Nivel de alerta"), "critical");
     await user.click(screen.getByLabelText("Solo con imagen"));
 
     await waitFor(() =>
@@ -100,6 +101,7 @@ describe("Products (admin)", () => {
             categoria: "Almacén",
             vencido: false,
             bajo_stock: true,
+            alert_level: "critical",
             only_with_image: true,
           }),
         }),
@@ -129,18 +131,21 @@ describe("Products (admin)", () => {
     );
   });
 
-  it("marca vencidos y por vencer con el badge correspondiente", async () => {
+  it("muestra el vencimiento en formato argentino y el nivel de alerta que calcula el servidor", async () => {
     mockGets([
-      product({ id: 1, nombre: "Vencido", vencimiento: "2000-01-01" }),
-      product({ id: 2, nombre: "PorVencer", vencimiento: new Date(Date.now() + 86400000).toISOString().slice(0, 10) }),
+      product({ id: 1, nombre: "Vencido", vencimiento: "2000-01-01", alert_level: "critical", alert_types: ["expiry"] }),
+      product({ id: 2, nombre: "PorVencer", vencimiento: "2026-11-02", alert_level: "warning", alert_types: ["expiry"] }),
       product({ id: 3, nombre: "Ok", vencimiento: "2999-01-01" }),
     ]);
     renderWithProviders(<Products />);
     await screen.findByText("Vencido");
 
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows[0]).toHaveTextContent("2000-01-01");
-    expect(rows[2]).toHaveTextContent("2999-01-01");
+    expect(rows[0]).toHaveTextContent("01/01/2000");
+    expect(rows[2]).toHaveTextContent("01/01/2999");
+    expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica");
+    expect(screen.getByTestId("product-alert-2")).toHaveTextContent("Advertencia");
+    expect(screen.getByTestId("product-alert-3")).toHaveTextContent("—");
   });
 
   it("muestra el id del dueño cuando no tiene email", async () => {
@@ -180,7 +185,7 @@ describe("Products (admin)", () => {
     expect(screen.queryByText("Eliminar producto")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Eliminar/ }));
-    const modal = screen.getByText("Eliminar producto").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Eliminar producto").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/admin/products/1"));
   });
@@ -197,7 +202,7 @@ describe("Products (admin)", () => {
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
     await user.click(screen.getByRole("button", { name: /Eliminar/ }));
-    const modal = screen.getByText("Eliminar producto").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Eliminar producto").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Eliminar" }));
 
     expect(await within(modal).findByRole("alert")).toHaveTextContent("No se pudo borrar por una restricción.");

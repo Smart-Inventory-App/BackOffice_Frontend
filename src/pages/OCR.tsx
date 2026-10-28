@@ -28,6 +28,7 @@ import type { Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, StatCard, Spinner } from "@/components/ui";
 import Pagination from "@/components/Pagination";
 import { apiErrorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
 const PAGE_SIZE = 15;
 
@@ -78,16 +79,6 @@ const CHECK_LABELS: Record<string, string> = {
   barcode: "Decodificador de códigos",
 };
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 /** Milisegundos en la unidad que se lee de un vistazo. */
 function formatMs(ms: number | null | undefined): string {

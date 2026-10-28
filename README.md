@@ -6,6 +6,8 @@
 
 Interfaz web del panel de administración (backoffice) de Smart Inventory Platform. Pensada para usuarios regulares y administradores: permite ver el estado general del sistema, gestionar/habilitar usuarios, gestionar y supervisar los productos e imágenes que cargan.
 
+Tiene el **mismo aspecto y la misma lógica de negocio que la app**: la gama de colores (verde azulado `#2CC4B4` y azul `#1B3A8F`, rojo y amarillo para las alertas), los logos nuevos, las pantallas de ingreso y registro, las cuatro tarjetas del inicio, las tendencias de consumo, el Centro de Alertas y el flujo de producto. Es un servicio separado: habla solo con el `backoffice_backend`.
+
 ---
 
 ## Stack
@@ -26,16 +28,38 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 
 | Ruta | Descripción |
 |------|-------------|
-| `/login` | Login de administrador |
-| `/` | Dashboard — métricas globales y gráficos |
+| `/login`, `/register`, `/forgot-password`, `/set-password` | Ingreso en dos pasos (email y contraseña, con el ojo para mostrarla), registro, **recuperar o crear la contraseña** con un código por mail (también para cuentas de Google) y la contraseña del primer ingreso de un administrador |
+| `/` | **Usuario**: inicio con las cuatro tarjetas, tendencias, últimos cambios y productos recientes. **Administrador**: dashboard de la plataforma |
+| `/alertas` | Centro de Alertas (usuario) |
+| `/metricas` | Tendencias de Consumo: las del usuario o, para un administrador, las de toda la plataforma |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
-| `/usuarios/:id` | Detalle de usuario + sus productos |
-| `/productos` | Productos cargados (con imagen), búsqueda, filtros, orden, exportación, eliminación y **stock total por producto** |
+| `/usuarios/:id` | Detalle de usuario: unidades, alertas, consumo de 30 días, sus alertas y sus productos con el nivel de cada uno |
+| `/productos` | Productos cargados (con imagen y nivel de alerta), búsqueda, filtros, orden, exportación, eliminación y **stock total por producto**; el usuario ve su inventario y abre la **información de cada producto** |
 | `/auditoria` | Actividad de usuarios: altas, productos, logins y cambios de rol |
 | `/ocr` | Módulo de OCR: estado de los motores, tiempos y precisión, prueba de fotos y auditoría de escaneos |
 | `/ml` | Modelos de predicción de consumo |
 | `/cargar` | Flujo de producto (entrada y salida) en modo usuario, con tres formas de carga: manual, por archivo y **por foto** (pestaña Procesamiento) |
-| `/metricas`, `/alertas`, `/perfil` | Consumo, avisos de stock y vencimiento, y datos de la cuenta, en modo usuario |
+| `/perfil` | Datos de la cuenta, tipo de cuenta y reglas de alerta, en modo usuario |
+
+#### Inicio del usuario
+
+Como el de la app: «Bienvenido, <nombre>» y «Tu estado»; cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock») con los números con puntos de miles y los cuatro comentarios del mismo largo y centrados; el comentario de Productos va con el fondo del color de su ícono y letra blanca. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, el botón «Tendencias» (ventana), **Últimos Cambios** (5, con «Ver más» al historial con «Cargar más») y **Productos Recientes** (3).
+
+#### Tendencias de Consumo
+
+Períodos de **7, 14 y 30 días** (sin 90), gráfico por día que se ve **entero, sin desplazarse**, con el día elegido y su detalle **centrado** entre las flechas «<» y «>» que retroceden y avanzan un día, «Promedio de consumidos por día», «Día de mayor consumo: 21 de octubre» (dos renglones), comparación con el período anterior y los **5 productos más consumidos** (sin «Menos usados»). Los días son los de Argentina. Está en `src/components/TrendsPanel.tsx`.
+
+#### Centro de Alertas
+
+«Críticas» y «Advertencias» son filtros: al tocar una, su contorno es **rojo** o **amarillo**; con las opciones Todas / Stock / Vencimiento los números siguen al tipo elegido. «Según tus reglas» va primero y «Generado por el sistema» después, con la marca «Predicción» fija arriba a la derecha de lo que calcula el modelo. Cada alerta tiene dos renglones de descripción («Quedan X ud. restantes que alcanzan para x días. Mínimo configurado de X días.») y un detalle que se desplaza; en un producto ya vencido no se explica la regla de aviso. Los niveles son los de la app: se avisa con **menos de** N días.
+
+#### Imágenes de producto
+
+La imagen se **adjunta como archivo** (se elige o se arrastra; JPG, PNG o WebP de hasta 10 MB) con vista previa; el archivo viaja por `POST /me/products/image` y el producto guarda la dirección que devuelve. Ya no se escribe un enlace (`src/components/ImageUpload.tsx`).
+
+#### Perfil
+
+Nombre, apellido y usuario de hasta 20 caracteres con contador; el usuario se consulta mientras se escribe (**único**, sin distinguir mayúsculas); días de las alertas de 2 a 90 y hora del chequeo de 0 a 23 en hora de Argentina, con botones para subir y bajar; tipo de cuenta (Individuo / Comercio).
 
 #### Stock total por producto
 
@@ -63,6 +87,8 @@ La página de OCR habla con `/admin/ocr/*` del backoffice, que a su vez habla co
 VITE_API_URL=http://localhost:8002
 ```
 
+No hay otras variables: la subida de imágenes también pasa por el `backoffice_backend`.
+
 ---
 
 ## Setup local
@@ -87,4 +113,4 @@ npm test                # vitest
 npm run test:coverage   # con cobertura (umbral del 90 %)
 ```
 
-297 tests, 99 % de cobertura de líneas.
+467 tests, 99 % de cobertura de líneas y 91 % de ramas.

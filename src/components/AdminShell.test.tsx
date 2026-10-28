@@ -263,3 +263,48 @@ describe("AdminShell · agregar administrador, casos de borde", () => {
     expect(screen.getByPlaceholderText("Buscar por email…")).toHaveValue("");
   });
 });
+
+describe("AdminShell · alertas críticas en el menú", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getToken).mockReturnValue("tok");
+  });
+
+  it("un usuario ve cuántas alertas críticas tiene junto a «Alertas»", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/auth/me") return { data: REGULAR };
+      if (url === "/me/alerts/summary") return { data: { critical: 4, warning: 2, total: 6, expiring: 1, low_stock: 3 } };
+      return { data: {} };
+    });
+    renderShell();
+
+    expect(await screen.findByTestId("nav-alert-count")).toHaveTextContent("4");
+    expect(screen.getAllByRole("link", { name: /Alertas/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Inicio" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Inventario" }).length).toBeGreaterThan(0);
+  });
+
+  it("sin alertas críticas, o si falla la consulta, no muestra el contador", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/auth/me") return { data: REGULAR };
+      throw new Error("sin conexión");
+    });
+    renderShell();
+
+    await screen.findByText("user@test.com");
+    expect(screen.queryByTestId("nav-alert-count")).not.toBeInTheDocument();
+  });
+
+  it("un administrador no consulta las alertas y ve el menú de administración, con tendencias", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/auth/me") return { data: ADMIN };
+      return { data: {} };
+    });
+    renderShell();
+
+    await screen.findByText("admin@test.com");
+    expect(api.get).not.toHaveBeenCalledWith("/me/alerts/summary");
+    expect(screen.getAllByRole("link", { name: "Tendencias" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Usuarios" }).length).toBeGreaterThan(0);
+  });
+});

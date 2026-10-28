@@ -13,6 +13,7 @@ import {
 import { api } from "@/lib/api";
 import { Card, PageHeader, Spinner } from "@/components/ui";
 import { apiErrorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
 type ModelType = "gbm" | "xgboost" | "lightgbm" | "svr";
 type DataSource = "real" | "test";
@@ -473,11 +474,7 @@ export default function ML() {
                         <ModelTypeBadge modelType={v.model_type} />
                       </td>
                       <td className="py-3 pr-4 text-gray-500">
-                        {new Date(v.trained_at).toLocaleDateString("es-AR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })}
+                        {formatDateTime(v.trained_at)}
                       </td>
                       <td className="py-3 pr-4 tabular-nums text-gray-500">
                         {v.mae.toFixed(3)}

@@ -6,6 +6,7 @@ import { apiErrorMessage } from "@/lib/errors";
 import { downloadFile } from "@/lib/download";
 import type { AdminProduct, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 import ProductImage from "@/components/ProductImage";
 import { truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
@@ -14,16 +15,9 @@ import StockTotalModal, { type StockTotalTarget } from "@/components/StockTotalM
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
-function isExpiringSoon(date: string | null): boolean {
-  if (!date) return false;
-  const d = new Date(date).getTime();
-  const now = Date.now();
-  return d >= now && d <= now + 7 * 24 * 60 * 60 * 1000;
-}
-function isExpired(date: string | null): boolean {
-  if (!date) return false;
-  return new Date(date).getTime() < Date.now();
-}
+// La alerta de cada producto se calcula en el servidor con las reglas de su dueño (la del producto o la del perfil)
+const LEVEL_BADGE = { critical: "off", warning: "warn" } as const;
+const LEVEL_TEXT = { critical: "Crítica", warning: "Advertencia" } as const;
 
 export default function Products() {
   const qc = useQueryClient();
@@ -33,6 +27,7 @@ export default function Products() {
   const [ownerId, setOwnerId] = useState("");
   const [vencido, setVencido] = useState<"" | "si" | "no">("");
   const [bajoStock, setBajoStock] = useState(false);
+  const [alertLevel, setAlertLevel] = useState<"" | "critical" | "warning">("");
   const [sortBy, setSortBy] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
@@ -40,7 +35,7 @@ export default function Products() {
   // Ventana de stock total: abierta desde el botón de arriba (busca por nombre) o desde un producto de la tabla
   const [stockTotal, setStockTotal] = useState<{ initial: StockTotalTarget | null; userId?: string } | null>(null);
 
-  useEffect(() => setPage(0), [search, onlyImage, categoria, ownerId, vencido, bajoStock]);
+  useEffect(() => setPage(0), [search, onlyImage, categoria, ownerId, vencido, bajoStock, alertLevel]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["products-filter-options", ownerId],
@@ -69,6 +64,7 @@ export default function Products() {
     if (ownerId) params.user_id = ownerId;
     if (vencido) params.vencido = vencido === "si";
     if (bajoStock) params.bajo_stock = true;
+    if (alertLevel) params.alert_level = alertLevel;
     if (sortBy) {
       params.sort_by = sortBy;
       params.sort_dir = sortDir;
@@ -77,7 +73,7 @@ export default function Products() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["products", search, onlyImage, categoria, ownerId, vencido, bajoStock, sortBy, sortDir, page],
+    queryKey: ["products", search, onlyImage, categoria, ownerId, vencido, bajoStock, alertLevel, sortBy, sortDir, page],
     queryFn: async () => {
       const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<AdminProduct>>("/admin/products/", { params })).data;
@@ -204,9 +200,19 @@ export default function Products() {
           <option value="si">Vencidos</option>
           <option value="no">No vencidos</option>
         </select>
+        <select
+          value={alertLevel}
+          onChange={(e) => setAlertLevel(e.target.value as "" | "critical" | "warning")}
+          aria-label="Nivel de alerta"
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Alertas: todas</option>
+          <option value="critical">Críticas</option>
+          <option value="warning">Advertencias</option>
+        </select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
-          Bajo stock
+          Stock bajo
         </label>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={onlyImage} onChange={(e) => setOnlyImage(e.target.checked)} />
@@ -222,32 +228,33 @@ export default function Products() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 text-center">Imagen</th>
-                  <th className="px-5 py-3">
+                  <th className="px-3 py-3 text-center">Imagen</th>
+                  <th className="px-3 py-3">
                     <SortHeader field="nombre" label="Producto" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="categoria" label="Categoría" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="stock" label="Stock" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="vencimiento" label="Vencimiento" />
                   </th>
-                  <th className="px-5 py-3 text-center">Dueño</th>
-                  <th className="px-5 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-3 text-center">Alerta</th>
+                  <th className="px-3 py-3 text-center">Dueño</th>
+                  <th className="px-3 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex justify-center">
-                        <ProductImage url={p.imagen_url} alt={p.nombre} />
+                        <ProductImage url={p.imagen_url} alt={p.nombre} className="h-14 w-14" />
                       </div>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
                       {p.codigo_barras && (
@@ -259,27 +266,16 @@ export default function Products() {
                         </p>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
-                    <td className="px-5 py-3 text-center">
-                      {p.stock <= 1 ? <Badge tone="off">{p.stock}</Badge> : p.stock}
+                    <td className="px-3 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
+                    <td className="px-3 py-3 text-center font-semibold">{p.stock}</td>
+                    <td className="px-3 py-3 text-center text-muted">{p.vencimiento ? formatDate(p.vencimiento) : "—"}</td>
+                    <td className="px-3 py-3 text-center" data-testid={`product-alert-${p.id}`}>
+                      {p.alert_level ? <Badge tone={LEVEL_BADGE[p.alert_level]}>{LEVEL_TEXT[p.alert_level]}</Badge> : <span className="text-muted">—</span>}
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      {p.vencimiento ? (
-                        isExpired(p.vencimiento) ? (
-                          <Badge tone="off">{p.vencimiento}</Badge>
-                        ) : isExpiringSoon(p.vencimiento) ? (
-                          <Badge tone="warn">{p.vencimiento}</Badge>
-                        ) : (
-                          <span className="text-muted">{p.vencimiento}</span>
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-center text-muted" title={p.owner.email ?? p.owner.user_id}>
+                    <td className="px-3 py-3 text-center text-muted" title={p.owner.email ?? p.owner.user_id}>
                       {truncate(p.owner.email ?? p.owner.user_id)}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <button
                         onClick={() => setStockTotal({ initial: { nombre: p.nombre, categoria: p.categoria }, userId: p.owner.user_id })}
                         title="Ver el stock total de este producto"
@@ -299,7 +295,7 @@ export default function Products() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted">
                       No se encontraron productos.
                     </td>
                   </tr>
@@ -320,7 +316,7 @@ export default function Products() {
 
       {toDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Eliminar producto</h3>
             <p className="mt-2 text-sm text-muted">
               ¿Seguro que querés eliminar <span className="font-medium text-ink">{toDelete.nombre}</span>? Esta acción no se puede deshacer.

@@ -48,6 +48,12 @@ export interface DashboardStats {
   low_stock_products: number;
   expiring_soon_products: number;
   expired_products: number;
+  total_units: number;
+  critical_alerts: number;
+  warning_alerts: number;
+  users_with_alerts: number;
+  consumed_last_7d: number;
+  restocked_last_7d: number;
   products_by_category: CategoryCount[];
   top_users_by_products: UserProductCount[];
   products_per_day_last_14d: DayCount[];
@@ -81,7 +87,12 @@ export interface AdminProduct {
   imagen_url: string | null;
   ubicacion: string | null;
   codigo_barras: string | null;
+  stock_minimo?: number | null;
+  dias_alerta_vencimiento?: number | null;
   created_at: string | null;
+  /** La alerta más grave que tiene hoy el producto, y de qué tipos son. */
+  alert_level?: AlertLevel | null;
+  alert_types?: AlertType[];
   owner: ProductOwner;
 }
 
@@ -100,14 +111,76 @@ export interface AdminProductGroupDetail extends AdminProductGroupSummary {
 
 export interface AppUserDetail extends AppUser {
   products: AdminProduct[];
+  total_units: number;
+  critical_alerts: number;
+  warning_alerts: number;
+  consumed_last_30d: number;
+  restocked_last_30d: number;
+  alerts: AlertOut[];
+}
+
+export type AlertLevel = "critical" | "warning";
+export type AlertType = "expiry" | "stock_low_coverage" | "slow_pace";
+
+/** Una alerta de un producto, con lo necesario para mostrarla y explicarla (las reglas son las de la app). */
+export interface AlertOut {
+  key: string;
+  product_id: number;
+  type: AlertType;
+  level: AlertLevel;
+  /** «rule»: sale de una regla del usuario; «system»: la genera el sistema por el consumo. */
+  origin: "rule" | "system";
+  days_to_expiry: number | null;
+  days_until_stockout: number | null;
+  units_wasted: number | null;
+  suggested_qty: number | null;
+  limit_days: number | null;
+  rule_scope: "product" | "general" | null;
+  /** Las del modelo predictivo llevan la marca «Predicción». */
+  predictive: boolean;
+  product_name: string;
+  product_brand: string | null;
+  product_category: string | null;
+  product_location: string | null;
+  product_stock: number;
+  product_expiry: string | null;
+  image_url: string | null;
+  user_id: string | null;
+}
+
+export interface AlertSummary {
+  critical: number;
+  warning: number;
+  total: number;
+  /** Productos con una alerta crítica de vencimiento y de stock mínimo: lo que muestra el inicio. */
+  expiring: number;
+  low_stock: number;
+}
+
+export interface AlertList {
+  items: AlertOut[];
+  summary: AlertSummary;
+}
+
+export interface StockChange {
+  id: string;
+  kind: "entrada" | "salida" | "modificacion";
+  stock_before: number;
+  stock_after: number;
+  quantity: number;
+  occurred_at: string;
+  producto: MyProduct;
 }
 
 export interface MyStats {
   total_products: number;
+  total_units: number;
   products_with_image: number;
   low_stock_products: number;
   expiring_soon_products: number;
   expired_products: number;
+  critical_alerts: number;
+  warning_alerts: number;
   products_by_category: CategoryCount[];
 }
 
@@ -150,8 +223,13 @@ export interface MyProfile {
   first_name: string | null;
   last_name: string | null;
   username: string | null;
+  /** Días de cobertura mínimos (stock mínimo) para todos los productos. */
   stock_minimo: number;
+  /** Días de anticipación del aviso de vencimiento para todos los productos. */
   dias_alerta_vencimiento: number;
+  /** Hora argentina (0 a 23) del chequeo diario de alertas. */
+  alert_check_hour: number;
+  user_type: "individuo" | "comercio";
 }
 
 export interface BulkProductRow {
@@ -206,7 +284,6 @@ export interface MyMetrics {
   total_entradas: number;
   consumo_por_dia: ConsumoPorDia[];
   top_productos: ProductoConsumo[];
-  productos_menos_usados: ProductoConsumo[];
 }
 
 export interface ConsumptionEvent {

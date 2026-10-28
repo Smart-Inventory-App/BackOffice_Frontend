@@ -3,6 +3,7 @@ import { X, Pencil, Trash2, Undo2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ConsumptionEvent, MyProduct } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
 interface Props {
   product: MyProduct | null;
@@ -105,7 +106,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-lift">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Historial de consumo</h3>
           <button onClick={onClose} className="text-muted hover:text-ink">
@@ -204,7 +205,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                               )}
                             </div>
                             <p className="text-xs text-muted">
-                              {new Date(event.consumed_at).toLocaleString()}
+                              {formatDateTime(event.consumed_at)}
                               {event.actor_email ? ` · ${event.actor_email}` : ""}
                             </p>
                             {event.note && <p className="text-xs italic text-muted">{event.note}</p>}
@@ -240,7 +241,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
 
       {eventToDelete && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div role="alertdialog" className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+          <div role="alertdialog" className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Borrar registro</h3>
             <p className="mt-2 text-sm text-muted">
               <span className="block">¿Borrar este registro de consumo?</span>

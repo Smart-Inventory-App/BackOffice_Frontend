@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
 import { LARGOS_CODIGO, digitosDelCodigo, limpiarCodigo } from "@/lib/barcode";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, Segmented } from "@/components/ui";
+import ImageUpload from "@/components/ImageUpload";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
@@ -80,8 +81,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
       api
         .get<ProductSuggestion | null>(`/me/products/by-barcode/${digitos}`)
         .then(({ data }) => setDuplicado(data))
-        // Un 400 acá es el mismo rechazo que daría el alta —dígito verificador que
-        // no cierra—: se muestra antes de apretar Cargar, no después.
+        // Un 400 acá es el mismo rechazo que daría el alta —un código que no tiene el
+        // largo de un código de barras—: se muestra antes de apretar Cargar, no después.
         .catch((err: any) => setCodigoError(apiErrorMessage(err, "") || null));
     }, 400);
     return () => clearTimeout(handle);
@@ -253,8 +254,8 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             </div>
           ) : (
             <p className="mt-1 text-xs text-muted">
-              El número impreso debajo del código del envase. Cargándolo una vez, después alcanza con
-              escanearlo desde Procesamiento.
+              El número impreso debajo del código del envase: 8, 12, 13 o 14 dígitos. Cargándolo una vez,
+              después alcanza con escanearlo desde Procesamiento.
             </p>
           )}
         </div>
@@ -278,15 +279,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             }}
           />
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-ink">URL de imagen</label>
-          <input
-            value={form.imagen_url}
-            onChange={set("imagen_url")}
-            placeholder="https://…"
-            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-          />
-        </div>
+        <ImageUpload value={form.imagen_url} onChange={(url) => setForm((f) => ({ ...f, imagen_url: url }))} />
         <div>
           <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
           <textarea
@@ -297,32 +290,37 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           />
         </div>
 
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-            Alertas para este producto (opcional)
+        <div className="rounded-2xl border border-line/70 bg-canvas/60 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reglas de alerta de producto</p>
+          <p className="mb-3 mt-0.5 text-xs text-muted">
+            Opcionales: si las dejás vacías, se usan las reglas generales de tu perfil.
           </p>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+              <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
               <input
                 type="number"
                 min={1}
+                max={9999999}
                 value={form.stock_minimo}
                 onChange={set("stock_minimo")}
                 placeholder="Usa tu regla general"
-                className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                className="w-full rounded-xl border border-[#D9D9D9] bg-white px-4 py-2 text-sm outline-none focus:border-primary"
               />
+              <p className="mt-1 text-xs text-muted">Se avisa si el stock alcanza para menos días.</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+              <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
               <input
                 type="number"
                 min={1}
+                max={999}
                 value={form.dias_alerta_vencimiento}
                 onChange={set("dias_alerta_vencimiento")}
                 placeholder="Usa tu regla general"
-                className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+                className="w-full rounded-xl border border-[#D9D9D9] bg-white px-4 py-2 text-sm outline-none focus:border-primary"
               />
+              <p className="mt-1 text-xs text-muted">Se avisa si faltan menos días para que venza.</p>
             </div>
           </div>
         </div>
@@ -905,11 +903,11 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                     </div>
                     <div>
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                        Alertas para este producto (opcional)
+                        Reglas de alerta de producto (opcional)
                       </p>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+                          <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
                           <input
                             type="number"
                             min={1}
@@ -924,7 +922,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+                          <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
                           <input
                             type="number"
                             min={1}
@@ -1001,34 +999,24 @@ export default function Cargar() {
       <div className="mb-3 flex gap-2">
         <button
           onClick={() => setDirection("entrada")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            direction === "entrada" ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
+          className={`rounded-full px-5 py-1.5 text-sm font-semibold transition ${
+            direction === "entrada" ? "bg-primary text-white shadow-card" : "border border-line bg-white text-muted hover:text-primaryDark"
           }`}
         >
           Entrada
         </button>
         <button
           onClick={() => setDirection("salida")}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            direction === "salida" ? "bg-danger text-white" : "bg-canvas text-muted hover:text-primaryDark"
+          className={`rounded-full px-5 py-1.5 text-sm font-semibold transition ${
+            direction === "salida" ? "bg-critical text-white shadow-card" : "border border-line bg-white text-muted hover:text-primaryDark"
           }`}
         >
           Salida
         </button>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-              tab === t.value ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="mb-4">
+        <Segmented options={TABS.map((t) => ({ key: t.value, label: t.label }))} value={tab} onChange={setTab} />
       </div>
 
       {tab === "manual" ? (

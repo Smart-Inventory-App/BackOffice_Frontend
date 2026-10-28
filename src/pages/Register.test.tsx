@@ -43,7 +43,7 @@ describe("Register", () => {
     const user = userEvent.setup();
     renderRegister("nuevo@test.com");
 
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "abc");
     await user.type(confirm, "abc");
@@ -54,7 +54,7 @@ describe("Register", () => {
   it("si las contraseñas no coinciden, lo avisa", async () => {
     const user = userEvent.setup();
     renderRegister("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg2");
@@ -67,7 +67,7 @@ describe("Register", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderRegister("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -89,7 +89,7 @@ describe("Register", () => {
       throw err;
     });
     renderRegister("repetido@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -131,7 +131,7 @@ describe("Register · reglas de contraseña y navegación", () => {
   ])("rechaza %s sin llamar al backend", async (password, message) => {
     const user = userEvent.setup();
     renderRegister("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, password);
     await user.type(confirm, password);
@@ -145,7 +145,7 @@ describe("Register · reglas de contraseña y navegación", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderRegisterWithLogin("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -155,11 +155,11 @@ describe("Register · reglas de contraseña y navegación", () => {
     expect(screen.getByText(/LOGIN/)).toHaveTextContent('"registered":true');
   });
 
-  it("el link 'Ya tengo cuenta' lleva al login", async () => {
+  it("el link 'Iniciar sesión' lleva al login", async () => {
     const user = userEvent.setup();
     renderRegisterWithLogin();
 
-    await user.click(screen.getByRole("button", { name: /Ya tengo cuenta/ }));
+    await user.click(screen.getByRole("link", { name: /Iniciar sesión/ }));
 
     expect(await screen.findByText(/LOGIN/)).toBeInTheDocument();
   });
@@ -169,7 +169,7 @@ describe("Register · reglas de contraseña y navegación", () => {
     let release: (v: unknown) => void = () => {};
     vi.mocked(api.post).mockReturnValue(new Promise((resolve) => { release = resolve; }) as any);
     renderRegister("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -183,7 +183,7 @@ describe("Register · reglas de contraseña y navegación", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockRejectedValue(new Error("red"));
     renderRegister("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -196,7 +196,7 @@ describe("Register · reglas de contraseña y navegación", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderRegister();
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(screen.getByPlaceholderText("tu@email.com"), "otro@test.com");
     await user.type(pw, "Abcdefg1");

@@ -6,6 +6,7 @@ import type { ActivityEntry, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
+import { formatDateTime } from "@/lib/format";
 
 const KIND_LABELS: Record<ActivityEntry["kind"], string> = {
   status: "Habilitación",
@@ -37,16 +38,6 @@ const KIND_TONES: Record<ActivityEntry["kind"], "ok" | "off" | "warn" | "neutral
   product_deleted: "off",
 };
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function Auditoria() {
   const [kind, setKind] = useState<"" | ActivityEntry["kind"]>("");

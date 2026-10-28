@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import type { AppUser, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
-import { truncate } from "@/lib/format";
+import { formatDateTime, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import AuditModal from "@/components/AuditModal";
@@ -105,20 +105,20 @@ export default function Users() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3">Email</th>
-                  <th className="px-5 py-3 text-center">Nombre</th>
-                  <th className="px-5 py-3 text-center">Usuario</th>
-                  <th className="px-5 py-3 text-center">Productos</th>
-                  <th className="px-5 py-3 text-center">Registrado</th>
-                  <th className="px-5 py-3 text-center">Estado</th>
-                  <th className="px-5 py-3 text-center">Acciones</th>
-                  <th className="px-5 py-3 text-center">Auditoría</th>
+                  <th className="px-3 py-3">Email</th>
+                  <th className="px-3 py-3 text-center">Nombre</th>
+                  <th className="px-3 py-3 text-center">Usuario</th>
+                  <th className="px-3 py-3 text-center">Productos</th>
+                  <th className="px-3 py-3 text-center">Registrado</th>
+                  <th className="px-3 py-3 text-center">Estado</th>
+                  <th className="px-3 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-3 text-center">Auditoría</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((u) => (
                   <tr key={u.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-5 py-3 font-medium">
+                    <td className="px-3 py-3 font-medium">
                       <Link
                         to={`/usuarios/${u.id}`}
                         className="text-primaryDark hover:underline"
@@ -132,20 +132,20 @@ export default function Users() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
+                    <td className="px-3 py-3 text-center text-muted" title={[u.first_name, u.last_name].filter(Boolean).join(" ")}>
                       {truncate([u.first_name, u.last_name].filter(Boolean).join(" ") || "")}
                     </td>
-                    <td className="px-5 py-3 text-center text-muted" title={u.username ?? ""}>
+                    <td className="px-3 py-3 text-center text-muted" title={u.username ?? ""}>
                       {truncate(u.username)}
                     </td>
-                    <td className="px-5 py-3 text-center">{u.product_count}</td>
-                    <td className="px-5 py-3 text-center text-muted">
-                      {u.created_at ? u.created_at.slice(0, 10) : "—"}
+                    <td className="px-3 py-3 text-center">{u.product_count}</td>
+                    <td className="px-3 py-3 text-center text-muted">
+                      {formatDateTime(u.created_at)}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           onClick={() => onToggle(u)}
@@ -169,7 +169,7 @@ export default function Users() {
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center">
                       <button
                         onClick={() => setAuditUser(u)}
                         title="Ver registro de auditoría"
@@ -196,7 +196,7 @@ export default function Users() {
 
       {toDisable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Deshabilitar usuario</h3>
             <p className="mt-1 text-sm text-muted" title={toDisable.email ?? toDisable.id}>
               {truncate(toDisable.email ?? toDisable.id)}
@@ -231,7 +231,7 @@ export default function Users() {
 
       {toRemoveAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Quitar administrador</h3>
             <p className="mt-2 text-sm text-muted">
               ¿Seguro que querés quitarle el rol de administrador a{" "}

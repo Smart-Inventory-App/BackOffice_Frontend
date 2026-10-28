@@ -3,18 +3,8 @@ import { ShieldCheck, ShieldOff, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AuditEntry } from "@/lib/types";
 import { Badge, Spinner } from "@/components/ui";
+import { formatDateTime } from "@/lib/format";
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export default function AuditModal({
   userId,
@@ -32,7 +22,7 @@ export default function AuditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white p-6 shadow-xl">
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-3xl bg-white p-6 shadow-lift">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold">Registro de auditoría</h3>
