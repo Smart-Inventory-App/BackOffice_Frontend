@@ -202,3 +202,11 @@ describe("AddAdminModal", () => {
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("AddAdminModal · texto del campo de mail", () => {
+  it("el campo de email dice «email@example.com»", () => {
+    render(<AddAdminModal onClose={() => {}} />);
+
+    expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument();
+  });
+});

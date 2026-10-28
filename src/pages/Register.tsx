@@ -83,7 +83,7 @@ export default function Register() {
           onChange={(e) => setEmail(e.target.value)}
           required
           autoFocus={!prefillEmail}
-          placeholder="tu@email.com"
+          placeholder="email@example.com"
           error={
             emailStatus === "taken"
               ? "Ya existe una cuenta con ese email."

@@ -1205,6 +1205,6 @@ describe("Cargar · botones de tipo de flujo y método arriba", () => {
     expect(screen.getByLabelText("Fecha de vencimiento")).toHaveAttribute("placeholder", "DD/MM/AAAA");
     expect(screen.getByLabelText("Código de barras")).toHaveAttribute("placeholder", "Opcional");
     expect(screen.getByLabelText("Descripción")).toHaveAttribute("placeholder", "Opcional");
-    expect(screen.getByText("Ubicación de guardado").nextElementSibling).toHaveTextContent("Ej. Heladera, Alacena A, Freezer");
+    expect((screen.getByText("Ubicación de guardado").nextElementSibling as HTMLSelectElement).selectedOptions[0]).toHaveTextContent("Seleccionar…");
   });
 });

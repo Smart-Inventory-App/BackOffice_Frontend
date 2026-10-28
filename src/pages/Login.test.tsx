@@ -72,7 +72,7 @@ describe("Login", () => {
 
     expect(screen.getByAltText("Smart Inventory")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("SmartInventory");
-    expect(emailField()).toHaveAttribute("placeholder", "tu@email.com");
+    expect(emailField()).toHaveAttribute("placeholder", "email@example.com");
     expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled();
   });
 

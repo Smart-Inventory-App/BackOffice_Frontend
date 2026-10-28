@@ -192,3 +192,11 @@ describe("ForgotPassword", () => {
     expect(await screen.findByText(/LOGIN/)).toHaveTextContent('"email":"ana@test.com"');
   });
 });
+
+describe("ForgotPassword · texto del campo de mail", () => {
+  it("el campo de email dice «email@example.com»", () => {
+    renderForgot();
+
+    expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument();
+  });
+});

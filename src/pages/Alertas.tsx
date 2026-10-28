@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { AlertLevel, AlertList, AlertOut } from "@/lib/types";
 import { LEVEL_TONES, TYPE_FILTERS, type TypeFilter } from "@/lib/alertInfo";
-import { Card, EmptyState, PageHeader, Segmented, Spinner } from "@/components/ui";
+import { Card, EmptyState, Segmented, Spinner } from "@/components/ui";
 import AlertDetailModal from "@/components/AlertDetailModal";
 import AlertRow from "@/components/AlertRow";
 
@@ -57,10 +57,30 @@ export default function Alertas() {
   const items = data?.items ?? [];
   const rules = items.filter((a) => a.origin === "rule");
   const system = items.filter((a) => a.origin === "system");
+  // Cuántas alertas se ven y para cuántos productos distintos: con una opción elegida, los productos son los del inicio
+  const affected = new Set(items.map((a) => a.product_id)).size;
 
   return (
     <div>
-      <PageHeader title="Centro de Alertas" subtitle="Lo que necesita tu atención en tu inventario" />
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Centro de Alertas</h1>
+          <p className="mt-1 text-sm text-muted">Lo que necesita tu atención en tu inventario</p>
+        </div>
+        {!isLoading && !isError && items.length > 0 && (
+          // «3 alertas para 2 productos», como en la app: los números más grandes, todos sobre la misma línea de base
+          <p data-testid="alerts-affected" className="flex flex-wrap items-baseline gap-x-1.5 text-sm font-semibold text-muted">
+            <span data-testid="alerts-count" className="text-2xl font-extrabold leading-none text-primaryDark">
+              {items.length}
+            </span>{" "}
+            <span>{items.length === 1 ? "alerta" : "alertas"} para</span>{" "}
+            <span data-testid="alerts-affected-count" className="text-2xl font-extrabold leading-none text-primaryDark">
+              {affected}
+            </span>{" "}
+            <span>{affected === 1 ? "producto" : "productos"}</span>
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         {LEVELS.map((key) => {

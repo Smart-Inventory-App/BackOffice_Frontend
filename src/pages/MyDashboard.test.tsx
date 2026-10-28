@@ -856,3 +856,14 @@ describe("MyDashboard · mismo alto en ubicaciones y datos adicionales", () => {
     expect(fact.className).toContain("h-14");
   });
 });
+
+describe("MyDashboard · nombres de las tarjetas de alertas", () => {
+  it("las tarjetas dicen «Vencimientos de productos» y «Stock bajo de productos»", async () => {
+    vi.clearAllMocks();
+    mockApi();
+    renderDashboard();
+
+    expect(await screen.findByTestId("stat-expiring")).toHaveTextContent("Vencimientos de productos");
+    expect(screen.getByTestId("stat-low")).toHaveTextContent("Stock bajo de productos");
+  });
+});

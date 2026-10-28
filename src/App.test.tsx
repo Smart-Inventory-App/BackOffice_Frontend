@@ -97,7 +97,7 @@ describe("App", () => {
   it("sin sesión, cualquier ruta protegida redirige a /login", async () => {
     vi.mocked(getToken).mockReturnValue(null);
     renderApp(["/"]);
-    await waitFor(() => expect(screen.getByPlaceholderText("tu@email.com")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument());
   });
 
   it("un admin ve el Dashboard de admin en la raíz, con navegación de administrador", async () => {
@@ -155,7 +155,7 @@ describe("App", () => {
     vi.mocked(getToken).mockReturnValue(null);
     renderApp(["/set-password"]);
     // Sin email en el estado de navegación, SetPassword redirige a /login.
-    await waitFor(() => expect(screen.getByPlaceholderText("tu@email.com")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("email@example.com")).toBeInTheDocument());
   });
 
   it("la ruta /forgot-password se muestra sin el shell del backoffice", async () => {

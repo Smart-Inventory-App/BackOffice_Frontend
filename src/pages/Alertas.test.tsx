@@ -296,3 +296,67 @@ describe("Alertas · botones iguales y centrados", () => {
     ["critical", "warning"].forEach((key) => expect(screen.getByTestId(`alert-summary-${key}`).className).toContain("text-center"));
   });
 });
+
+describe("Alertas · productos afectados", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("a la derecha del título y su descripción dice «N alertas para M productos», como la app", async () => {
+    mockServer();
+    renderCenter();
+
+    const affected = await screen.findByTestId("alerts-affected");
+    expect(affected).toHaveTextContent("4 alertas para 4 productos");
+    const header = screen.getByRole("heading", { name: "Centro de Alertas" }).parentElement!.parentElement!;
+    expect(header.className).toContain("justify-between");
+    expect(header.className).toContain("items-center");
+    expect(header).toContainElement(affected);
+    expect(screen.getByText("Lo que necesita tu atención en tu inventario").parentElement!.compareDocumentPosition(affected) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("un producto con dos alertas cuenta una vez entre los productos y dos entre las alertas", async () => {
+    mockServer([
+      alert({ key: "expiry-1", product_id: 1 }),
+      alert({ key: "slow_pace-9", product_id: 1, type: "slow_pace", origin: "system", predictive: true, units_wasted: 3 }),
+      alert({ key: "expiry-2", product_id: 2, level: "warning" }),
+    ]);
+    renderCenter({ tipo: "vencimiento" });
+
+    expect(await screen.findByTestId("alerts-affected-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("alerts-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("alerts-affected")).toHaveTextContent("3 alertas para 2 productos");
+    expect(screen.getAllByTestId(/^alert-item-/)).toHaveLength(3);
+  });
+
+  it("sigue a la opción elegida y usa el singular: «1 alerta para 1 producto»", async () => {
+    const user = userEvent.setup();
+    mockServer();
+    renderCenter();
+    await screen.findByTestId("alerts-affected");
+
+    await user.click(screen.getByTestId("alert-filter-stock"));
+    await waitFor(() => expect(screen.getByTestId("alerts-affected")).toHaveTextContent("1 alerta para 1 producto"));
+    expect(screen.getByTestId("alerts-affected")).not.toHaveTextContent("alertas");
+  });
+
+  it("sin alertas no muestra el contador", async () => {
+    mockServer([]);
+    renderCenter();
+
+    await screen.findByText("No tenés alertas para mostrar.");
+    expect(screen.queryByTestId("alerts-affected")).not.toBeInTheDocument();
+  });
+});
+
+describe("Alertas · alineación del texto de alertas y productos", () => {
+  it("los números grandes y las palabras chicas comparten la línea de base", async () => {
+    mockServer();
+    renderCenter();
+
+    const text = await screen.findByTestId("alerts-affected");
+    expect(text.className).toContain("items-baseline");
+    expect(screen.getByTestId("alerts-count").className).toContain("text-2xl");
+    expect(screen.getByTestId("alerts-affected-count").className).toContain("text-2xl");
+  });
+});

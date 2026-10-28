@@ -117,7 +117,7 @@ export default function AddAdminModal({ onClose }: { onClose: () => void }) {
               }}
               autoFocus
               autoComplete="off"
-              placeholder="nuevo.admin@email.com"
+              placeholder="email@example.com"
             />
 
             {needsPassword && (

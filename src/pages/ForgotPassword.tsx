@@ -81,7 +81,7 @@ export default function ForgotPassword() {
       {step === "email" && (
         <form onSubmit={sendCode} className="space-y-4">
           <p className="text-sm text-muted">Te mandamos un código por mail para crear o cambiar tu contraseña.</p>
-          <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="tu@email.com" />
+          <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="email@example.com" />
           {error && <Notice tone="error">{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>
             {loading ? "Enviando…" : "Enviar código"}

@@ -412,7 +412,6 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           label="Ubicación de guardado"
           value={form.ubicacion}
           options={ubicacionOptions}
-          emptyLabel="Ej. Heladera, Alacena A, Freezer"
           addPlaceholder="Ej. Heladera, Alacena A, Freezer"
           maxLength={OPTION_MAX}
           onChange={(v) => {

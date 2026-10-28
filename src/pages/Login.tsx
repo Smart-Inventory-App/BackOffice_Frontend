@@ -118,7 +118,7 @@ export default function Login() {
             }}
             required
             autoFocus
-            placeholder="tu@email.com"
+            placeholder="email@example.com"
           />
           {expired && !notice && <Notice tone="info">Tu sesión expiró. Volvé a iniciar sesión para seguir.</Notice>}
           {notice && <Notice tone="ok">{notice}</Notice>}

@@ -31,12 +31,12 @@ describe("Register", () => {
 
   it("precarga el email recibido por navegación", () => {
     renderRegister("nuevo@test.com");
-    expect(screen.getByPlaceholderText("tu@email.com")).toHaveValue("nuevo@test.com");
+    expect(screen.getByPlaceholderText("email@example.com")).toHaveValue("nuevo@test.com");
   });
 
   it("sin email precargado, el campo arranca vacío y editable", () => {
     renderRegister();
-    expect(screen.getByPlaceholderText("tu@email.com")).toHaveValue("");
+    expect(screen.getByPlaceholderText("email@example.com")).toHaveValue("");
   });
 
   it("valida largo mínimo, mayúscula, minúscula y número", async () => {
@@ -198,7 +198,7 @@ describe("Register · reglas de contraseña y navegación", () => {
     renderRegister();
     const [pw, confirm] = [screen.getByLabelText("Contraseña"), screen.getByLabelText("Repetir contraseña")];
 
-    await user.type(screen.getByPlaceholderText("tu@email.com"), "otro@test.com");
+    await user.type(screen.getByPlaceholderText("email@example.com"), "otro@test.com");
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
     await user.click(screen.getByRole("button", { name: "Crear cuenta" }));

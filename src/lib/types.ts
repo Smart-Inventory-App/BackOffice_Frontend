@@ -154,7 +154,7 @@ export interface AlertSummary {
   critical: number;
   warning: number;
   total: number;
-  /** Productos con una alerta crítica de vencimiento y de stock mínimo: lo que muestra el inicio. */
+  /** Productos con alertas de «Vencimiento» (vencimiento y ritmo lento) y de «Stock», de cualquier nivel: lo mismo que el inicio de la app. */
   expiring: number;
   low_stock: number;
 }

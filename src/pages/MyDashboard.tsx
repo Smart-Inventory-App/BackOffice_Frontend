@@ -222,7 +222,7 @@ export default function MyDashboard() {
           testId="stat-expiring"
           icon={Clock}
           tone="yellow"
-          title="Vencimientos"
+          title="Vencimientos de productos"
           value={formatThousands(data.expiring_soon_products)}
           comment="Alertas de productos"
           onClick={() => goToAlerts({ tipo: "vencimiento" })}
@@ -231,7 +231,7 @@ export default function MyDashboard() {
           testId="stat-low"
           icon={TrendingDown}
           tone="red"
-          title="Stock bajo"
+          title="Stock bajo de productos"
           value={formatThousands(data.low_stock_products)}
           comment="Alertas de stock"
           onClick={() => goToAlerts({ tipo: "stock" })}
