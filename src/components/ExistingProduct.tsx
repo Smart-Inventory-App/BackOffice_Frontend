@@ -468,7 +468,7 @@ export default function ProductoExistente({
       <div className="space-y-4">
         {successNotice}
         <div className="max-w-sm">
-          <FotoInput label="Foto de la etiqueta del producto" hint="El envase o su etiqueta, de frente" file={fotoEtiqueta} disabled={etiqueta.procesando} onChange={setFotoEtiqueta} />
+          <FotoInput label="Escanea la etiqueta de un producto" hint="El envase o su etiqueta, de frente" file={fotoEtiqueta} disabled={etiqueta.procesando} onChange={setFotoEtiqueta} />
         </div>
         <BotonProcesar onClick={() => fotoEtiqueta && etiqueta.subir(fotoEtiqueta)} disabled={!fotoEtiqueta} procesando={etiqueta.procesando}>
           Leer etiqueta
@@ -506,7 +506,7 @@ export default function ProductoExistente({
       </div>
 
       <div className="max-w-sm">
-        <FotoInput label="O leelo de una foto" hint="De cerca y derecho: se decodifica en menos de un segundo" file={fotoCodigo} disabled={codigoScan.procesando} onChange={setFotoCodigo} />
+        <FotoInput label="Escanea un código de barras" hint="De cerca y derecho: se decodifica en menos de un segundo" file={fotoCodigo} disabled={codigoScan.procesando} onChange={setFotoCodigo} />
       </div>
       <BotonProcesar onClick={() => fotoCodigo && codigoScan.subir(fotoCodigo)} disabled={!fotoCodigo} procesando={codigoScan.procesando}>
         Leer código

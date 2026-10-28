@@ -1251,14 +1251,16 @@ const TABS: { value: Tab; label: string; icon: LucideIcon }[] = [
 ];
 
 // Cómo se busca un producto que ya está cargado: por su nombre, por su etiqueta o por su código de barras
-const EXISTING_METHODS: { value: ExistingMethod; label: string; icon: LucideIcon }[] = [
-  { value: "nombre", label: "Nombre", icon: PenLine },
-  { value: "etiqueta", label: "Etiqueta", icon: Tag },
-  { value: "codigo", label: "Código de barras", icon: Barcode },
+// Del mismo azul que el botón «Producto existente»
+const EXISTING_ACTIVE = "bg-primaryDark text-white shadow-card";
+const EXISTING_METHODS: { value: ExistingMethod; label: string; icon: LucideIcon; active: string }[] = [
+  { value: "nombre", label: "Nombre", icon: PenLine, active: EXISTING_ACTIVE },
+  { value: "etiqueta", label: "Etiqueta", icon: Tag, active: EXISTING_ACTIVE },
+  { value: "codigo", label: "Código de barras", icon: Barcode, active: EXISTING_ACTIVE },
 ];
 
 const DIRECTIONS: { value: Direction; label: string; icon: LucideIcon; active: string }[] = [
-  { value: "existente", label: "Producto existente", icon: PackageSearch, active: "bg-primaryDark text-white shadow-card" },
+  { value: "existente", label: "Producto existente", icon: PackageSearch, active: EXISTING_ACTIVE },
   { value: "entrada", label: "Entrada", icon: ArrowDownToLine, active: "bg-primary text-white shadow-card" },
   { value: "salida", label: "Salida", icon: ArrowUpFromLine, active: "bg-critical text-white shadow-card" },
 ];

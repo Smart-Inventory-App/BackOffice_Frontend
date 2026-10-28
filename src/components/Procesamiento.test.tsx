@@ -657,3 +657,14 @@ describe("Procesamiento · salida · comprobante", () => {
     expect(screen.getByRole("button", { name: /Confirmar salida/ })).toBeDisabled();
   });
 });
+
+describe("Procesamiento · texto del escaneo de la etiqueta", () => {
+  it("dice «Escanea la etiqueta de un producto»", () => {
+    mockOpcionesGet();
+    const { irAManual, irASalidaManual } = irA();
+    renderWithProviders(<Procesamiento direction="entrada" irAManual={irAManual} irASalidaManual={irASalidaManual} />);
+
+    expect(screen.getByText("Escanea la etiqueta de un producto")).toBeInTheDocument();
+    expect(screen.queryByText("Foto de la etiqueta del producto")).not.toBeInTheDocument();
+  });
+});

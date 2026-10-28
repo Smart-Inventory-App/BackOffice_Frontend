@@ -198,7 +198,7 @@ function EntradaEtiqueta({ irAManual }: { irAManual: (p: Prefill) => void }) {
       {!form && (
         <>
           <div className="max-w-sm">
-            <FotoInput label="Foto de la etiqueta del producto" hint="El envase o su etiqueta, de frente" file={foto} disabled={etiqueta.procesando} onChange={setFoto} />
+            <FotoInput label="Escanea la etiqueta de un producto" hint="El envase o su etiqueta, de frente" file={foto} disabled={etiqueta.procesando} onChange={setFoto} />
           </div>
           <BotonProcesar onClick={() => foto && etiqueta.subir(foto)} disabled={!foto} procesando={etiqueta.procesando}>
             Leer etiqueta

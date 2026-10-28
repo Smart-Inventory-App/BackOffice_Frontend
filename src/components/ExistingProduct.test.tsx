@@ -388,3 +388,16 @@ describe("Producto existente · por código de barras", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron buscar los productos");
   });
 });
+
+describe("Producto existente · textos de los escaneos", () => {
+  it("la etiqueta y el código de barras dicen «Escanea ...»", () => {
+    const { unmount } = renderWithProviders(<ProductoExistente method="etiqueta" />);
+    expect(screen.getByText("Escanea la etiqueta de un producto")).toBeInTheDocument();
+    expect(screen.queryByText("Foto de la etiqueta del producto")).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<ProductoExistente method="codigo" />);
+    expect(screen.getByText("Escanea un código de barras")).toBeInTheDocument();
+    expect(screen.queryByText("O leelo de una foto")).not.toBeInTheDocument();
+  });
+});

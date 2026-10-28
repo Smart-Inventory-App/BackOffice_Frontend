@@ -1348,3 +1348,22 @@ describe("Cargar · producto existente y escaneo hacia el formulario", () => {
     expect(screen.getByTestId("flow-direction-salida")).toHaveAttribute("aria-pressed", "true");
   });
 });
+
+describe("Cargar · color de los botones de producto existente", () => {
+  it("nombre, etiqueta y código de barras van del mismo azul que «Producto existente»", async () => {
+    vi.clearAllMocks();
+    defaultGet();
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.click(screen.getByTestId("flow-direction-existente"));
+    expect(screen.getByTestId("flow-direction-existente").className).toContain("bg-primaryDark");
+    for (const metodo of ["nombre", "etiqueta", "codigo"]) {
+      await user.click(screen.getByTestId(`flow-existing-${metodo}`));
+      const activo = screen.getByTestId(`flow-existing-${metodo}`);
+      expect(activo).toHaveAttribute("aria-pressed", "true");
+      expect(activo.className).toContain("bg-primaryDark");
+      expect(activo.className).not.toContain("bg-primary ");
+    }
+  });
+});
