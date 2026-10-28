@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import { clearSessionExpired, sessionExpired } from "@/lib/sessionExpired";
 import { apiErrorMessage } from "@/lib/errors";
 import AuthLayout, { PasswordField } from "@/components/AuthLayout";
 import { Button, ConfirmDialog, Field, Notice } from "@/components/ui";
@@ -35,6 +36,11 @@ export default function Login() {
         : null,
   );
   const [loading, setLoading] = useState(false);
+  // La sesión se cerró porque expiró: se avisa en esta pantalla y el aviso no se repite al recargar
+  const [expired] = useState(() => sessionExpired());
+  useEffect(() => {
+    clearSessionExpired();
+  }, []);
 
   if (admin) return <Navigate to="/" replace />;
 
@@ -114,6 +120,7 @@ export default function Login() {
             autoFocus
             placeholder="tu@email.com"
           />
+          {expired && !notice && <Notice tone="info">Tu sesión expiró. Volvé a iniciar sesión para seguir.</Notice>}
           {notice && <Notice tone="ok">{notice}</Notice>}
           {error && <Notice tone="error">{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>

@@ -227,7 +227,8 @@ describe("AdminShell · «Agregar administrador» y textos", () => {
     await screen.findByText("user@test.com");
 
     expect(screen.queryByText(/backoffice/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Dashboard", { selector: "p" })).toBeInTheDocument();
+    // Debajo del logo no hay ninguna leyenda: solo los enlaces del menú dicen «Dashboard»
+    expect(screen.queryByText("Dashboard", { selector: "p" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Dashboard" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("link", { name: "Inicio" })).not.toBeInTheDocument();
   });

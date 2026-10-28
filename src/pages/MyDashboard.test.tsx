@@ -33,7 +33,12 @@ function stats(overrides: Partial<MyStats> = {}): MyStats {
     ],
     products_by_location: [
       { label: "Heladera", count: 5 },
-      { label: "Sin ubicación", count: 2 },
+      { label: "Alacena", count: 2 },
+    ],
+    stock_by_brand: [
+      { label: "La Serenísima", count: 300 },
+      { label: "Gallo", count: 120 },
+      { label: "Arcor", count: 30 },
     ],
     expiry_buckets: [
       { label: "Vencidos", count: 1 },
@@ -460,7 +465,7 @@ describe("MyDashboard · gráficos e información adicional", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("dashboard-location-0")).toHaveTextContent("Heladera");
-    expect(screen.getByTestId("dashboard-location-1")).toHaveTextContent("Sin ubicación");
+    expect(screen.getByTestId("dashboard-location-1")).toHaveTextContent("Alacena");
     expect(screen.getByTestId("dashboard-expired")).toHaveTextContent("3");
     expect(screen.getByTestId("dashboard-images")).toHaveTextContent("5 de 12");
   });
@@ -556,7 +561,8 @@ describe("MyDashboard · últimos cambios y productos recientes", () => {
     mockApi();
     renderDashboard();
 
-    await user.click(await screen.findByRole("button", { name: "Ver inventario" }));
+    const recent = await screen.findByRole("region", { name: "Productos Recientes" });
+    await user.click(within(recent).getByRole("button", { name: "Ver inventario" }));
 
     expect(await screen.findByText(/PRODUCTOS/)).toBeInTheDocument();
   });
@@ -612,7 +618,7 @@ describe("MyDashboard · ubicaciones, urgencias y datos adicionales", () => {
     expect(await screen.findByTestId("dashboard-location-0")).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-locations-more")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("dashboard-location-1"));
-    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"ubicacion":"Sin ubicación"}');
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"ubicacion":"Alacena"}');
   });
 
   it("«Para atender primero» muestra solo las 3 alertas más pertinentes: primero las críticas y las más próximas", async () => {
@@ -636,12 +642,14 @@ describe("MyDashboard · ubicaciones, urgencias y datos adicionales", () => {
     expect(within(upcoming).queryByText("Pan")).not.toBeInTheDocument();
   });
 
-  it("«Ver más» de las alertas lleva a la página de alertas; con 3 o menos no aparece", async () => {
+  it("el botón de las alertas dice «Ver alertas», lleva a la página de alertas y con 3 o menos no aparece", async () => {
     const user = userEvent.setup();
     mockApi({ expiring: [alert({ key: "e1" }), alert({ key: "e2" }), alert({ key: "e3" }), alert({ key: "e4" })] });
     const { unmount } = renderDashboard();
 
-    await user.click(await screen.findByTestId("dashboard-upcoming-more"));
+    const more = await screen.findByTestId("dashboard-upcoming-more");
+    expect(more).toHaveTextContent("Ver alertas");
+    await user.click(more);
     expect(await screen.findByText(/ALERTAS/)).toBeInTheDocument();
     unmount();
 
@@ -663,15 +671,9 @@ describe("MyDashboard · ubicaciones, urgencias y datos adicionales", () => {
     expect(screen.getByTestId("dashboard-warnings")).toHaveTextContent("1");
     expect(screen.getByTestId("dashboard-images")).toHaveTextContent("5 de 12");
     expect(screen.getByTestId("dashboard-no-expiry")).toHaveTextContent("2");
-    expect(screen.getByTestId("dashboard-units-per-product")).toHaveTextContent("102,8");
-    expect(section.querySelectorAll("svg").length).toBeGreaterThanOrEqual(6);
-  });
-
-  it("sin productos, las unidades por producto son 0", async () => {
-    mockApi({ stats: stats({ total_products: 0, total_units: 0 }) });
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByTestId("dashboard-units-per-product")).toHaveTextContent("0"));
+    expect(screen.queryByTestId("dashboard-units-per-product")).not.toBeInTheDocument();
+    expect(section).not.toHaveTextContent("Unidades por producto");
+    expect(section.querySelectorAll("svg").length).toBeGreaterThanOrEqual(5);
   });
 
   it("las tres columnas ocupan siempre el mismo alto de fila", async () => {
@@ -693,5 +695,164 @@ describe("MyDashboard · ubicaciones, urgencias y datos adicionales", () => {
     const section = await screen.findByTestId("dashboard-incomes");
     expect(section).not.toHaveTextContent("Todo el stock que se cargó");
     expect(await screen.findByTestId("dashboard-incomes-chart")).toBeInTheDocument();
+  });
+});
+
+describe("MyDashboard · marcas, atajos y separadores", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const brands = [
+    { label: "Arcor", count: 30 },
+    { label: "La Serenísima", count: 300 },
+    { label: "Gallo", count: 120 },
+    { label: "Molinos", count: 90 },
+    { label: "Bagley", count: 60 },
+    { label: "Terrabusi", count: 45 },
+    { label: "Marolio", count: 10 },
+  ];
+
+  it("«Dónde tenés tus productos» tiene a la derecha «Ver inventario», que lleva al inventario", async () => {
+    const user = userEvent.setup();
+    mockApi();
+    renderDashboard();
+
+    const button = await screen.findByTestId("dashboard-locations-inventory");
+    expect(button).toHaveTextContent("Ver inventario");
+    expect(screen.getByTestId("dashboard-locations")).toContainElement(button);
+    await user.click(button);
+    expect(await screen.findByText(/PRODUCTOS/)).toBeInTheDocument();
+  });
+
+  it("con más de 5 ubicaciones, «Ver más» queda a la izquierda de «Ver inventario»", async () => {
+    mockApi({
+      stats: stats({
+        products_by_location: Array.from({ length: 7 }, (_, i) => ({ label: `Lugar ${i}`, count: 10 - i })),
+      }),
+    });
+    renderDashboard();
+
+    const more = await screen.findByTestId("dashboard-locations-more");
+    const inventory = screen.getByTestId("dashboard-locations-inventory");
+    expect(more.compareDocumentPosition(inventory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("el gráfico de marcas va en el medio de «Vencimientos» y «Stock por categoría», con sus descripciones", async () => {
+    mockApi();
+    renderDashboard();
+
+    const expiry = await screen.findByTestId("dashboard-expiry");
+    const brandsSection = screen.getByTestId("dashboard-brands");
+    const categories = screen.getByTestId("dashboard-categories");
+    expect(expiry.compareDocumentPosition(brandsSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(brandsSection.compareDocumentPosition(categories) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(brandsSection).toHaveTextContent("Las 5 marcas con más unidades en stock");
+    expect(categories).toHaveTextContent("Las 5 categorías con más unidades en stock");
+    expect(screen.getByTestId("dashboard-brand-0")).toHaveTextContent("La Serenísima");
+    expect(screen.getByTestId("dashboard-brand-0")).toHaveTextContent("300 u.");
+    expect(screen.getByTestId("dashboard-brand-bar-0").style.width).toBe("100%");
+    expect(screen.getByTestId("dashboard-brand-bar-1").style.width).toBe("40%");
+  });
+
+  it("tocar una marca abre el inventario con ese filtro", async () => {
+    const user = userEvent.setup();
+    mockApi();
+    renderDashboard();
+
+    await user.click(await screen.findByTestId("dashboard-brand-1"));
+
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"marca":"Gallo"}');
+  });
+
+  it("muestra las 5 marcas con más stock y «Ver más» lista todas con su stock; tocar una abre su inventario", async () => {
+    const user = userEvent.setup();
+    mockApi({ stats: stats({ stock_by_brand: brands }) });
+    renderDashboard();
+
+    await screen.findByTestId("dashboard-brand-4");
+    expect(screen.queryByTestId("dashboard-brand-5")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-brand-4")).toHaveTextContent("Terrabusi");
+    expect(screen.queryByText("Marolio")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("dashboard-brands-more"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Stock por marca" });
+    expect(within(dialog).getAllByTestId(/^brands-modal-item-/).map((item) => item.textContent)).toEqual([
+      "La Serenísima300 u.",
+      "Gallo120 u.",
+      "Molinos90 u.",
+      "Bagley60 u.",
+      "Terrabusi45 u.",
+      "Arcor30 u.",
+      "Marolio10 u.",
+    ]);
+    await user.click(within(dialog).getByTestId("brands-modal-item-6"));
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"marca":"Marolio"}');
+  });
+
+  it("con 5 marcas o menos no hay «Ver más» y sin marcas lo dice", async () => {
+    mockApi();
+    const { unmount } = renderDashboard();
+    await screen.findByTestId("dashboard-brand-0");
+    expect(screen.queryByTestId("dashboard-brands-more")).not.toBeInTheDocument();
+    unmount();
+
+    mockApi({ stats: stats({ stock_by_brand: [] }) });
+    renderDashboard();
+    expect(await screen.findByText("Todavía no hay productos con marca.")).toBeInTheDocument();
+  });
+
+  it("un servidor que todavía no manda las marcas no rompe el dashboard", async () => {
+    const old = stats() as Partial<MyStats>;
+    delete old.stock_by_brand;
+    mockApi({ stats: old as MyStats });
+    renderDashboard();
+
+    expect(await screen.findByText("Todavía no hay productos con marca.")).toBeInTheDocument();
+  });
+
+  it("entre «Últimos Cambios» y «Productos Recientes» hay una línea vertical tenue", async () => {
+    mockApi();
+    renderDashboard();
+
+    const changes = await screen.findByRole("region", { name: "Últimos Cambios" });
+    const recent = screen.getByRole("region", { name: "Productos Recientes" });
+    expect(recent.className).toContain("lg:border-l");
+    expect(recent.className).toContain("border-line/60");
+    expect(changes.className).not.toContain("border-l");
+  });
+});
+
+describe("MyDashboard · listas apiladas con espacio libre debajo", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("las ubicaciones y las alertas van una encima de la otra, sin estirarse para llenar el recuadro", async () => {
+    mockApi({ expiring: [alert({ key: "e1" }), alert({ key: "e2" })] });
+    renderDashboard();
+
+    const locations = (await screen.findByTestId("dashboard-location-0")).closest("ul")!;
+    expect(locations.className).toContain("flex-col");
+    expect(locations.className).not.toContain("justify-between");
+    expect(locations.className).not.toContain("flex-1");
+    const upcoming = (await screen.findByTestId("alert-item-e1")).closest("ul")!;
+    expect(upcoming.className).toContain("flex-col");
+    expect(upcoming.className).not.toContain("justify-between");
+    expect(screen.getByTestId("dashboard-upcoming").className).toContain("h-full");
+  });
+});
+
+describe("MyDashboard · mismo alto en ubicaciones y datos adicionales", () => {
+  it("cada ubicación y cada dato de «Un vistazo más» miden lo mismo", async () => {
+    vi.clearAllMocks();
+    mockApi();
+    renderDashboard();
+
+    const place = await screen.findByTestId("dashboard-location-0");
+    const fact = screen.getByTestId("dashboard-expired").closest("li")!;
+    expect(place.className).toContain("h-14");
+    expect(fact.className).toContain("h-14");
   });
 });

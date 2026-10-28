@@ -244,14 +244,17 @@ export function Segmented<T extends string | number>({
   value,
   onChange,
   testIdPrefix,
+  equalWidth = false,
 }: {
   options: { key: T; label: string }[];
   value: T;
   onChange: (key: T) => void;
   testIdPrefix?: string;
+  /** Todos los botones del mismo ancho y centrados en la fila. */
+  equalWidth?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={`flex flex-wrap gap-2 ${equalWidth ? "justify-center" : ""}`}>
       {options.map(({ key, label }) => {
         const selected = key === value;
         return (
@@ -261,7 +264,7 @@ export function Segmented<T extends string | number>({
             data-testid={testIdPrefix ? `${testIdPrefix}-${key}` : undefined}
             aria-pressed={selected}
             onClick={() => onChange(key)}
-            className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+            className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${equalWidth ? "w-36 text-center" : ""} ${
               selected ? "border-primary bg-primary text-white" : "border-line bg-white text-muted hover:text-primaryDark"
             }`}
           >

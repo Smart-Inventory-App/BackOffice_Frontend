@@ -123,6 +123,7 @@ describe("Alertas (Centro de Alertas)", () => {
     await screen.findByTestId("alert-item-expiry-1");
 
     expect(screen.getByTestId("alert-prediction-stock_low_coverage-5")).toHaveTextContent("Predicción");
+    expect(within(screen.getByTestId("alert-prediction-stock_low_coverage-5")).getByTestId("prediction-icon")).toBeInTheDocument();
     expect(screen.getByTestId("alert-prediction-slow_pace-6")).toBeInTheDocument();
     expect(screen.queryByTestId("alert-prediction-expiry-1")).not.toBeInTheDocument();
   });
@@ -273,5 +274,25 @@ describe("Alertas (Centro de Alertas)", () => {
     renderCenter();
 
     expect(await screen.findByText("No se pudieron cargar las alertas.")).toBeInTheDocument();
+  });
+});
+
+describe("Alertas · botones iguales y centrados", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("los filtros miden lo mismo, están centrados y el contenido de críticas y advertencias también", async () => {
+    mockServer();
+    renderCenter();
+    await screen.findByTestId("alert-item-expiry-1");
+
+    ["todas", "stock", "vencimiento"].forEach((key) => {
+      const button = screen.getByTestId(`alert-filter-${key}`);
+      expect(button.className).toContain("w-36");
+      expect(button.className).toContain("text-center");
+    });
+    expect(screen.getByTestId("alert-filter-todas").parentElement!.className).toContain("justify-center");
+    ["critical", "warning"].forEach((key) => expect(screen.getByTestId(`alert-summary-${key}`).className).toContain("text-center"));
   });
 });

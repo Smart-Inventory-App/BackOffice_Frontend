@@ -73,7 +73,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-line/70 bg-white p-5 md:flex">
         <div className="mb-7 flex flex-col items-center px-1 text-center">
           <img src={logo} alt="Smart Inventory" className="mx-auto h-auto w-44 object-contain" />
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Dashboard</p>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto">

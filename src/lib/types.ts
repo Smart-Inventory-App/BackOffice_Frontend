@@ -187,6 +187,8 @@ export interface MyStats {
   /** Unidades en stock por categoría, productos por ubicación y cuándo vencen: los gráficos del dashboard. */
   stock_by_category: CategoryCount[];
   products_by_location: CategoryCount[];
+  /** Unidades en stock por marca (solo los productos que tienen marca). */
+  stock_by_brand: CategoryCount[];
   expiry_buckets: CategoryCount[];
 }
 

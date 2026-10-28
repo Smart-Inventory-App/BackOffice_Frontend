@@ -1,7 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders } from "@/test/test-utils";
+import { createTestQueryClient, renderWithProviders } from "@/test/test-utils";
 import MyProducts from "./MyProducts";
 import type { MyProduct, Paginated } from "@/lib/types";
 
@@ -11,7 +13,8 @@ vi.mock("@/lib/api", () => ({
 
 import { api } from "@/lib/api";
 
-const OPCIONES = { categorias: ["Almacén", "Limpieza"], ubicaciones: ["Alacena"] };
+const OPCIONES = { categorias: ["Almacén", "Limpieza"], ubicaciones: ["Alacena"], marcas: ["La Merced", "Otra Marca"] };
+const PERFIL = { email: "ana@test.com", first_name: "Ana", last_name: null, username: null, stock_minimo: 7, dias_alerta_vencimiento: 5, alert_check_hour: 5, user_type: "individuo" };
 
 function product(overrides: Partial<MyProduct> = {}): MyProduct {
   return {
@@ -44,6 +47,7 @@ function mockGets(items: MyProduct[], alerts: unknown[] = []) {
       return { data: { stock_total: items.reduce((sum, p) => sum + p.stock, 0), products: items.length } };
     }
     if (url === "/me/alerts/") return { data: { items: alerts, summary: { critical: 0, warning: 0, total: 0, expiring: 0, low_stock: 0 } } };
+    if (url === "/me/profile") return { data: PERFIL };
     throw new Error(`GET no mockeado: ${url}`);
   });
 }
@@ -70,8 +74,8 @@ describe("MyProducts", () => {
     renderWithProviders(<MyProducts />);
 
     expect(await screen.findByText("Yerba Mate")).toBeInTheDocument();
-    expect(screen.getByText("La Merced")).toBeInTheDocument();
-    expect(screen.getByText("7791234567890")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("La Merced")).toBeInTheDocument();
+    expect(screen.queryByText("7791234567890")).not.toBeInTheDocument();
     expect(screen.getByText("Leche")).toBeInTheDocument();
     expect(screen.getByText("01/01/2020")).toBeInTheDocument();
   });
@@ -101,38 +105,11 @@ describe("MyProducts", () => {
     const dialog = screen.getByRole("dialog", { name: "Información del Producto" });
     expect(within(dialog).getByTestId("product-detail-name")).toHaveTextContent("Yerba Mate");
     expect(within(dialog).getByText("Yerba suave")).toBeInTheDocument();
-    expect(within(dialog).getByText("3 días (regla de este producto)")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("product-detail-stock-minimo")).toHaveTextContent("3 días");
+    await waitFor(() => expect(within(dialog).getByTestId("product-detail-dias-alerta")).toHaveTextContent("5 días"));
+    expect(within(dialog).getByText("Usando tu regla general")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: /Editar/ }));
     expect(screen.getByText("Editar producto")).toBeInTheDocument();
-  });
-
-  it("desde la información del producto se ve su stock total entre sus lotes", async () => {
-    const user = userEvent.setup();
-    mockGets([product()]);
-    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
-      if (url === "/me/products/filters/options") return { data: OPCIONES };
-      if (url === "/me/products") return { data: paginated([product()]) };
-      if (url === "/me/alerts/") return { data: { items: [], summary: {} } };
-      if (url === "/me/products/group") {
-        expect(config.params).toEqual({ nombre: "Yerba Mate", categoria: "Almacén" });
-        return {
-          data: {
-            nombre: "Yerba Mate", categoria: "Almacén", stock_total: 12, lotes: 2, usuarios: 1, proximo_vencimiento: null,
-            productos: [
-              { ...product({ id: 1, stock: 5 }), owner: { user_id: "u1", email: "yo@test.com" } },
-              { ...product({ id: 2, stock: 7, vencimiento: "2026-12-01" }), owner: { user_id: "u1", email: "yo@test.com" } },
-            ],
-          },
-        };
-      }
-      throw new Error(`GET no mockeado: ${url}`);
-    });
-    renderWithProviders(<MyProducts />);
-
-    await user.click(await screen.findByTestId("product-open-1"));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Stock total/ }));
-
-    expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("12 unidades");
   });
 
   it("no hay botón «Stock total»: arriba a la derecha se ve el stock total y la cantidad de productos", async () => {
@@ -142,8 +119,8 @@ describe("MyProducts", () => {
 
     expect(screen.queryByTestId("open-stock-total")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Stock total/ })).not.toBeInTheDocument();
-    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1.205 unidades");
-    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("entre 2 productos en el inventario");
+    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1.205 Unidades");
+    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("2 Productos");
   });
 
   it("el stock total se pide con la búsqueda y los filtros elegidos, y dice «unidad» y «producto» en singular", async () => {
@@ -158,8 +135,8 @@ describe("MyProducts", () => {
       expect(api.get).toHaveBeenCalledWith("/me/products/stock-total", { params: expect.objectContaining({ ubicacion: "Alacena" }) }),
     );
     expect(api.get).toHaveBeenCalledWith("/me/products", { params: expect.objectContaining({ ubicacion: "Alacena" }) });
-    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1 unidad");
-    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("entre 1 producto en el inventario");
+    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1 Unidad");
+    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("1 Producto");
   });
 
   it("el historial se abre desde la información del producto", async () => {
@@ -203,7 +180,7 @@ describe("MyProducts", () => {
       ),
     );
 
-    const vencidoSelect = screen.getByDisplayValue("Vencimiento: todos");
+    const vencidoSelect = screen.getByDisplayValue("Todos los vencimientos");
     await user.selectOptions(vencidoSelect, "si");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
@@ -276,7 +253,7 @@ describe("MyProducts", () => {
     await user.click(checkboxes[2]);
     expect(screen.getByText("2 productos seleccionados")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Editar en lote" }));
+    await user.click(screen.getByRole("button", { name: "Editar todo" }));
     const modal = screen.getByText("Editar 2 productos").closest(".rounded-3xl") as HTMLElement;
     const categoriaSelect = within(modal).getByText("Categoría").nextElementSibling as HTMLSelectElement;
     await user.selectOptions(categoriaSelect, "Limpieza");
@@ -303,11 +280,11 @@ describe("MyProducts", () => {
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
     await user.click(screen.getAllByRole("checkbox")[3]);
-    await user.click(screen.getByRole("button", { name: "Editar en lote" }));
+    await user.click(screen.getByRole("button", { name: "Editar todo" }));
 
     expect(screen.getByRole("button", { name: "Aplicar" })).toBeDisabled();
-    const marcaInput = screen.getByPlaceholderText("Dejar vacío para no cambiar");
-    await user.type(marcaInput, "Nueva Marca");
+    const modalScope = within(screen.getByText("Editar 1 productos").closest(".rounded-3xl") as HTMLElement);
+    await user.selectOptions(modalScope.getByText("Marca").nextElementSibling as HTMLSelectElement, "Otra Marca");
     await user.click(screen.getByRole("button", { name: "Aplicar" }));
 
     expect(await screen.findByText("No se pudo aplicar.")).toBeInTheDocument();
@@ -315,8 +292,9 @@ describe("MyProducts", () => {
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByText("Editar 1 productos")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Deseleccionar" }));
-    expect(screen.queryByText(/producto seleccionado/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Deseleccionar todo" }));
+    expect(screen.queryByText(/^\d+ productos? seleccionados?$/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("selection-count")).not.toBeInTheDocument();
   });
 
   it("abre edición individual, guarda cambios y maneja errores", async () => {
@@ -330,7 +308,7 @@ describe("MyProducts", () => {
 
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
-    await user.click(screen.getByRole("button", { name: /Editar/ }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
 
     const modal = screen.getByText("Editar producto").closest(".rounded-3xl") as HTMLElement;
     const modalScope = within(modal);
@@ -340,8 +318,7 @@ describe("MyProducts", () => {
 
     await user.clear(nombreInput);
     await user.type(nombreInput, "Yerba Mate 500g");
-    await user.clear(modalScope.getByText("Marca").nextElementSibling as HTMLInputElement);
-    await user.type(modalScope.getByText("Marca").nextElementSibling as HTMLInputElement, "Otra Marca");
+    await user.selectOptions(modalScope.getByText("Marca").nextElementSibling as HTMLSelectElement, "Otra Marca");
     await user.selectOptions(modalScope.getByText("Categoría").nextElementSibling as HTMLSelectElement, "Almacén");
     const stockInput = modalScope.getByText("Stock").nextElementSibling as HTMLInputElement;
     await user.clear(stockInput);
@@ -379,7 +356,7 @@ describe("MyProducts", () => {
 
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
-    await user.click(screen.getByRole("button", { name: /Editar/ }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() =>
@@ -406,7 +383,7 @@ describe("MyProducts", () => {
 
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
-    await user.click(screen.getByRole("button", { name: /Editar/ }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() =>
@@ -446,7 +423,7 @@ describe("MyProducts", () => {
     mockGets([product()]);
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
-    await user.click(screen.getByRole("button", { name: /Editar/ }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByText("Editar producto")).not.toBeInTheDocument();
   });
@@ -499,4 +476,325 @@ describe("MyProducts", () => {
       ),
     );
   });
+});
+
+describe("MyProducts · filtros, selección y eliminación", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("los filtros miden siempre lo mismo y los textos largos se cortan con «...»", async () => {
+    const largo = "Z".repeat(60);
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/me/products/filters/options") return { data: { categorias: [largo], ubicaciones: ["Alacena"], marcas: [] } };
+      if (url === "/me/products") return { data: paginated([product()]) };
+      if (url === "/me/products/stock-total") return { data: { stock_total: 5, products: 1 } };
+      if (url === "/me/alerts/") return { data: { items: [], summary: {} } };
+      if (url === "/me/profile") return { data: PERFIL };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    const selects = ["Categoría", "Marca", "Ubicación", "Vencimiento"].map((name) => screen.getByLabelText(name));
+    selects.forEach((select) => {
+      expect(select.className).toContain("w-full");
+      expect(select.className).toContain("truncate");
+    });
+    expect(screen.getByPlaceholderText("Buscar por nombre o marca…").className).toContain("md:col-span-4");
+    const option = await screen.findByRole("option", { name: `${"Z".repeat(50)}...` });
+    expect(option).toHaveAttribute("title", largo);
+  });
+
+  it("el filtro de marca llega con el filtro del dashboard y se manda al servidor", async () => {
+    mockGets([product()]);
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <MemoryRouter initialEntries={[{ pathname: "/productos", state: { marca: "La Merced" } }]}>
+          <MyProducts />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Marca")).toHaveValue("La Merced"));
+    expect(api.get).toHaveBeenCalledWith("/me/products", { params: expect.objectContaining({ marca: "La Merced" }) });
+    expect(api.get).toHaveBeenCalledWith("/me/products/stock-total", { params: expect.objectContaining({ marca: "La Merced" }) });
+  });
+
+  it("la barra de selección solo aparece con productos elegidos, con la «X» a la izquierda del texto", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1 }), product({ id: 2, nombre: "Fideos" })]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    expect(screen.queryByTestId("selection-bar")).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Seleccionar Yerba Mate"));
+    expect(screen.getByTestId("selection-edit")).toHaveTextContent("Editar todo");
+    expect(screen.getByTestId("selection-delete")).toBeEnabled();
+    const clear = screen.getByTestId("selection-clear");
+    expect(clear.compareDocumentPosition(screen.getByTestId("selection-count")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(clear);
+    expect(screen.queryByTestId("selection-bar")).not.toBeInTheDocument();
+    expect((screen.getByLabelText("Seleccionar Yerba Mate") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("cada producto de la lista muestra su nombre y, debajo, la marca, sin código de barras", async () => {
+    mockGets([product(), product({ id: 2, nombre: "Fideos", marca: null })]);
+    renderWithProviders(<MyProducts />);
+
+    const open = await screen.findByTestId("product-open-1");
+    expect(open.className).toContain("text-base");
+    expect(open.nextElementSibling).toHaveTextContent("La Merced");
+    expect(screen.queryByTitle("Código de barras")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-open-2").nextElementSibling).toBeNull();
+  });
+
+  it("la casilla de la fila selecciona sin abrir la información del producto", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByLabelText("Seleccionar Yerba Mate"));
+
+    expect(screen.queryByRole("dialog", { name: "Información del Producto" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 producto seleccionado");
+  });
+
+  it("tocar cualquier parte de la fila abre «Información del Producto»", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+
+    await screen.findByText("Yerba Mate");
+    await user.click(within(screen.getByRole("table")).getByText("Almacén"));
+
+    expect(screen.getByRole("dialog", { name: "Información del Producto" })).toBeInTheDocument();
+    expect(screen.getByTestId("product-detail-categoria")).toHaveTextContent("Almacén");
+  });
+
+  it("la marca de la edición se elige entre las existentes o se crea una nueva, como la categoría", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.patch).mockResolvedValue({ data: {} });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = within(screen.getByText("Editar producto").closest(".rounded-3xl") as HTMLElement);
+    const marca = modal.getByText("Marca").nextElementSibling as HTMLSelectElement;
+    expect(marca.tagName).toBe("SELECT");
+    expect(within(marca).getAllByRole("option").map((o) => o.textContent)).toEqual(["Sin marca", "La Merced", "Otra Marca", "+ Nueva…"]);
+    // La marca va antes que la categoría
+    expect(modal.getByText("Marca").compareDocumentPosition(modal.getByText("Categoría")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.selectOptions(marca, "__new__");
+    await user.type(modal.getByLabelText("Marca nueva"), "Marca Nueva{Enter}");
+    expect((modal.getByText("Marca").nextElementSibling as HTMLSelectElement).value).toBe("Marca Nueva");
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith("/me/products/1", expect.objectContaining({ marca: "Marca Nueva" })));
+  });
+
+  it("«Editar todo» tiene la marca arriba de la categoría, con las existentes y «+ Nueva…»", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1 }), product({ id: 2, nombre: "Fideos" })]);
+    vi.mocked(api.patch).mockResolvedValue({ data: { updated: 2 } });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("columnheader", { name: "" }).querySelector("input")!);
+    await user.click(screen.getByRole("button", { name: "Editar todo" }));
+    const modal = within(screen.getByText("Editar 2 productos").closest(".rounded-3xl") as HTMLElement);
+    const marca = modal.getByText("Marca").nextElementSibling as HTMLSelectElement;
+    expect(within(marca).getAllByRole("option").map((o) => o.textContent)).toEqual(["No cambiar", "La Merced", "Otra Marca", "+ Nueva…"]);
+    expect(modal.getByText("Marca").compareDocumentPosition(modal.getByText("Categoría")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.selectOptions(marca, "La Merced");
+    await user.click(screen.getByRole("button", { name: "Aplicar" }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith("/me/products/bulk-edit", { product_ids: [1, 2], marca: "La Merced" }));
+  });
+
+  it("el botón «Eliminar» está a la derecha de «Historial» y, al confirmar, elimina el producto", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.delete).mockResolvedValue({ data: null });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    const historial = screen.getByRole("button", { name: "Historial" });
+    const eliminar = screen.getByTestId("product-delete-1");
+    expect(historial.compareDocumentPosition(eliminar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(eliminar);
+    expect(api.delete).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("alertdialog", { name: "Eliminar producto" });
+    expect(dialog).toHaveTextContent('¿Eliminar "Yerba Mate" del inventario?');
+    await user.click(within(dialog).getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/me/products/1"));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("se puede cancelar la eliminación y, si falla, se avisa", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    vi.mocked(api.delete).mockImplementation(async () => {
+      const err: any = new Error("fallo");
+      err.response = { data: { detail: "No se pudo eliminar." } };
+      throw err;
+    });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByTestId("product-delete-1"));
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.delete).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId("product-delete-1"));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Eliminar" }));
+    expect(await screen.findByText("No se pudo eliminar.")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("«Borrar todo» elimina los productos seleccionados después de confirmar", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1 }), product({ id: 2, nombre: "Fideos" })]);
+    vi.mocked(api.post).mockResolvedValue({ data: { deleted: 2 } });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByLabelText("Seleccionar Yerba Mate"));
+    await user.click(screen.getByLabelText("Seleccionar Fideos"));
+    await user.click(screen.getByRole("button", { name: /Borrar todo/ }));
+    const dialog = screen.getByRole("alertdialog", { name: "Borrar productos" });
+    expect(dialog).toHaveTextContent("¿Borrar los 2 productos seleccionados del inventario?");
+    await user.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/me/products/bulk-delete", { product_ids: [1, 2] }));
+    await waitFor(() => expect(screen.queryByTestId("selection-count")).not.toBeInTheDocument());
+  });
+
+  it("si falla el borrado en lote, lo avisa y no pierde la selección", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1 })]);
+    vi.mocked(api.post).mockRejectedValue(new Error("fallo"));
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByLabelText("Seleccionar Yerba Mate"));
+    await user.click(screen.getByRole("button", { name: /Borrar todo/ }));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Borrar todo" }));
+
+    expect(await screen.findByText("No se pudieron eliminar los productos.")).toBeInTheDocument();
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 producto seleccionado");
+  });
+
+  it("un producto eliminado también deja de estar seleccionado", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1 }), product({ id: 2, nombre: "Fideos" })]);
+    vi.mocked(api.delete).mockResolvedValue({ data: null });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByLabelText("Seleccionar Yerba Mate"));
+    await user.click(screen.getByLabelText("Seleccionar Fideos"));
+    await user.click(screen.getByTestId("product-delete-1"));
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("1 producto seleccionado"));
+  });
+});
+
+describe("MyProducts · encabezado, filtros y eliminar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("el stock total es un texto «STOCK XX Unidades | YY Productos», en la misma fila que el título", async () => {
+    mockGets([product({ id: 1, stock: 5 }), product({ id: 2, nombre: "Leche", stock: 7 })]);
+    renderWithProviders(<MyProducts />);
+
+    const summary = await screen.findByTestId("inventory-total-summary");
+    expect(summary).toHaveTextContent("Stock");
+    expect(screen.getByTestId("inventory-total-value")).toHaveTextContent("12 Unidades");
+    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("2 Productos");
+    expect(summary).toHaveTextContent("|");
+    expect(summary.className).not.toContain("shadow");
+    const header = screen.getByRole("heading", { name: "Inventario" }).parentElement!.parentElement!;
+    expect(header.className).toContain("items-center");
+    expect(header).toContainElement(summary);
+  });
+
+  it("sin productos seleccionados no hay barra, y la ventana de información nunca ofrece «Stock total»", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    expect(screen.queryByTestId("selection-bar")).not.toBeInTheDocument();
+    await user.click(await screen.findByTestId("product-open-1"));
+    const dialog = screen.getByRole("dialog", { name: "Información del Producto" });
+    expect(within(dialog).queryByRole("button", { name: /Stock total/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Historial/ })).toBeInTheDocument();
+  });
+
+  it("el filtro de vencimiento dice «Todos los vencimientos»", async () => {
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+
+    expect(await screen.findByRole("option", { name: "Todos los vencimientos" })).toBeInTheDocument();
+    expect(screen.queryByText("Vencimiento: todos")).not.toBeInTheDocument();
+  });
+
+  it("la exportación va a la derecha del buscador y las casillas, abajo, junto a los demás filtros", async () => {
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    const search = screen.getByPlaceholderText("Buscar por nombre o marca…");
+    const grid = search.parentElement!;
+    expect(grid.className).toContain("md:grid-cols-[repeat(4,minmax(0,1fr))_auto]");
+    expect(search.className).toContain("md:col-span-4");
+    const csv = screen.getByRole("button", { name: /CSV/ });
+    const checks = screen.getByLabelText("Stock bajo").closest("div")!;
+    const vencimiento = screen.getByLabelText("Vencimiento");
+    expect(grid).toContainElement(checks);
+    expect(search.compareDocumentPosition(csv) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(csv.compareDocumentPosition(vencimiento) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(vencimiento.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(csv.className).toContain("w-20");
+    expect(screen.getByRole("button", { name: /Excel/ }).parentElement).toBe(csv.parentElement);
+  });
+
+  it("el botón «Eliminar» tiene contorno y letras rojizas", async () => {
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+
+    const button = await screen.findByTestId("product-delete-1");
+    expect(button.className).toContain("border-danger");
+    expect(button.className).toContain("text-danger");
+  });
+
+  it("en pantallas anchas la página entra entera y solo se desplaza la lista", async () => {
+    mockGets([product()]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    const root = screen.getByRole("heading", { name: "Inventario" }).parentElement!.parentElement!.parentElement!;
+    expect(root.className).toContain("md:h-[calc(100vh-4.5rem)]");
+    expect(screen.getByRole("table").parentElement!.className).toContain("md:flex-1");
+  });
+});
+
+it("el texto del stock total es un poco más grande", async () => {
+  mockGets([product()]);
+  renderWithProviders(<MyProducts />);
+
+  const summary = await screen.findByTestId("inventory-total-summary");
+  expect(summary.className).toContain("text-base");
+  expect(screen.getByTestId("inventory-total-value").className).toContain("text-2xl");
 });

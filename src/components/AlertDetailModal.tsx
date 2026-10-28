@@ -3,6 +3,7 @@ import type { AlertOut } from "@/lib/types";
 import { alertDetails, alertTitle, LEVEL_TONES } from "@/lib/alertInfo";
 import { formatDate, truncate } from "@/lib/format";
 import { Modal } from "@/components/ui";
+import PredictionBadge from "@/components/PredictionBadge";
 import ProductImage from "@/components/ProductImage";
 
 const ICONS = { expiry: Clock, stock_low_coverage: TrendingDown, slow_pace: AlertTriangle } as const;
@@ -59,9 +60,7 @@ export default function AlertDetailModal({ alert, onClose }: { alert: AlertOut; 
             </p>
           )}
           {alert.predictive && (
-            <span className="mt-1 inline-block rounded-full bg-primaryDark px-2.5 py-0.5 text-[11px] font-semibold text-white">
-              Predicción
-            </span>
+            <PredictionBadge size="md" className="mt-1" testId="alert-detail-prediction" />
           )}
         </div>
       </div>

@@ -60,7 +60,12 @@ export default function ProductImage({
       >
         {image}
       </span>
-      {open && <ImageViewer url={url} alt={alt} onClose={() => setOpen(false)} />}
+      {/* El visor se dibuja aparte, pero para React sigue dentro de la fila: sus clics (cerrar, tocar el fondo) no tienen que llegar a ella */}
+      {open && (
+        <span onClick={(event) => event.stopPropagation()}>
+          <ImageViewer url={url} alt={alt} onClose={() => setOpen(false)} />
+        </span>
+      )}
     </>
   );
 }

@@ -209,6 +209,7 @@ export default function Perfil() {
             <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Info label="Nombre" value={profile.first_name ?? ""} testId="profile-view-first-name" />
               <Info label="Apellido" value={profile.last_name ?? ""} testId="profile-view-last-name" />
+              <Info label="Mail" value={profile.email} testId="profile-view-email" />
               <Info label="Usuario" value={profile.username ?? ""} testId="profile-view-username" />
             </dl>
           </Card>

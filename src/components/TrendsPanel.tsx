@@ -40,6 +40,10 @@ const KINDS = {
     prefix: "trends",
     series: (m: MyMetrics) => m.consumo_por_dia,
     total: (m: MyMetrics) => m.total_consumido,
+    tone: "text-primary",
+    bar: "bg-primary hover:bg-primary/80",
+    barSelected: "bg-[#237EA1]",
+    fill: "bg-primary",
     chartTitle: "Consumo por día",
     average: "Promedio de consumidos por día",
     peak: "Día de mayor consumo",
@@ -53,6 +57,10 @@ const KINDS = {
     prefix: "incomes",
     series: (m: MyMetrics) => m.ingresos_por_dia,
     total: (m: MyMetrics) => m.total_ingresos,
+    tone: "text-[#1B3A8F]",
+    bar: "bg-[#1B3A8F] hover:bg-[#1B3A8F]/80",
+    barSelected: "bg-[#237EA1]",
+    fill: "bg-[#1B3A8F]",
     chartTitle: "Ingresos por día",
     average: "Promedio de ingresos por día",
     peak: "Día de mayor ingreso",
@@ -142,16 +150,17 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
 
       <div className="grid grid-cols-2 gap-3">
         {kind === "consumo" ? (
-          <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label="Consumido" tone="text-primary" wide />
+          <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label="Consumido" tone={k.tone} wide />
         ) : (
-          <SummaryCard testId="incomes-total" value={formatThousands(total)} label="Ingresado" tone="text-primary" wide />
+          <SummaryCard testId="incomes-total" value={formatThousands(total)} label="Ingresado" tone={k.tone} wide />
         )}
-        <SummaryCard testId={t("average")} value={formatThousands(averagePerDay(total, period))} label={k.average} twoLines />
+        <SummaryCard testId={t("average")} value={formatThousands(averagePerDay(total, period))} label={k.average} tone={k.tone} twoLines />
         <SummaryCard
           testId={t("peak")}
           value={peak !== null ? formatThousands(days[peak].quantity) : "–"}
           label={`${k.peak}: ${peak !== null ? formatDayMonth(days[peak].day) : k.none}`}
           labelTestId={t("peak-label")}
+          tone={k.tone}
           twoLines
         />
       </div>
@@ -159,7 +168,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
       <ChangeBox change={change} days={period} who={who} testId={t("change")} emptyText={k.compare} />
 
       <Card className="!p-4">
-        <h3 className="mb-3 text-sm font-semibold text-ink">{k.chartTitle}</h3>
+        <h3 className="mb-3 text-center text-sm font-semibold text-ink">{k.chartTitle}</h3>
         {max === 0 ? (
           <p data-testid={t("empty-period")} className="mb-3 text-center text-sm text-muted">
             {k.empty(period)}
@@ -180,7 +189,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
               <span
                 data-testid={t(`bar-fill-${i}`)}
                 className={`block w-full rounded-t-md transition ${
-                  selected === i ? "bg-primaryDark" : d.quantity > 0 ? "bg-primary hover:bg-primary/80" : "bg-line"
+                  selected === i ? k.barSelected : d.quantity > 0 ? k.bar : "bg-line"
                 }`}
                 style={{ height: barHeight(d.quantity, max, CHART_HEIGHT - 10) }}
               />
@@ -249,7 +258,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
 
       {kind === "consumo" && (
       <Card className="!p-4">
-        <h3 className="mb-3 text-sm font-semibold text-ink">Más consumidos</h3>
+        <h3 className="mb-3 text-center text-sm font-semibold text-ink">Más consumidos</h3>
         {data.top_productos.length === 0 ? (
           <EmptyState>Todavía no hay suficiente historial.</EmptyState>
         ) : (
@@ -268,7 +277,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
                   <div className="ml-7 mt-1 h-2 rounded-full bg-canvas">
                     <div
                       data-testid={`trends-top-bar-${i}`}
-                      className="h-2 rounded-full bg-primary"
+                      className={`h-2 rounded-full ${k.fill}`}
                       style={{ width: `${Math.round((product.cantidad / top) * 100)}%` }}
                     />
                   </div>
@@ -295,7 +304,7 @@ function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) 
   const highest = items[0]?.stock ?? 1;
   return (
     <Card className="!p-4" testId="incomes-top-stock">
-      <h3 className="mb-3 text-sm font-semibold text-ink">Productos con más stock</h3>
+      <h3 className="mb-3 text-center text-sm font-semibold text-ink">Productos con más stock</h3>
       {top.isLoading ? (
         <Spinner />
       ) : items.length === 0 ? (
@@ -312,7 +321,7 @@ function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) 
                 <span className="shrink-0 text-muted">{unitsText(product.stock)}</span>
               </div>
               <div className="ml-7 mt-1 h-2 rounded-full bg-canvas">
-                <div className="h-2 rounded-full bg-primaryDark" style={{ width: `${Math.round((product.stock / highest) * 100)}%` }} />
+                <div className="h-2 rounded-full bg-[#1B3A8F]" style={{ width: `${Math.round((product.stock / highest) * 100)}%` }} />
               </div>
             </li>
           ))}
@@ -355,13 +364,13 @@ function SummaryCard({
   wide?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border border-line/60 bg-white p-4 shadow-card ${wide ? "col-span-2" : ""}`}>
-      <p data-testid={testId} className={`text-2xl font-bold ${tone}`}>
+    <div className={`rounded-2xl border border-line/60 bg-white px-3 py-2 text-center shadow-card ${wide ? "col-span-2" : ""}`}>
+      <p data-testid={testId} className={`text-xl font-bold leading-7 ${tone}`}>
         {value}
       </p>
       <p
         data-testid={labelTestId}
-        className={`mt-0.5 text-xs leading-4 text-muted ${twoLines ? "min-h-[2rem]" : ""}`}
+        className={`text-xs leading-4 text-muted ${twoLines ? "min-h-[2rem]" : ""}`}
       >
         {label}
       </p>
@@ -384,7 +393,7 @@ function ChangeBox({
 }) {
   if (!change) {
     return (
-      <div data-testid={testId} className="flex items-center gap-2 rounded-xl bg-white p-3 text-sm text-muted shadow-card">
+      <div data-testid={testId} className="flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 text-center text-sm text-muted shadow-card">
         <Equal size={16} /> {emptyText}
       </div>
     );
@@ -397,7 +406,7 @@ function ChangeBox({
     change.direction === "up" ? "bg-warn/20 text-warnInk" : change.direction === "down" ? "bg-primary/15 text-tealInk" : "bg-white text-muted";
   const Icon = change.direction === "up" ? ArrowUpRight : change.direction === "down" ? ArrowDownRight : Equal;
   return (
-    <div data-testid={testId} className={`flex items-center gap-2 rounded-xl p-3 text-sm font-medium shadow-card ${tone}`}>
+    <div data-testid={testId} className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-center text-sm font-medium shadow-card ${tone}`}>
       <Icon size={18} /> {text}
     </div>
   );

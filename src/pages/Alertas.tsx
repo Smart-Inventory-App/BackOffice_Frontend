@@ -73,7 +73,7 @@ export default function Alertas() {
               data-testid={`alert-summary-${key}`}
               aria-pressed={selected}
               onClick={() => setLevel((current) => (current === key ? null : key))}
-              className="rounded-2xl border-2 px-4 py-4 text-left transition hover:-translate-y-0.5"
+              className="rounded-2xl border-2 px-4 py-4 text-center transition hover:-translate-y-0.5"
               style={{ backgroundColor: tone.background, borderColor: selected ? tone.border : "transparent" }}
             >
               <p data-testid={`alert-count-${key}`} className="text-3xl font-bold" style={{ color: tone.text }}>
@@ -88,7 +88,7 @@ export default function Alertas() {
       </div>
 
       <div className="mt-4">
-        <Segmented testIdPrefix="alert-filter" options={TYPE_FILTERS} value={type} onChange={setType} />
+        <Segmented testIdPrefix="alert-filter" options={TYPE_FILTERS} value={type} onChange={setType} equalWidth />
       </div>
 
       {isLoading ? (

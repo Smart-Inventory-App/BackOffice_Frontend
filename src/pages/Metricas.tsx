@@ -27,14 +27,14 @@ export default function Metricas() {
           <PeriodPicker period={period} onChange={setPeriod} />
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <section aria-labelledby="trends-consumption-title" data-testid="trends-section-consumo">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">
+        <section aria-labelledby="trends-consumption-title" data-testid="trends-section-consumo" className="lg:pr-6">
           <h2 id="trends-consumption-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de consumo
           </h2>
           <TrendsPanel endpoint={endpoint} audience={audience} kind="consumo" period={period} onPeriodChange={setPeriod} />
         </section>
-        <section aria-labelledby="trends-incomes-title" data-testid="trends-section-ingresos">
+        <section aria-labelledby="trends-incomes-title" data-testid="trends-section-ingresos" className="lg:border-l lg:border-line/60 lg:pl-6">
           <h2 id="trends-incomes-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de ingresos
           </h2>

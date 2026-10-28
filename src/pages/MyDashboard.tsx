@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, BarChart3, Boxes, CalendarX2, Clock, Cuboid, Image as ImageIcon, Layers, ShieldAlert, Tag, TrendingDown, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BarChart3, Boxes, CalendarX2, Clock, Cuboid, Image as ImageIcon, ShieldAlert, Tag, TrendingDown, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AlertList, AlertOut, MyMetrics, MyProduct, MyProfile, MyStats, Paginated, StockChange } from "@/lib/types";
 import { formatDateTime, formatThousands } from "@/lib/format";
@@ -21,6 +21,8 @@ const RECENT_CHANGES = 5;
 const RECENT_PRODUCTS = 5;
 // Las categorías con más stock que se ven de entrada; el resto, en «Ver más»
 const TOP_CATEGORIES = 5;
+// Las marcas con más unidades en stock que se ven de entrada; el resto, en «Ver más»
+const TOP_BRANDS = 5;
 // Las alertas más pertinentes que se ven en «Para atender primero»; el resto, en el Centro de Alertas
 const UPCOMING = 3;
 // Las ubicaciones con más productos que se ven de entrada; el resto, en «Ver más»
@@ -53,7 +55,7 @@ function mostPertinent(items: AlertOut[]): AlertOut[] {
 /** Un renglón de «Un vistazo más»: un ícono de color, lo que se mide y su valor. */
 function Fact({ icon: Icon, color, label, value, testId }: { icon: LucideIcon; color: string; label: string; value: React.ReactNode; testId: string }) {
   return (
-    <li className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2.5">
+    <li className="flex h-14 items-center gap-3 rounded-xl bg-canvas px-3">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${color}22`, color }}>
         <Icon size={18} />
       </span>
@@ -62,6 +64,32 @@ function Fact({ icon: Icon, color, label, value, testId }: { icon: LucideIcon; c
         {value}
       </span>
     </li>
+  );
+}
+
+/** Las barras de un ranking (categorías o marcas): el nombre, las unidades y una barra proporcional; cada una se puede tocar. */
+function TopBars({ items, prefix, onSelect }: { items: { label: string; count: number }[]; prefix: string; onSelect: (label: string) => void }) {
+  const max = Math.max(1, ...items.map((item) => item.count));
+  return (
+    <ul className="space-y-3">
+      {items.map((item, i) => (
+        <li key={item.label}>
+          <button type="button" data-testid={`${prefix}-${i}`} onClick={() => onSelect(item.label)} className="block w-full text-left">
+            <div className="flex items-baseline justify-between gap-2 text-sm">
+              <span className="truncate font-medium text-ink" title={item.label}>{item.label}</span>
+              <span className="shrink-0 text-muted">{formatThousands(item.count)} u.</span>
+            </div>
+            <div className="mt-1 h-2.5 rounded-full bg-canvas">
+              <div
+                data-testid={`${prefix}-bar-${i}`}
+                className="h-2.5 rounded-full transition-all"
+                style={{ width: `${Math.max(4, Math.round((item.count / max) * 100))}%`, backgroundColor: PALETTE[i % PALETTE.length] }}
+              />
+            </div>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -94,6 +122,7 @@ export default function MyDashboard() {
   const [alert, setAlert] = useState<AlertOut | null>(null);
   const [showCategories, setShowCategories] = useState(false);
   const [showLocations, setShowLocations] = useState(false);
+  const [showBrands, setShowBrands] = useState(false);
   // Se mira una sola vez al entrar y se borra: al volver a esta página ya no es «recién ingresó»
   const [justArrived] = useState(() => justLoggedIn());
   useEffect(() => {
@@ -136,11 +165,12 @@ export default function MyDashboard() {
 
   const data = stats.data;
   const name = profile.data?.first_name?.trim();
+  const generalRules = profile.data ? { coverageDays: profile.data.stock_minimo, expiryDays: profile.data.dias_alerta_vencimiento } : null;
   const lead = justArrived ? "Bienvenido" : "Tu estado";
   const greeting = name ? `${lead}, ${name.length > NAME_MAX ? `${name.slice(0, NAME_MAX)}...` : name}` : lead;
   // Las tarjetas abren el Centro de Alertas con ese tipo ya elegido
   const goToAlerts = (state: { tipo?: "stock" | "vencimiento" }) => navigate("/alertas", { state });
-  const goToInventory = (state?: { categoria?: string; ubicacion?: string; vencido?: "si"; porVencer?: boolean }) => navigate("/productos", { state });
+  const goToInventory = (state?: { categoria?: string; ubicacion?: string; marca?: string; vencido?: "si"; porVencer?: boolean }) => navigate("/productos", { state });
 
   const days = metrics.data?.consumo_por_dia ?? [];
   const peak = peakIndex(days);
@@ -150,12 +180,12 @@ export default function MyDashboard() {
   const incomes = metrics.data?.total_ingresos ?? 0;
   const sortedCategories = [...data.stock_by_category].sort((a, b) => b.count - a.count);
   const categories = sortedCategories.slice(0, TOP_CATEGORIES);
+  const sortedBrands = [...(data.stock_by_brand ?? [])].sort((a, b) => b.count - a.count);
+  const brands = sortedBrands.slice(0, TOP_BRANDS);
   const sortedLocations = [...data.products_by_location].sort((a, b) => b.count - a.count);
   const locations = sortedLocations.slice(0, TOP_LOCATIONS);
   const upcoming = mostPertinent([...(expiring.data ?? []), ...(restock.data ?? [])]);
   const withoutExpiry = data.expiry_buckets.find((bucket) => bucket.label === "Sin vencimiento")?.count ?? 0;
-  const unitsPerProduct = data.total_products > 0 ? Math.round((data.total_units / data.total_products) * 10) / 10 : 0;
-  const maxStock = Math.max(1, ...categories.map((c) => c.count));
   const noExpiry = data.expiry_buckets.every((bucket) => bucket.count === 0);
 
   return (
@@ -306,7 +336,7 @@ export default function MyDashboard() {
         </Section>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Section testId="dashboard-expiry" title="Vencimientos" hint="Productos con stock, según cuándo vencen">
           {noExpiry ? (
             <EmptyState>Todavía no hay productos con stock.</EmptyState>
@@ -315,7 +345,7 @@ export default function MyDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.expiry_buckets} margin={{ left: -20, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" vertical={false} />
-                  <XAxis dataKey="label" fontSize={10} stroke="#6E6E6E" interval={0} />
+                  <XAxis dataKey="label" fontSize={10} stroke="#6E6E6E" interval={0} angle={-35} textAnchor="end" height={64} />
                   <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
                   <Tooltip formatter={(value) => [`${value} productos`, "Cantidad"]} />
                   <Bar
@@ -338,9 +368,28 @@ export default function MyDashboard() {
         </Section>
 
         <Section
+          testId="dashboard-brands"
+          title="Stock por marca"
+          hint="Las 5 marcas con más unidades en stock"
+          action={
+            sortedBrands.length > TOP_BRANDS ? (
+              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-brands-more" onClick={() => setShowBrands(true)}>
+                Ver más
+              </Button>
+            ) : undefined
+          }
+        >
+          {brands.length === 0 ? (
+            <EmptyState>Todavía no hay productos con marca.</EmptyState>
+          ) : (
+            <TopBars items={brands} prefix="dashboard-brand" onSelect={(marca) => goToInventory({ marca })} />
+          )}
+        </Section>
+
+        <Section
           testId="dashboard-categories"
           title="Stock por categoría"
-          hint="Las 5 con más unidades en stock; tocá una para ver sus productos"
+          hint="Las 5 categorías con más unidades en stock"
           action={
             sortedCategories.length > TOP_CATEGORIES ? (
               <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-categories-more" onClick={() => setShowCategories(true)}>
@@ -352,30 +401,7 @@ export default function MyDashboard() {
           {categories.length === 0 ? (
             <EmptyState>Todavía no hay productos cargados.</EmptyState>
           ) : (
-            <ul className="space-y-3">
-              {categories.map((category, i) => (
-                <li key={category.label}>
-                  <button
-                    type="button"
-                    data-testid={`dashboard-category-${i}`}
-                    onClick={() => goToInventory({ categoria: category.label })}
-                    className="block w-full text-left"
-                  >
-                    <div className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="truncate font-medium text-ink">{category.label}</span>
-                      <span className="shrink-0 text-muted">{formatThousands(category.count)} u.</span>
-                    </div>
-                    <div className="mt-1 h-2.5 rounded-full bg-canvas">
-                      <div
-                        data-testid={`dashboard-category-bar-${i}`}
-                        className="h-2.5 rounded-full transition-all"
-                        style={{ width: `${Math.max(4, Math.round((category.count / maxStock) * 100))}%`, backgroundColor: PALETTE[i % PALETTE.length] }}
-                      />
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <TopBars items={categories} prefix="dashboard-category" onSelect={(categoria) => goToInventory({ categoria })} />
           )}
         </Section>
       </div>
@@ -387,24 +413,29 @@ export default function MyDashboard() {
           title="Dónde tenés tus productos"
           hint="Las 5 ubicaciones con más productos"
           action={
-            sortedLocations.length > TOP_LOCATIONS ? (
-              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-locations-more" onClick={() => setShowLocations(true)}>
-                Ver más
+            <div className="flex gap-2">
+              {sortedLocations.length > TOP_LOCATIONS && (
+                <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-locations-more" onClick={() => setShowLocations(true)}>
+                  Ver más
+                </Button>
+              )}
+              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-locations-inventory" onClick={() => goToInventory()}>
+                Ver inventario
               </Button>
-            ) : undefined
+            </div>
           }
         >
           {locations.length === 0 ? (
             <EmptyState>Todavía no hay productos cargados.</EmptyState>
           ) : (
-            <ul className="flex flex-1 flex-col justify-between gap-2">
+            <ul className="flex flex-col gap-2">
               {locations.map((place, i) => (
                 <li key={place.label}>
                   <button
                     type="button"
                     data-testid={`dashboard-location-${i}`}
                     onClick={() => goToInventory({ ubicacion: place.label })}
-                    className="flex w-full items-center gap-3 rounded-xl bg-canvas px-3 py-2.5 text-left transition hover:bg-primary/10"
+                    className="flex h-14 w-full items-center gap-3 rounded-xl bg-canvas px-3 text-left transition hover:bg-primary/10"
                   >
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: PALETTE[i % PALETTE.length] }}>
                       {i + 1}
@@ -429,7 +460,6 @@ export default function MyDashboard() {
             <Fact icon={AlertTriangle} color="#f59e0b" label="Advertencias" value={data.warning_alerts} testId="dashboard-warnings" />
             <Fact icon={ImageIcon} color="#3A86FF" label="Productos con imagen" value={`${data.products_with_image} de ${data.total_products}`} testId="dashboard-images" />
             <Fact icon={Tag} color="#8AC926" label="Productos sin vencimiento" value={withoutExpiry} testId="dashboard-no-expiry" />
-            <Fact icon={Layers} color="#2CC4B4" label="Unidades por producto" value={formatThousands(unitsPerProduct)} testId="dashboard-units-per-product" />
           </ul>
         </Section>
 
@@ -441,7 +471,7 @@ export default function MyDashboard() {
           action={
             upcoming.length > UPCOMING ? (
               <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-upcoming-more" onClick={() => navigate("/alertas")}>
-                Ver más
+                Ver alertas
               </Button>
             ) : undefined
           }
@@ -449,7 +479,7 @@ export default function MyDashboard() {
           {upcoming.length === 0 ? (
             <EmptyState>Nada urgente por ahora.</EmptyState>
           ) : (
-            <ul className="flex flex-1 flex-col justify-between gap-2">
+            <ul className="flex flex-col gap-2">
               {upcoming.slice(0, UPCOMING).map((item) => (
                 <AlertRow key={item.key} alert={item} onClick={() => setAlert(item)} compact />
               ))}
@@ -458,8 +488,8 @@ export default function MyDashboard() {
         </Section>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section aria-label="Últimos Cambios">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-0">
+        <section aria-label="Últimos Cambios" className="lg:pr-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold text-ink">Últimos Cambios</h2>
             <Button tone="ghost" className="!px-3 !py-1.5" onClick={() => setShowChanges(true)}>
@@ -481,7 +511,7 @@ export default function MyDashboard() {
           )}
         </section>
 
-        <section aria-label="Productos Recientes">
+        <section aria-label="Productos Recientes" className="lg:border-l lg:border-line/60 lg:pl-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-bold text-ink">Productos Recientes</h2>
             <Button tone="ghost" className="!px-3 !py-1.5" onClick={() => goToInventory()}>
@@ -522,6 +552,18 @@ export default function MyDashboard() {
           onClose={() => setShowCategories(false)}
         />
       )}
+      {showBrands && (
+        <RankingModal
+          title="Stock por marca"
+          testId="brands-modal"
+          items={sortedBrands}
+          unit="u."
+          empty="Todavía no hay productos con marca."
+          colors={PALETTE}
+          onSelect={(label) => goToInventory({ marca: label })}
+          onClose={() => setShowBrands(false)}
+        />
+      )}
       {showLocations && (
         <RankingModal
           title="Dónde tenés tus productos"
@@ -535,7 +577,7 @@ export default function MyDashboard() {
         />
       )}
       {showChanges && <ChangesModal onClose={() => setShowChanges(false)} />}
-      {detail && <ProductDetailModal product={detail} onClose={() => setDetail(null)} />}
+      {detail && <ProductDetailModal product={detail} generalRules={generalRules} onClose={() => setDetail(null)} />}
       {alert && <AlertDetailModal alert={alert} onClose={() => setAlert(null)} />}
     </div>
   );

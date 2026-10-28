@@ -1,23 +1,23 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Download, History, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
-import type { AlertList, AlertOut, MyProduct, Paginated } from "@/lib/types";
-import { Badge, Card, Spinner } from "@/components/ui";
+import type { AlertList, AlertOut, MyProduct, MyProfile, Paginated } from "@/lib/types";
+import { Badge, Card, ConfirmDialog, Notice, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import ProductImage from "@/components/ProductImage";
 import ImageUpload from "@/components/ImageUpload";
 import ProductDetailModal from "@/components/ProductDetailModal";
-import StockTotalModal, { type StockTotalTarget } from "@/components/StockTotalModal";
 import { formatDate, formatThousands, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
 import { apiErrorMessage } from "@/lib/errors";
 import { invalidateInventory } from "@/lib/queries";
+import { OPTION_MAX } from "@/pages/Cargar";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
@@ -39,13 +39,53 @@ const EDIT_EMPTY = {
   dias_alerta_vencimiento: "",
 };
 
+// Todos los filtros miden lo mismo, entren o no los textos: lo que no entra se corta con «...»
+const FILTER_CLASS =
+  "h-10 w-full min-w-0 truncate rounded-xl border border-line bg-white px-4 text-sm outline-none focus:border-primary";
+
+/** Un filtro de la lista: siempre del mismo ancho; las opciones largas se cortan con «...» y se leen enteras al apuntarlas. */
+function FilterSelect({
+  label,
+  allLabel,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  // El filtro que se trae del dashboard puede no estar entre las opciones todavía
+  const shown = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <select aria-label={label} title={value || undefined} value={value} onChange={(e) => onChange(e.target.value)} className={FILTER_CLASS}>
+      <option value="">{allLabel}</option>
+      {shown.map((option) => (
+        <option key={option} value={option} title={option}>
+          {truncate(option)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function MyProducts() {
   const qc = useQueryClient();
   // Desde los gráficos del dashboard se llega con un filtro ya elegido; entrando por el menú se ve todo
-  const initial = (useLocation().state ?? {}) as { categoria?: string; ubicacion?: string; vencido?: "si" | "no"; bajoStock?: boolean; porVencer?: boolean };
+  const initial = (useLocation().state ?? {}) as {
+    categoria?: string;
+    ubicacion?: string;
+    marca?: string;
+    vencido?: "si" | "no";
+    bajoStock?: boolean;
+    porVencer?: boolean;
+  };
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState(initial.categoria ?? "");
   const [ubicacion, setUbicacion] = useState(initial.ubicacion ?? "");
+  const [marca, setMarca] = useState(initial.marca ?? "");
   const [vencido, setVencido] = useState<"" | "si" | "no">(initial.vencido ?? "");
   const [bajoStock, setBajoStock] = useState(initial.bajoStock ?? false);
   const [porVencer, setPorVencer] = useState(initial.porVencer ?? false);
@@ -55,7 +95,6 @@ export default function MyProducts() {
   const [editing, setEditing] = useState<MyProduct | null>(null);
   const [historialProduct, setHistorialProduct] = useState<MyProduct | null>(null);
   const [detail, setDetail] = useState<MyProduct | null>(null);
-  const [stockTotal, setStockTotal] = useState<{ open: boolean; initial: StockTotalTarget | null }>({ open: false, initial: null });
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editError, setEditError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -64,13 +103,16 @@ export default function MyProducts() {
   const [bulkUbicacion, setBulkUbicacion] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<MyProduct | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => setPage(0), [search, categoria, ubicacion, vencido, bajoStock, porVencer]);
+  useEffect(() => setPage(0), [search, categoria, ubicacion, marca, vencido, bajoStock, porVencer]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["my-products-filter-options"],
     queryFn: async () => {
-      const { data } = await api.get<{ categorias: string[]; ubicaciones: string[] }>(
+      const { data } = await api.get<{ categorias: string[]; ubicaciones: string[]; marcas?: string[] }>(
         "/me/products/filters/options",
       );
       return data;
@@ -78,21 +120,32 @@ export default function MyProducts() {
   });
   const categoriaOptions = filterOptions?.categorias ?? [];
   const ubicacionOptions = filterOptions?.ubicaciones ?? [];
+  const marcaOptions = filterOptions?.marcas ?? [];
   const [editCategoriaOptions, setEditCategoriaOptions] = useState<string[]>([]);
   const [editUbicacionOptions, setEditUbicacionOptions] = useState<string[]>([]);
+  const [editMarcaOptions, setEditMarcaOptions] = useState<string[]>([]);
 
   useEffect(() => {
     if (filterOptions) {
       setEditCategoriaOptions(filterOptions.categorias);
       setEditUbicacionOptions(filterOptions.ubicaciones);
+      setEditMarcaOptions(filterOptions.marcas ?? []);
     }
   }, [filterOptions]);
+
+  // Las reglas generales del perfil, para la ventana de información del producto
+  const profile = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: async () => (await api.get<MyProfile>("/me/profile")).data,
+  });
+  const generalRules = profile.data ? { coverageDays: profile.data.stock_minimo, expiryDays: profile.data.dias_alerta_vencimiento } : null;
 
   const buildFilterParams = (): Record<string, string | number | boolean> => {
     const params: Record<string, string | number | boolean> = {};
     if (search) params.search = search;
     if (categoria) params.categoria = categoria;
     if (ubicacion) params.ubicacion = ubicacion;
+    if (marca) params.marca = marca;
     if (vencido) params.vencido = vencido === "si";
     if (bajoStock) params.bajo_stock = true;
     if (porVencer) params.por_vencer = true;
@@ -104,7 +157,7 @@ export default function MyProducts() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-products", search, categoria, ubicacion, vencido, bajoStock, porVencer, sortBy, sortDir, page],
+    queryKey: ["my-products", search, categoria, ubicacion, marca, vencido, bajoStock, porVencer, sortBy, sortDir, page],
     queryFn: async () => {
       const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<MyProduct>>("/me/products", { params })).data;
@@ -114,7 +167,7 @@ export default function MyProducts() {
 
   // Stock total y cantidad de productos de la lista, con la búsqueda y los filtros elegidos (como en la app)
   const summary = useQuery({
-    queryKey: ["my-products-stock-total", search, categoria, ubicacion, vencido, bajoStock, porVencer],
+    queryKey: ["my-products-stock-total", search, categoria, ubicacion, marca, vencido, bajoStock, porVencer],
     queryFn: async () => {
       const { sort_by: _by, sort_dir: _dir, ...filters } = buildFilterParams();
       return (await api.get<{ stock_total: number; products: number }>("/me/products/stock-total", { params: filters })).data;
@@ -179,6 +232,12 @@ export default function MyProducts() {
   const editSet = (field: keyof typeof EDIT_EMPTY) => (e: { target: { value: string } }) =>
     setEditForm((f) => ({ ...f, [field]: e.target.value }));
 
+  const refreshInventory = () => {
+    qc.invalidateQueries({ queryKey: ["my-products"] });
+    qc.invalidateQueries({ queryKey: ["my-products-filter-options"] });
+    invalidateInventory(qc);
+  };
+
   const saveEdit = useMutation({
     mutationFn: async () => {
       if (!editing) return;
@@ -199,8 +258,7 @@ export default function MyProducts() {
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      invalidateInventory(qc);
+      refreshInventory();
       setEditing(null);
     },
     onError: (err: any) => {
@@ -261,8 +319,7 @@ export default function MyProducts() {
       return (await api.patch<{ updated: number }>("/me/products/bulk-edit", payload)).data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      invalidateInventory(qc);
+      refreshInventory();
       setSelected(new Set());
       setShowBulkEdit(false);
     },
@@ -271,125 +328,167 @@ export default function MyProducts() {
     },
   });
 
+  const deleteOne = useMutation({
+    mutationFn: async (product: MyProduct) => {
+      await api.delete(`/me/products/${product.id}`);
+      return product.id;
+    },
+    onSuccess: (id) => {
+      refreshInventory();
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setDeleting(null);
+    },
+    onError: (err: any) => {
+      setDeleting(null);
+      setDeleteError(apiErrorMessage(err, "No se pudo eliminar el producto."));
+    },
+  });
+
+  const deleteMany = useMutation({
+    mutationFn: async () => (await api.post<{ deleted: number }>("/me/products/bulk-delete", { product_ids: Array.from(selected) })).data,
+    onSuccess: () => {
+      refreshInventory();
+      setSelected(new Set());
+      setBulkDeleting(false);
+    },
+    onError: (err: any) => {
+      setBulkDeleting(false);
+      setDeleteError(apiErrorMessage(err, "No se pudieron eliminar los productos."));
+    },
+  });
+
+  const count = selected.size;
+
   return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    // En pantallas anchas todo entra sin desplazar la página: solo se desplaza la lista de productos
+    <div className="md:flex md:h-[calc(100vh-4.5rem)] md:flex-col">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink">Inventario</h1>
           <p className="mt-1 text-sm text-muted">Tus productos cargados</p>
         </div>
         {summary.data && (
-          <div data-testid="inventory-total-summary" className="rounded-2xl border border-line/70 bg-white px-5 py-3 text-right shadow-card">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Stock total</p>
-            <p data-testid="inventory-total-value" className="text-xl font-bold text-primaryDark">
-              {formatThousands(summary.data.stock_total)} {summary.data.stock_total === 1 ? "unidad" : "unidades"}
-            </p>
-            <p data-testid="inventory-total-products" className="text-xs text-muted">
-              entre {formatThousands(summary.data.products)} {summary.data.products === 1 ? "producto" : "productos"} en el inventario
-            </p>
-          </div>
+          <p data-testid="inventory-total-summary" className="flex flex-wrap items-baseline gap-x-3 text-base font-semibold uppercase tracking-wide text-muted">
+            <span>Stock</span>
+            <span data-testid="inventory-total-value" className="text-2xl font-extrabold normal-case text-primaryDark">
+              {formatThousands(summary.data.stock_total)} {summary.data.stock_total === 1 ? "Unidad" : "Unidades"}
+            </span>
+            <span aria-hidden className="text-line">|</span>
+            <span data-testid="inventory-total-products" className="text-2xl font-extrabold normal-case text-ink">
+              {formatThousands(summary.data.products)} {summary.data.products === 1 ? "Producto" : "Productos"}
+            </span>
+          </p>
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      {/* Una sola cuadrícula: el buscador llega hasta el borde derecho del último filtro; a su derecha va la exportación y, junto a los filtros, las casillas */}
+      <div className="mb-3 grid grid-cols-2 items-center gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o marca…"
-          className="min-w-[200px] flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+          className="col-span-2 h-10 min-w-0 rounded-xl border border-line bg-white px-4 text-sm outline-none focus:border-primary md:col-span-4"
         />
-        <select
-          aria-label="Categoría"
-          value={categoria}
-          onChange={(e) => setCategoria(e.target.value)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Todas las categorías</option>
-          {(categoriaOptions ?? []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Ubicación"
-          value={ubicacion}
-          onChange={(e) => setUbicacion(e.target.value)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Todas las ubicaciones</option>
-          {ubicacionOptions.map((u) => (
-            <option key={u} value={u}>
-              {u}
-            </option>
-          ))}
-        </select>
-        <select
-          value={vencido}
-          onChange={(e) => setVencido(e.target.value as any)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Vencimiento: todos</option>
-          <option value="si">Vencidos</option>
-          <option value="no">No vencidos</option>
-        </select>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
-          Stock bajo
-        </label>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={porVencer} onChange={(e) => setPorVencer(e.target.checked)} />
-          Por vencer
-        </label>
-        <div className="ml-auto flex gap-2">
+        <div className="col-span-2 flex justify-end gap-2 md:col-span-1">
           <button
             type="button"
             onClick={() => exportProducts("csv")}
             disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+            className="inline-flex h-10 w-20 items-center justify-center gap-1.5 rounded-xl border border-line px-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
           >
-            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
+            <Download size={14} /> {exporting === "csv" ? "…" : "CSV"}
           </button>
           <button
             type="button"
             onClick={() => exportProducts("xlsx")}
             disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+            className="inline-flex h-10 w-20 items-center justify-center gap-1.5 rounded-xl border border-line px-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
           >
-            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
+            <Download size={14} /> {exporting === "xlsx" ? "…" : "Excel"}
           </button>
+        </div>
+        <FilterSelect label="Categoría" allLabel="Todas las categorías" value={categoria} options={categoriaOptions} onChange={setCategoria} />
+        <FilterSelect label="Marca" allLabel="Todas las marcas" value={marca} options={marcaOptions} onChange={setMarca} />
+        <FilterSelect label="Ubicación" allLabel="Todas las ubicaciones" value={ubicacion} options={ubicacionOptions} onChange={setUbicacion} />
+        <select
+          aria-label="Vencimiento"
+          value={vencido}
+          onChange={(e) => setVencido(e.target.value as "" | "si" | "no")}
+          className={FILTER_CLASS}
+        >
+          <option value="">Todos los vencimientos</option>
+          <option value="si">Vencidos</option>
+          <option value="no">No vencidos</option>
+        </select>
+        <div className="col-span-2 flex items-center justify-end gap-4 md:col-span-1">
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
+            Stock bajo
+          </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={porVencer} onChange={(e) => setPorVencer(e.target.checked)} />
+            Por vencer
+          </label>
         </div>
       </div>
 
-      {selected.size > 0 && (
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5">
-          <p className="text-sm text-primaryDark">
-            {selected.size} producto{selected.size === 1 ? "" : "s"} seleccionado{selected.size === 1 ? "" : "s"}
-          </p>
-          <div className="flex gap-2">
-            <button
+      {/* La barra de selección solo aparece cuando hay productos elegidos */}
+      {count > 0 && (
+      <div
+        data-testid="selection-bar"
+        className="mb-3 flex h-12 shrink-0 items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-4"
+      >
+        <div className="flex items-center gap-2">
+          <button
               type="button"
+              data-testid="selection-clear"
+              aria-label="Deseleccionar todo"
+              title="Deseleccionar todo"
               onClick={() => setSelected(new Set())}
-              className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas"
+              className="rounded-full p-1 text-primaryDark transition hover:bg-primary/15"
             >
-              Deseleccionar
+              <X size={16} />
             </button>
-            <button
-              type="button"
-              onClick={openBulkEdit}
-              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >
-              Editar en lote
-            </button>
-          </div>
+          <p data-testid="selection-count" className="text-sm text-primaryDark">
+            {`${count} producto${count === 1 ? "" : "s"} seleccionado${count === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="selection-delete"
+            onClick={() => setBulkDeleting(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-danger/40 bg-white px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+          >
+            <Trash2 size={13} /> Borrar todo
+          </button>
+          <button
+            type="button"
+            data-testid="selection-edit"
+            onClick={openBulkEdit}
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+          >
+            Editar todo
+          </button>
+        </div>
+      </div>
+      )}
+
+      {deleteError && (
+        <div className="mb-4">
+          <Notice tone="error">{deleteError}</Notice>
         </div>
       )}
 
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="p-0">
-          <div className="max-h-[60vh] overflow-auto">
+        <Card className="flex min-h-0 flex-col p-0 md:flex-1">
+          <div className="max-h-[60vh] min-h-0 overflow-auto md:max-h-none md:flex-1">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
@@ -415,10 +514,16 @@ export default function MyProducts() {
               </thead>
               <tbody>
                 {items.map((p) => (
-                  <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-3 py-3 text-center">
+                  <tr
+                    key={p.id}
+                    data-testid={`product-row-${p.id}`}
+                    onClick={() => setDetail(p)}
+                    className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-canvas/60"
+                  >
+                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
+                        aria-label={`Seleccionar ${p.nombre}`}
                         checked={selected.has(p.id)}
                         onChange={() => toggleSelected(p.id)}
                       />
@@ -432,21 +537,12 @@ export default function MyProducts() {
                       <button
                         type="button"
                         data-testid={`product-open-${p.id}`}
-                        onClick={() => setDetail(p)}
-                        className="text-left font-semibold text-ink hover:text-primaryDark hover:underline"
+                        className="text-left text-base font-semibold text-ink hover:text-primaryDark hover:underline"
                         title={p.nombre}
                       >
                         {truncate(p.nombre)}
                       </button>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
-                      {p.codigo_barras && (
-                        <p
-                          className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-muted"
-                          title="Código de barras"
-                        >
-                          <Barcode size={11} /> {p.codigo_barras}
-                        </p>
-                      )}
                     </td>
                     <td className="px-3 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
                     <td className="px-3 py-3 text-center font-semibold" data-testid={`product-stock-${p.id}`}>
@@ -464,7 +560,7 @@ export default function MyProducts() {
                         <span className="text-muted">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-center gap-2">
                         <button
                           onClick={() => openEdit(p)}
@@ -477,6 +573,18 @@ export default function MyProducts() {
                           className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
                         >
                           <History size={14} /> Historial
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`product-delete-${p.id}`}
+                          aria-label={`Eliminar ${p.nombre}`}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleting(p);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-danger/60 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+                        >
+                          <Trash2 size={14} /> Eliminar
                         </button>
                       </div>
                     </td>
@@ -510,14 +618,17 @@ export default function MyProducts() {
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
-                  <input
-                    value={editForm.marca}
-                    onChange={editSet("marca")}
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                </div>
+                <Picklist
+                  label="Marca"
+                  value={editForm.marca}
+                  options={editMarcaOptions}
+                  emptyLabel="Sin marca"
+                  maxLength={OPTION_MAX}
+                  onChange={(v) => {
+                    setEditForm((f) => ({ ...f, marca: v }));
+                    setEditMarcaOptions((prev) => addIfMissing(prev, v));
+                  }}
+                />
                 <Picklist
                   label="Categoría"
                   value={editForm.categoria}
@@ -650,45 +761,39 @@ export default function MyProducts() {
               Solo se cambian los campos que completes acá — dejá "No cambiar" en los demás.
             </p>
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Categoría</label>
-                <select
-                  value={bulkCategoria}
-                  onChange={(e) => setBulkCategoria(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">No cambiar</option>
-                  {editCategoriaOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Ubicación</label>
-                <select
-                  value={bulkUbicacion}
-                  onChange={(e) => setBulkUbicacion(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">No cambiar</option>
-                  {editUbicacionOptions.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
-                <input
-                  value={bulkMarca}
-                  onChange={(e) => setBulkMarca(e.target.value)}
-                  placeholder="Dejar vacío para no cambiar"
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
+              <Picklist
+                label="Marca"
+                value={bulkMarca}
+                options={editMarcaOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkMarca(v);
+                  setEditMarcaOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
+              <Picklist
+                label="Categoría"
+                value={bulkCategoria}
+                options={editCategoriaOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkCategoria(v);
+                  setEditCategoriaOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
+              <Picklist
+                label="Ubicación"
+                value={bulkUbicacion}
+                options={editUbicacionOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkUbicacion(v);
+                  setEditUbicacionOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
             </div>
 
             {bulkError && (
@@ -716,14 +821,35 @@ export default function MyProducts() {
         </div>
       )}
 
+      {deleting && (
+        <ConfirmDialog
+          title="Eliminar producto"
+          message={`¿Eliminar "${truncate(deleting.nombre)}" del inventario? Se borra también su historial y no se puede deshacer.`}
+          confirmLabel="Eliminar"
+          danger
+          busy={deleteOne.isPending}
+          onConfirm={() => deleteOne.mutate(deleting)}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
+
+      {bulkDeleting && (
+        <ConfirmDialog
+          title="Borrar productos"
+          message={`¿Borrar los ${count} productos seleccionados del inventario? Se borra también su historial y no se puede deshacer.`}
+          confirmLabel="Borrar todo"
+          danger
+          busy={deleteMany.isPending}
+          onConfirm={() => deleteMany.mutate()}
+          onCancel={() => setBulkDeleting(false)}
+        />
+      )}
+
       {detail && (
         <ProductDetailModal
           product={detail}
+          generalRules={generalRules}
           onClose={() => setDetail(null)}
-          onStockTotal={() => {
-            setStockTotal({ open: true, initial: { nombre: detail.nombre, categoria: detail.categoria } });
-            setDetail(null);
-          }}
           onHistory={() => {
             setHistorialProduct(detail);
             setDetail(null);
@@ -735,21 +861,11 @@ export default function MyProducts() {
         />
       )}
 
-      <StockTotalModal
-        scope="me"
-        open={stockTotal.open}
-        initial={stockTotal.initial}
-        onClose={() => setStockTotal({ open: false, initial: null })}
-      />
-
       {historialProduct && (
         <HistorialModal
           product={historialProduct}
           onClose={() => setHistorialProduct(null)}
-          onChanged={() => {
-            qc.invalidateQueries({ queryKey: ["my-products"] });
-            invalidateInventory(qc);
-          }}
+          onChanged={refreshInventory}
         />
       )}
     </div>

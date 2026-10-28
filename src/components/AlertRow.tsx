@@ -1,5 +1,6 @@
 import type { AlertOut } from "@/lib/types";
 import { alertDescription, alertTitle, LEVEL_TONES } from "@/lib/alertInfo";
+import PredictionBadge from "@/components/PredictionBadge";
 import ProductImage from "@/components/ProductImage";
 
 /**
@@ -18,15 +19,10 @@ export default function AlertRow({ alert, onClick, compact = false }: { alert: A
       >
         <span aria-hidden className="absolute inset-y-0 left-0 w-2" style={{ backgroundColor: tone.border }} />
         {alert.predictive && (
-          <span
-            data-testid={`alert-prediction-${alert.key}`}
-            className="absolute right-3 top-3 rounded-full bg-primaryDark px-2.5 py-0.5 text-[10px] font-semibold text-white"
-          >
-            Predicción
-          </span>
+          <PredictionBadge testId={`alert-prediction-${alert.key}`} className="absolute right-3 top-3" />
         )}
         <ProductImage url={alert.image_url} alt={alert.product_name} className={`shrink-0 !rounded-xl ${compact ? "h-12 w-12" : "h-16 w-16"}`} />
-        <div className="min-w-0 flex-1 pr-16">
+        <div className="min-w-0 flex-1 pr-20">
           <p className="truncate text-sm font-bold text-ink" title={alert.product_name}>
             {alert.product_name}
           </p>

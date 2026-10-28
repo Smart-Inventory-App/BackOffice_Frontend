@@ -106,3 +106,22 @@ describe("Metricas · encabezado", () => {
     expect(screen.getByRole("heading", { name: "Tendencias de ingresos" }).className).toContain("text-center");
   });
 });
+
+describe("Metricas · separación entre las dos mitades", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
+  });
+
+  it("una línea vertical tenue separa las tendencias de consumo de las de ingresos", async () => {
+    renderWithProviders(<Metricas />);
+
+    const consumo = await screen.findByTestId("trends-section-consumo");
+    const ingresos = screen.getByTestId("trends-section-ingresos");
+    expect(ingresos.className).toContain("lg:border-l");
+    expect(ingresos.className).toContain("border-line/60");
+    expect(consumo.className).not.toContain("border-l");
+    expect(consumo.parentElement!.className).toContain("lg:gap-0");
+  });
+});

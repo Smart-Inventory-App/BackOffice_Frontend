@@ -59,7 +59,7 @@ describe("Perfil", () => {
     expect(screen.getByTestId("profile-view-expiry-days")).toHaveTextContent("10 días");
     expect(screen.getByTestId("profile-view-check-hour")).toHaveTextContent("05:00 hs · Hora de Argentina (UTC-3)");
     expect(screen.getByTestId("profile-avatar")).toHaveTextContent("AG");
-    expect(screen.getByText("ana@test.com")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-view-email")).toHaveTextContent("ana@test.com");
     expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Guardar cambios" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Editar perfil" })).toBeInTheDocument();
@@ -300,5 +300,22 @@ describe("Perfil · vista", () => {
     await show();
 
     expect(screen.getByTestId("profile-type-individuo")).toHaveTextContent("Consumidor final");
+  });
+});
+
+describe("Perfil · mail en los datos personales", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("en los datos personales, el MAIL de la cuenta está a la izquierda del usuario", async () => {
+    await show(undefined, false, false);
+
+    const mail = screen.getByTestId("profile-view-email");
+    const username = screen.getByTestId("profile-view-username");
+    expect(mail.parentElement!.querySelector("dt")).toHaveTextContent("Mail");
+    expect(mail).toHaveTextContent("ana@test.com");
+    expect(mail.compareDocumentPosition(username) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mail.parentElement!.parentElement).toBe(username.parentElement!.parentElement);
   });
 });

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
 import { AuthProvider } from "@/context/AuthContext";
 import Login from "./Login";
+import { clearSessionExpired, markSessionExpired, sessionExpired } from "@/lib/sessionExpired";
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn(), post: vi.fn() },
@@ -246,5 +247,35 @@ describe("Login", () => {
 
     await screen.findByLabelText("Contraseña");
     expect(screen.queryByText("Cuenta creada. Iniciá sesión con tu contraseña.")).not.toBeInTheDocument();
+  });
+});
+
+describe("Login · sesión expirada", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearSessionExpired();
+  });
+
+  it("si la sesión se cerró porque expiró, lo avisa en la pantalla de login y no se repite", async () => {
+    markSessionExpired();
+    renderLogin();
+
+    expect(await screen.findByText("Tu sesión expiró. Volvé a iniciar sesión para seguir.")).toBeInTheDocument();
+    await waitFor(() => expect(sessionExpired()).toBe(false));
+  });
+
+  it("sin una sesión vencida no hay aviso", async () => {
+    renderLogin();
+
+    await screen.findByLabelText("Email");
+    expect(screen.queryByText(/Tu sesión expiró/)).not.toBeInTheDocument();
+  });
+
+  it("si viene de registrarse, muestra el aviso de la cuenta creada y no el de sesión", async () => {
+    markSessionExpired();
+    renderLogin({ registered: true });
+
+    expect(await screen.findByText("Cuenta creada. Iniciá sesión con tu contraseña.")).toBeInTheDocument();
+    expect(screen.queryByText(/Tu sesión expiró/)).not.toBeInTheDocument();
   });
 });

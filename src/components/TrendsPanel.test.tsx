@@ -499,3 +499,95 @@ describe("TrendsPanel · productos con más stock", () => {
     expect(screen.queryByTestId("incomes-top-stock")).not.toBeInTheDocument();
   });
 });
+
+describe("TrendsPanel · títulos y tarjetas centrados", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
+      if (url === "/me/products") return { data: { items: [{ id: 1, nombre: "Arroz", stock: 4 }], total: 1 } };
+      return { data: metrics({ period_days: config.params.period }) };
+    });
+  });
+
+  it("el título de cada gráfico y las tarjetas de datos están centrados y son bajas", async () => {
+    renderWithProviders(<TrendsPanel kind="consumo" />);
+
+    const total = await screen.findByTestId("trends-consumed");
+    const card = total.parentElement!;
+    expect(card.className).toContain("text-center");
+    expect(card.className).toContain("py-2");
+    expect(card.className).not.toContain("p-4");
+    expect(screen.getByTestId("trends-average").parentElement!.className).toContain("text-center");
+    expect(screen.getByTestId("trends-peak").parentElement!.className).toContain("text-center");
+    expect(screen.getByTestId("trends-change").className).toContain("justify-center");
+    expect(screen.getByText("Consumo por día").className).toContain("text-center");
+    expect(screen.getByText("Más consumidos").className).toContain("text-center");
+  });
+
+  it("en los ingresos también: el título, las tarjetas y «Productos con más stock»", async () => {
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+
+    const total = await screen.findByTestId("incomes-total");
+    expect(total.parentElement!.className).toContain("text-center");
+    expect(screen.getByTestId("incomes-change").className).toContain("justify-center");
+    expect(screen.getByText("Ingresos por día").className).toContain("text-center");
+    expect((await screen.findByText("Productos con más stock")).className).toContain("text-center");
+  });
+});
+
+describe("TrendsPanel · colores por tipo", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
+      if (url === "/me/products") return { data: { items: [{ id: 1, nombre: "Arroz", stock: 4 }], total: 1 } };
+      return { data: metrics({ period_days: config.params.period }) };
+    });
+  });
+
+  it("el consumo va en celeste verdoso: los números destacados y las barras", async () => {
+    renderWithProviders(<TrendsPanel kind="consumo" />);
+
+    await screen.findByTestId("trends-consumed");
+    ["trends-consumed", "trends-average", "trends-peak"].forEach((id) => {
+      expect(screen.getByTestId(id).className).toContain("text-primary");
+    });
+    const filled = screen.getAllByTestId(/^trends-bar-fill-/).filter((bar) => bar.className.includes("bg-primary"));
+    expect(filled.length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId(/^trends-bar-fill-/).some((bar) => bar.className.includes("1B3A8F"))).toBe(false);
+  });
+
+  it("los ingresos van en azul: los números destacados y las barras", async () => {
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+
+    await screen.findByTestId("incomes-total");
+    ["incomes-total", "incomes-average", "incomes-peak"].forEach((id) => {
+      expect(screen.getByTestId(id).className).toContain("text-[#1B3A8F]");
+    });
+    const bars = screen.getAllByTestId(/^incomes-bar-fill-/);
+    expect(bars.some((bar) => bar.className.includes("1B3A8F") || bar.className.includes("0F2461"))).toBe(true);
+    expect(bars.some((bar) => bar.className.includes("bg-primary"))).toBe(false);
+  });
+});
+
+describe("TrendsPanel · barra seleccionada", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
+      if (url === "/me/products") return { data: { items: [], total: 0 } };
+      return { data: metrics({ period_days: config.params.period }) };
+    });
+  });
+
+  it("la barra elegida es del mismo azul del logo en consumo y en ingresos", async () => {
+    const { unmount } = renderWithProviders(<TrendsPanel kind="consumo" />);
+    await screen.findByTestId("trends-consumed");
+    const consumo = screen.getAllByTestId(/^trends-bar-fill-/).find((bar) => bar.getAttribute("aria-hidden") !== "x" && bar.className.includes("237EA1"));
+    unmount();
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+    await screen.findByTestId("incomes-total");
+    const ingresos = screen.getAllByTestId(/^incomes-bar-fill-/).find((bar) => bar.className.includes("237EA1"));
+
+    expect(consumo).toBeTruthy();
+    expect(ingresos).toBeTruthy();
+  });
+});

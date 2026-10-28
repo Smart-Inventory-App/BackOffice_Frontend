@@ -94,3 +94,13 @@ describe("AlertDetailModal · tipografía", () => {
     expect(screen.getByTestId("alert-detail-text").querySelector("p")!.className).not.toMatch(/font-(bold|extrabold)/);
   });
 });
+
+describe("AlertDetailModal · marca «Predicción»", () => {
+  it("la marca lleva delante el mismo símbolo que en la app", () => {
+    render(<AlertDetailModal alert={alert({ predictive: true })} onClose={vi.fn()} />);
+
+    const badge = screen.getByTestId("alert-detail-prediction");
+    expect(badge).toHaveTextContent("Predicción");
+    expect(badge.firstElementChild).toBe(within(badge).getByTestId("prediction-icon"));
+  });
+});
