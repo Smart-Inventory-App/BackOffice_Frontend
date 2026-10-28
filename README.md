@@ -34,16 +34,18 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | `/metricas` | Tendencias, en dos mitades: **Tendencias de consumo** y **Tendencias de ingresos** (las del usuario o, para un administrador, las de toda la plataforma) |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
 | `/usuarios/:id` | Detalle de usuario: unidades, alertas, consumo de 30 días, sus alertas y sus productos con el nivel de cada uno |
-| `/productos` | Productos cargados (con imagen y nivel de alerta), búsqueda, filtros, orden, exportación, eliminación y **stock total por producto**; el usuario ve su inventario y abre la **información de cada producto** |
+| `/productos` | Productos cargados (con imagen y nivel de alerta), búsqueda, filtros (incluida la ubicación), orden, exportación, eliminación y **stock total por producto**; el usuario ve su inventario con el **stock total de la lista** arriba a la derecha (cambia con la búsqueda y los filtros, como en la app) y abre la **información de cada producto** |
 | `/auditoria` | Actividad de usuarios: altas, productos, logins y cambios de rol |
 | `/ocr` | Módulo de OCR: estado de los motores, tiempos y precisión, prueba de fotos y auditoría de escaneos |
 | `/ml` | Modelos de predicción de consumo |
-| `/cargar` | Flujo de producto (entrada y salida) en modo usuario, con tres formas de carga: manual, por archivo y **por foto** (pestaña Procesamiento) |
+| `/cargar` | Flujo de producto (entrada y salida) en modo usuario, con tres formas de carga: manual, por archivo y **por foto** (pestaña Procesamiento). El formulario manual ocupa todo el ancho y tiene los **mismos campos, textos, límites y verificaciones que la app** (nombre de hasta 20 caracteres y descripción de hasta 400 con su contador, stock de hasta 6 dígitos, fecha como DD/MM/AAAA, código de hasta 14 dígitos, reglas de alerta plegables; en la salida, los motivos Vendido / Consumido / Vencido / Alquilado y la descripción de hasta 50) |
 | `/perfil` | Datos de la cuenta, tipo de cuenta y reglas de alerta, en modo usuario |
 
 #### Dashboard del usuario
 
 No es un «inicio»: es un dashboard con la información de su inventario, esté o no en la app del celular. «Dashboard», con **«Bienvenido, <nombre>»** si la persona acaba de iniciar sesión o **«Tu estado, <nombre>»** si cambió de página y volvió (`src/lib/welcome.ts`: un aviso de un solo uso que se deja al ingresar y el dashboard borra); cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock», esta última con letra blanca) con los números con puntos de miles. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, un selector de período (**7, 14, 30 o 90 días**, el 90 es solo del dashboard) y **gráficos que se pueden recorrer y tocar**: consumo por día (con el detalle de cada día al pasar el mouse y el botón «Tendencias») e **ingresos por día** (todas las cargas de stock: reposiciones y el stock inicial de los productos nuevos, con el total, el promedio y el día de mayor ingreso), vencimientos por tramo, **stock por categoría** (las 5 con más stock; «Ver más» abre la lista completa de mayor a menor, y tocar una abre el inventario de esa categoría) y productos por ubicación. No hay gráfico de alertas: se llega a ellas desde las tarjetas. Después, «Un vistazo más», «Para atender primero», **Últimos Cambios** y **Productos Recientes** (hasta 5 cada uno).
+
+En la misma pantalla, **«Dónde tenés tus productos»** muestra las 5 ubicaciones con más productos (sin gráfico; «Ver más» abre el listado completo de mayor a menor, `src/components/RankingModal.tsx`, igual que «Stock por categoría»), **«Un vistazo más»** («Datos adicionales del sistema») suma vencidos con stock, alertas críticas y advertencias, productos con imagen, productos sin vencimiento y unidades por producto, y **«Para atender primero»** muestra solo las 3 alertas más pertinentes (críticas primero, y las que vencen o se agotan antes) con un «Ver más» que lleva al Centro de Alertas. Las tres columnas ocupan siempre el mismo alto. El gráfico de ingresos por día es de área y azul, igual que el de consumo, y el botón «Tendencias» lleva a la página de tendencias; en esa página, debajo de los ingresos, se ven los **productos con más stock**.
 
 #### Tendencias (consumo e ingresos)
 
@@ -75,7 +77,7 @@ Se ve primero con los datos ya cargados (nombre, apellido, usuario, tipo de cuen
 
 #### Stock total por producto
 
-En `/productos` el botón **Stock total** (arriba, y uno por cada fila) abre una ventana con la suma del stock de todos los productos que tienen el mismo nombre y categoría, de cualquier marca (`src/components/StockTotalModal.tsx`):
+En `/productos` el botón **Stock total** de cada fila (en la información del producto) abre una ventana con la suma del stock de todos los productos que tienen el mismo nombre y categoría, de cualquier marca (`src/components/StockTotalModal.tsx`). El botón general del encabezado se reemplazó por el resumen «Stock total · N unidades · entre M productos en el inventario»:
 
 - Desde el botón de arriba se **busca por nombre** (a partir de 2 letras, con sugerencias). Si hay un dueño elegido en el filtro de la página, se cuenta solo lo de ese usuario; si no, lo de **toda la plataforma**, y la ventana indica cuántos usuarios suman.
 - Desde el botón de una fila se abre directamente con ese producto, acotado al usuario dueño de esa fila.

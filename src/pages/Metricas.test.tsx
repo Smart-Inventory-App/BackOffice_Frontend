@@ -79,3 +79,30 @@ describe("Metricas (Tendencias)", () => {
     expect(await ingresos.findByTestId("incomes-bar-89")).toBeInTheDocument();
   });
 });
+
+describe("Metricas · encabezado", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
+  });
+
+  it("el selector de días va a la derecha, en la misma fila y centrado con el título y su descripción", async () => {
+    renderWithProviders(<Metricas />);
+
+    const picker = await screen.findByTestId("trends-period-picker");
+    const row = picker.parentElement!;
+    expect(row.className).toContain("justify-between");
+    expect(row.className).toContain("items-center");
+    expect(within(row).getByRole("heading", { name: "Tendencias" })).toBeInTheDocument();
+    expect(within(row).getByText("Mirá cuánto consumís y cuánto ingresás")).toBeInTheDocument();
+    [7, 14, 30, 90].forEach((n) => expect(within(picker).getByTestId(`trends-period-${n}`)).toBeInTheDocument());
+  });
+
+  it("los títulos de las dos mitades están centrados", async () => {
+    renderWithProviders(<Metricas />);
+
+    expect((await screen.findByRole("heading", { name: "Tendencias de consumo" })).className).toContain("text-center");
+    expect(screen.getByRole("heading", { name: "Tendencias de ingresos" }).className).toContain("text-center");
+  });
+});

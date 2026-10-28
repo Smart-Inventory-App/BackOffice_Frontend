@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, Boxes, Clock, Cuboid, TrendingDown } from "lucide-react";
+import { AlertTriangle, BarChart3, Boxes, CalendarX2, Clock, Cuboid, Image as ImageIcon, Layers, ShieldAlert, Tag, TrendingDown, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AlertList, AlertOut, MyMetrics, MyProduct, MyProfile, MyStats, Paginated, StockChange } from "@/lib/types";
 import { formatDateTime, formatThousands } from "@/lib/format";
@@ -11,18 +11,20 @@ import { TREND_PERIODS, averagePerDay, formatDayLong, formatDayShort, peakIndex,
 import { Button, Card, EmptyState, Segmented, Spinner, StatTile } from "@/components/ui";
 import AlertDetailModal from "@/components/AlertDetailModal";
 import AlertRow from "@/components/AlertRow";
-import CategoriesModal from "@/components/CategoriesModal";
 import ChangeRow from "@/components/ChangeRow";
 import ChangesModal from "@/components/ChangesModal";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import ProductRow from "@/components/ProductRow";
-import TrendsModal from "@/components/TrendsModal";
+import RankingModal from "@/components/RankingModal";
 
 const RECENT_CHANGES = 5;
 const RECENT_PRODUCTS = 5;
 // Las categorías con más stock que se ven de entrada; el resto, en «Ver más»
 const TOP_CATEGORIES = 5;
+// Las alertas más pertinentes que se ven en «Para atender primero»; el resto, en el Centro de Alertas
 const UPCOMING = 3;
+// Las ubicaciones con más productos que se ven de entrada; el resto, en «Ver más»
+const TOP_LOCATIONS = 5;
 // El nombre del saludo se corta, como en la app
 const NAME_MAX = 20;
 
@@ -42,17 +44,38 @@ const BUCKET_COLORS: Record<string, string> = {
   "Sin vencimiento": "#B8BFC9",
 };
 
-function Section({ title, hint, children, action, testId }: { title: string; hint?: string; children: React.ReactNode; action?: React.ReactNode; testId?: string }) {
+/** Las más urgentes primero: críticas antes que advertencias y, dentro de cada nivel, las que vencen o se agotan antes. */
+function mostPertinent(items: AlertOut[]): AlertOut[] {
+  const urgency = (a: AlertOut) => a.days_to_expiry ?? a.days_until_stockout ?? Number.MAX_SAFE_INTEGER;
+  return [...items].sort((a, b) => Number(b.level === "critical") - Number(a.level === "critical") || urgency(a) - urgency(b));
+}
+
+/** Un renglón de «Un vistazo más»: un ícono de color, lo que se mide y su valor. */
+function Fact({ icon: Icon, color, label, value, testId }: { icon: LucideIcon; color: string; label: string; value: React.ReactNode; testId: string }) {
   return (
-    <Card testId={testId}>
+    <li className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${color}22`, color }}>
+        <Icon size={18} />
+      </span>
+      <span className="flex-1 text-sm text-muted">{label}</span>
+      <span data-testid={testId} className="text-base font-bold text-ink">
+        {value}
+      </span>
+    </li>
+  );
+}
+
+function Section({ title, hint, children, action, testId, fill = false }: { title: string; hint?: string; children: React.ReactNode; action?: React.ReactNode; testId?: string; fill?: boolean }) {
+  return (
+    <Card testId={testId} className={fill ? "flex h-full flex-col" : ""}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
         </div>
-        {action}
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      {children}
+      <div className={fill ? "flex flex-1 flex-col" : ""}>{children}</div>
     </Card>
   );
 }
@@ -66,11 +89,11 @@ function Section({ title, hint, children, action, testId }: { title: string; hin
 export default function MyDashboard() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState<TrendPeriod>(14);
-  const [showTrends, setShowTrends] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
   const [detail, setDetail] = useState<MyProduct | null>(null);
   const [alert, setAlert] = useState<AlertOut | null>(null);
   const [showCategories, setShowCategories] = useState(false);
+  const [showLocations, setShowLocations] = useState(false);
   // Se mira una sola vez al entrar y se borra: al volver a esta página ya no es «recién ingresó»
   const [justArrived] = useState(() => justLoggedIn());
   useEffect(() => {
@@ -117,7 +140,7 @@ export default function MyDashboard() {
   const greeting = name ? `${lead}, ${name.length > NAME_MAX ? `${name.slice(0, NAME_MAX)}...` : name}` : lead;
   // Las tarjetas abren el Centro de Alertas con ese tipo ya elegido
   const goToAlerts = (state: { tipo?: "stock" | "vencimiento" }) => navigate("/alertas", { state });
-  const goToInventory = (state?: { categoria?: string; vencido?: "si"; porVencer?: boolean }) => navigate("/productos", { state });
+  const goToInventory = (state?: { categoria?: string; ubicacion?: string; vencido?: "si"; porVencer?: boolean }) => navigate("/productos", { state });
 
   const days = metrics.data?.consumo_por_dia ?? [];
   const peak = peakIndex(days);
@@ -127,6 +150,11 @@ export default function MyDashboard() {
   const incomes = metrics.data?.total_ingresos ?? 0;
   const sortedCategories = [...data.stock_by_category].sort((a, b) => b.count - a.count);
   const categories = sortedCategories.slice(0, TOP_CATEGORIES);
+  const sortedLocations = [...data.products_by_location].sort((a, b) => b.count - a.count);
+  const locations = sortedLocations.slice(0, TOP_LOCATIONS);
+  const upcoming = mostPertinent([...(expiring.data ?? []), ...(restock.data ?? [])]);
+  const withoutExpiry = data.expiry_buckets.find((bucket) => bucket.label === "Sin vencimiento")?.count ?? 0;
+  const unitsPerProduct = data.total_products > 0 ? Math.round((data.total_units / data.total_products) * 10) / 10 : 0;
   const maxStock = Math.max(1, ...categories.map((c) => c.count));
   const noExpiry = data.expiry_buckets.every((bucket) => bucket.count === 0);
 
@@ -187,7 +215,7 @@ export default function MyDashboard() {
           onChange={setPeriod}
           options={TREND_PERIODS.map((p) => ({ key: p, label: `${p} días` }))}
         />
-        <Button tone="ghost" className="!px-3 !py-1.5" data-testid="home-trends" onClick={() => setShowTrends(true)}>
+        <Button tone="ghost" className="!px-3 !py-1.5" data-testid="home-trends" onClick={() => navigate("/metricas")}>
           <BarChart3 size={16} /> Tendencias
         </Button>
       </div>
@@ -235,20 +263,26 @@ export default function MyDashboard() {
           )}
         </Section>
 
-        <Section testId="dashboard-incomes" title="Ingresos por día" hint="Todo el stock que se cargó: reposiciones y productos nuevos">
+        <Section testId="dashboard-incomes" title="Ingresos por día">
           {metrics.isLoading ? (
             <Spinner />
           ) : (
             <>
               <div data-testid="dashboard-incomes-chart" className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={incomeDays} margin={{ left: -20, right: 8, top: 8 }}>
+                  <AreaChart data={incomeDays} margin={{ left: -20, right: 8, top: 8 }}>
+                    <defs>
+                      <linearGradient id="ingresos" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={BLUE} stopOpacity={0.45} />
+                        <stop offset="95%" stopColor={BLUE} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" vertical={false} />
                     <XAxis dataKey="day" tickFormatter={formatDayShort} fontSize={11} stroke="#6E6E6E" minTickGap={18} />
                     <YAxis allowDecimals={false} fontSize={11} stroke="#6E6E6E" />
                     <Tooltip labelFormatter={(day) => formatDayLong(String(day))} formatter={(value) => [`${value} unidades`, "Ingresos"]} />
-                    <Bar dataKey="quantity" fill={BLUE} radius={[4, 4, 0, 0]} />
-                  </BarChart>
+                    <Area type="monotone" dataKey="quantity" stroke={BLUE} strokeWidth={2.5} fill="url(#ingresos)" activeDot={{ r: 5, fill: TEAL }} />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
               <dl className="mt-3 grid grid-cols-3 gap-3 text-center text-sm">
@@ -346,38 +380,77 @@ export default function MyDashboard() {
         </Section>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Section testId="dashboard-locations" title="Dónde tenés tus productos" hint="Productos por ubicación">
-          {data.products_by_location.length === 0 ? (
+      <div className="mt-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+        <Section
+          fill
+          testId="dashboard-locations"
+          title="Dónde tenés tus productos"
+          hint="Las 5 ubicaciones con más productos"
+          action={
+            sortedLocations.length > TOP_LOCATIONS ? (
+              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-locations-more" onClick={() => setShowLocations(true)}>
+                Ver más
+              </Button>
+            ) : undefined
+          }
+        >
+          {locations.length === 0 ? (
             <EmptyState>Todavía no hay productos cargados.</EmptyState>
           ) : (
-            <ul className="space-y-2">
-              {data.products_by_location.slice(0, 6).map((place, i) => (
-                <li key={place.label} className="flex items-center gap-2 text-sm" data-testid={`dashboard-location-${i}`}>
-                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: PALETTE[i % PALETTE.length] }} />
-                  <span className="flex-1 truncate text-muted">{place.label}</span>
-                  <span className="font-bold text-ink">{place.count}</span>
+            <ul className="flex flex-1 flex-col justify-between gap-2">
+              {locations.map((place, i) => (
+                <li key={place.label}>
+                  <button
+                    type="button"
+                    data-testid={`dashboard-location-${i}`}
+                    onClick={() => goToInventory({ ubicacion: place.label })}
+                    className="flex w-full items-center gap-3 rounded-xl bg-canvas px-3 py-2.5 text-left transition hover:bg-primary/10"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: PALETTE[i % PALETTE.length] }}>
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 truncate text-sm font-medium text-ink" title={place.label}>
+                      {place.label}
+                    </span>
+                    <span className="shrink-0 text-sm font-bold text-ink">
+                      {place.count} <span className="font-normal text-muted">{place.count === 1 ? "producto" : "productos"}</span>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </Section>
 
-        <Section testId="dashboard-extra" title="Un vistazo más" hint="Datos que no ves en la app del celular">
-          <dl className="space-y-2.5 text-sm">
-            <div className="flex justify-between"><dt className="text-muted">Productos vencidos con stock</dt><dd data-testid="dashboard-expired" className="font-bold text-criticalInk">{data.expired_products}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted">Productos con imagen</dt><dd data-testid="dashboard-images" className="font-bold text-ink">{data.products_with_image} de {data.total_products}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted">Alertas críticas</dt><dd className="font-bold text-criticalInk">{data.critical_alerts}</dd></div>
-            <div className="flex justify-between"><dt className="text-muted">Advertencias</dt><dd className="font-bold text-warnInk">{data.warning_alerts}</dd></div>
-          </dl>
+        <Section fill testId="dashboard-extra" title="Un vistazo más" hint="Datos adicionales del sistema">
+          <ul className="flex flex-1 flex-col justify-between gap-2">
+            <Fact icon={CalendarX2} color="#e5484d" label="Vencidos con stock" value={data.expired_products} testId="dashboard-expired" />
+            <Fact icon={ShieldAlert} color="#e5484d" label="Alertas críticas" value={data.critical_alerts} testId="dashboard-critical" />
+            <Fact icon={AlertTriangle} color="#f59e0b" label="Advertencias" value={data.warning_alerts} testId="dashboard-warnings" />
+            <Fact icon={ImageIcon} color="#3A86FF" label="Productos con imagen" value={`${data.products_with_image} de ${data.total_products}`} testId="dashboard-images" />
+            <Fact icon={Tag} color="#8AC926" label="Productos sin vencimiento" value={withoutExpiry} testId="dashboard-no-expiry" />
+            <Fact icon={Layers} color="#2CC4B4" label="Unidades por producto" value={formatThousands(unitsPerProduct)} testId="dashboard-units-per-product" />
+          </ul>
         </Section>
 
-        <Section testId="dashboard-upcoming" title="Para atender primero" hint="Lo que vence y lo que se acaba">
-          {(expiring.data ?? []).length + (restock.data ?? []).length === 0 ? (
+        <Section
+          fill
+          testId="dashboard-upcoming"
+          title="Para atender primero"
+          hint="Lo más urgente: lo que vence y lo que se acaba"
+          action={
+            upcoming.length > UPCOMING ? (
+              <Button tone="ghost" className="!px-3 !py-1.5" data-testid="dashboard-upcoming-more" onClick={() => navigate("/alertas")}>
+                Ver más
+              </Button>
+            ) : undefined
+          }
+        >
+          {upcoming.length === 0 ? (
             <EmptyState>Nada urgente por ahora.</EmptyState>
           ) : (
-            <ul className="space-y-2">
-              {[...(expiring.data ?? []).slice(0, UPCOMING), ...(restock.data ?? []).slice(0, UPCOMING)].map((item) => (
+            <ul className="flex flex-1 flex-col justify-between gap-2">
+              {upcoming.slice(0, UPCOMING).map((item) => (
                 <AlertRow key={item.key} alert={item} onClick={() => setAlert(item)} compact />
               ))}
             </ul>
@@ -438,14 +511,29 @@ export default function MyDashboard() {
       </div>
 
       {showCategories && (
-        <CategoriesModal
-          categories={sortedCategories}
+        <RankingModal
+          title="Stock por categoría"
+          testId="categories-modal"
+          items={sortedCategories}
+          unit="u."
+          empty="Todavía no hay productos cargados."
           colors={PALETTE}
           onSelect={(label) => goToInventory({ categoria: label })}
           onClose={() => setShowCategories(false)}
         />
       )}
-      {showTrends && <TrendsModal onClose={() => setShowTrends(false)} />}
+      {showLocations && (
+        <RankingModal
+          title="Dónde tenés tus productos"
+          testId="locations-modal"
+          items={sortedLocations}
+          unit="productos"
+          empty="Todavía no hay productos cargados."
+          colors={PALETTE}
+          onSelect={(label) => goToInventory({ ubicacion: label })}
+          onClose={() => setShowLocations(false)}
+        />
+      )}
       {showChanges && <ChangesModal onClose={() => setShowChanges(false)} />}
       {detail && <ProductDetailModal product={detail} onClose={() => setDetail(null)} />}
       {alert && <AlertDetailModal alert={alert} onClose={() => setAlert(null)} />}

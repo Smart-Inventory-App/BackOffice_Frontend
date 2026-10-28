@@ -54,10 +54,10 @@ describe("Perfil", () => {
     expect(screen.getByTestId("profile-view-first-name")).toHaveTextContent("Ana");
     expect(screen.getByTestId("profile-view-last-name")).toHaveTextContent("Gómez");
     expect(screen.getByTestId("profile-view-username")).toHaveTextContent("anag");
-    expect(screen.getByTestId("profile-view-type")).toHaveTextContent("Individuo");
+    expect(screen.getByTestId("profile-view-type")).toHaveTextContent("Consumidor final");
     expect(screen.getByTestId("profile-view-stock-days")).toHaveTextContent("7 días");
     expect(screen.getByTestId("profile-view-expiry-days")).toHaveTextContent("10 días");
-    expect(screen.getByTestId("profile-view-check-hour")).toHaveTextContent("5 h");
+    expect(screen.getByTestId("profile-view-check-hour")).toHaveTextContent("05:00 hs · Hora de Argentina (UTC-3)");
     expect(screen.getByTestId("profile-avatar")).toHaveTextContent("AG");
     expect(screen.getByText("ana@test.com")).toBeInTheDocument();
     expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
@@ -105,11 +105,11 @@ describe("Perfil", () => {
     expect(field("Nombre").value).toBe("Ana");
     expect(field("Apellido").value).toBe("Gómez");
     expect(field("Usuario").value).toBe("anag");
-    expect(field("Stock mínimo (días de cobertura)").value).toBe("7");
-    expect(field("Aviso de vencimiento (días)").value).toBe("10");
-    expect(field("Hora del chequeo diario").value).toBe("5");
+    expect(field("Alertar si el stock se agota en menos de").value).toBe("7");
+    expect(field("Alertar si el producto vence en menos de").value).toBe("10");
+    expect(field("Hora del chequeo diario de alertas").value).toBe("5");
     expect(screen.getByTestId("profile-avatar")).toHaveTextContent("AG");
-    expect(screen.getByTestId("profile-type-badge")).toHaveTextContent("Individuo");
+    expect(screen.getByTestId("profile-type-badge")).toHaveTextContent("Consumidor final");
     expect(screen.getByText("ana@test.com")).toBeInTheDocument();
     expect(screen.getByText(/Hora de Argentina \(UTC-3\)/)).toBeInTheDocument();
   });
@@ -139,8 +139,8 @@ describe("Perfil", () => {
     await user.clear(field("Nombre"));
     await user.type(field("Nombre"), "Anabel");
     await user.click(screen.getByTestId("profile-type-comercio"));
-    await user.clear(field("Stock mínimo (días de cobertura)"));
-    await user.type(field("Stock mínimo (días de cobertura)"), "9");
+    await user.clear(field("Alertar si el stock se agota en menos de"));
+    await user.type(field("Alertar si el stock se agota en menos de"), "9");
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     await waitFor(() =>
@@ -186,27 +186,27 @@ describe("Perfil", () => {
     await user.click(screen.getByTestId("profile-expiry-days-down"));
     await user.click(screen.getByTestId("profile-check-hour-down"));
 
-    expect(field("Stock mínimo (días de cobertura)").value).toBe("3");
-    expect(field("Aviso de vencimiento (días)").value).toBe("89");
-    expect(field("Hora del chequeo diario").value).toBe("22");
+    expect(field("Alertar si el stock se agota en menos de").value).toBe("3");
+    expect(field("Alertar si el producto vence en menos de").value).toBe("89");
+    expect(field("Hora del chequeo diario de alertas").value).toBe("22");
   });
 
   it("solo deja escribir números y avisa el rango; fuera de rango no se puede guardar", async () => {
     const user = userEvent.setup();
     await show();
 
-    await user.clear(field("Stock mínimo (días de cobertura)"));
-    await user.type(field("Stock mínimo (días de cobertura)"), "a1b");
-    expect(field("Stock mínimo (días de cobertura)").value).toBe("1");
+    await user.clear(field("Alertar si el stock se agota en menos de"));
+    await user.type(field("Alertar si el stock se agota en menos de"), "a1b");
+    expect(field("Alertar si el stock se agota en menos de").value).toBe("1");
     expect(screen.getByTestId("profile-stock-days-range")).toHaveTextContent("Entre 2 y 90 días.");
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
 
-    await user.type(field("Stock mínimo (días de cobertura)"), "5");
+    await user.type(field("Alertar si el stock se agota en menos de"), "5");
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
-    await user.clear(field("Hora del chequeo diario"));
+    await user.clear(field("Hora del chequeo diario de alertas"));
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
     await user.click(screen.getByTestId("profile-check-hour-up"));
-    expect(field("Hora del chequeo diario").value).toBe("1");
+    expect(field("Hora del chequeo diario de alertas").value).toBe("1");
   });
 
   it("avisa debajo del usuario si ya lo tiene otra cuenta y no deja guardar", async () => {
@@ -265,5 +265,40 @@ describe("Perfil", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     expect(await screen.findByText("No se pudo guardar.")).toBeInTheDocument();
+  });
+});
+
+describe("Perfil · vista", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("muestra las reglas una arriba de otra con los textos de la app", async () => {
+    await show(profile({ stock_minimo: 7, dias_alerta_vencimiento: 10, alert_check_hour: 5 }), false, false);
+
+    const labels = ["Alertar si el stock se agota en menos de", "Alertar si el producto vence en menos de", "Hora del chequeo diario de alertas"];
+    const rows = labels.map((text) => screen.getByText(text).parentElement!);
+    rows.forEach((row) => expect(row.parentElement!.className).toContain("space-y-3"));
+    expect(rows[0].parentElement).toBe(rows[1].parentElement);
+    expect(rows[1].parentElement).toBe(rows[2].parentElement);
+    expect(screen.getByTestId("profile-view-stock-days")).toHaveTextContent("7 días");
+    expect(screen.getByTestId("profile-view-expiry-days")).toHaveTextContent("10 días");
+    expect(screen.getByTestId("profile-view-check-hour")).toHaveTextContent("05:00 hs · Hora de Argentina (UTC-3)");
+    expect(screen.getByText("Ajusta las predicciones de consumo a tu escala de uso")).toBeInTheDocument();
+  });
+
+  it("el tipo de cuenta va destacado con un celeste verdoso tenue, y un comercio dice «Comercio»", async () => {
+    await show(profile({ user_type: "comercio" }), false, false);
+
+    const type = screen.getByTestId("profile-view-type");
+    expect(type).toHaveTextContent("Comercio");
+    expect(type.style.backgroundColor).toBe("rgb(212, 241, 238)");
+    expect(type.style.color).toBe("rgb(31, 122, 112)");
+  });
+
+  it("al editar, el tipo de cuenta se llama «Consumidor final» como en la app", async () => {
+    await show();
+
+    expect(screen.getByTestId("profile-type-individuo")).toHaveTextContent("Consumidor final");
   });
 });

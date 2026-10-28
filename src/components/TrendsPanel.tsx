@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Equal } from "lucide-react";
 import { api } from "@/lib/api";
-import type { MyMetrics } from "@/lib/types";
+import type { MyMetrics, MyProduct, Paginated } from "@/lib/types";
 import { formatThousands } from "@/lib/format";
 import {
   TREND_PERIODS,
@@ -142,10 +142,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
 
       <div className="grid grid-cols-2 gap-3">
         {kind === "consumo" ? (
-          <>
-            <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label="Consumido" tone="text-primary" />
-            <SummaryCard testId="trends-restocked" value={formatThousands(data.total_entradas)} label="Repuesto" tone="text-primaryDark" />
-          </>
+          <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label="Consumido" tone="text-primary" wide />
         ) : (
           <SummaryCard testId="incomes-total" value={formatThousands(total)} label="Ingresado" tone="text-primary" wide />
         )}
@@ -246,10 +243,9 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
             <ChevronRight size={22} />
           </button>
         </div>
-        <p data-testid={t("day-hint")} className="mt-1 text-center text-xs text-muted">
-          Hacé clic en una barra o usá las flechas para ver cada día.
-        </p>
       </Card>
+
+      {kind === "ingresos" && <TopStock endpoint={endpoint} />}
 
       {kind === "consumo" && (
       <Card className="!p-4">
@@ -284,6 +280,45 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
       </Card>
       )}
     </div>
+  );
+}
+
+/** Los 5 productos con más unidades en stock hoy (los del usuario o, para un administrador, los de toda la plataforma). */
+function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) {
+  const url = endpoint === "/admin/metrics" ? "/admin/products/" : "/me/products";
+  const top = useQuery({
+    queryKey: ["top-stock", url],
+    queryFn: async () =>
+      (await api.get<Paginated<MyProduct>>(url, { params: { sort_by: "stock", sort_dir: "desc", limit: 5 } })).data.items,
+  });
+  const items = (top.data ?? []).filter((product) => product.stock > 0).sort((a, b) => b.stock - a.stock);
+  const highest = items[0]?.stock ?? 1;
+  return (
+    <Card className="!p-4" testId="incomes-top-stock">
+      <h3 className="mb-3 text-sm font-semibold text-ink">Productos con más stock</h3>
+      {top.isLoading ? (
+        <Spinner />
+      ) : items.length === 0 ? (
+        <EmptyState>Todavía no hay productos con stock.</EmptyState>
+      ) : (
+        <ol className="space-y-3">
+          {items.map((product, i) => (
+            <li key={product.id} data-testid={`incomes-top-stock-${i}`}>
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="w-5 font-bold text-primaryDark">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate font-medium text-ink" title={product.nombre}>
+                  {product.nombre}
+                </span>
+                <span className="shrink-0 text-muted">{unitsText(product.stock)}</span>
+              </div>
+              <div className="ml-7 mt-1 h-2 rounded-full bg-canvas">
+                <div className="h-2 rounded-full bg-primaryDark" style={{ width: `${Math.round((product.stock / highest) * 100)}%` }} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 }
 

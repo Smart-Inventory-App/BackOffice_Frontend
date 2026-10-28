@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History, Layers } from "lucide-react";
+import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History } from "lucide-react";
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
 import type { AlertList, AlertOut, MyProduct, Paginated } from "@/lib/types";
-import { Badge, Button, Card, PageHeader, Spinner } from "@/components/ui";
+import { Badge, Card, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
 import ProductImage from "@/components/ProductImage";
 import ImageUpload from "@/components/ImageUpload";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import StockTotalModal, { type StockTotalTarget } from "@/components/StockTotalModal";
-import { formatDate, truncate } from "@/lib/format";
+import { formatDate, formatThousands, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
@@ -42,9 +42,10 @@ const EDIT_EMPTY = {
 export default function MyProducts() {
   const qc = useQueryClient();
   // Desde los gráficos del dashboard se llega con un filtro ya elegido; entrando por el menú se ve todo
-  const initial = (useLocation().state ?? {}) as { categoria?: string; vencido?: "si" | "no"; bajoStock?: boolean; porVencer?: boolean };
+  const initial = (useLocation().state ?? {}) as { categoria?: string; ubicacion?: string; vencido?: "si" | "no"; bajoStock?: boolean; porVencer?: boolean };
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState(initial.categoria ?? "");
+  const [ubicacion, setUbicacion] = useState(initial.ubicacion ?? "");
   const [vencido, setVencido] = useState<"" | "si" | "no">(initial.vencido ?? "");
   const [bajoStock, setBajoStock] = useState(initial.bajoStock ?? false);
   const [porVencer, setPorVencer] = useState(initial.porVencer ?? false);
@@ -64,7 +65,7 @@ export default function MyProducts() {
   const [bulkMarca, setBulkMarca] = useState("");
   const [bulkError, setBulkError] = useState<string | null>(null);
 
-  useEffect(() => setPage(0), [search, categoria, vencido, bajoStock, porVencer]);
+  useEffect(() => setPage(0), [search, categoria, ubicacion, vencido, bajoStock, porVencer]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["my-products-filter-options"],
@@ -76,6 +77,7 @@ export default function MyProducts() {
     },
   });
   const categoriaOptions = filterOptions?.categorias ?? [];
+  const ubicacionOptions = filterOptions?.ubicaciones ?? [];
   const [editCategoriaOptions, setEditCategoriaOptions] = useState<string[]>([]);
   const [editUbicacionOptions, setEditUbicacionOptions] = useState<string[]>([]);
 
@@ -90,6 +92,7 @@ export default function MyProducts() {
     const params: Record<string, string | number | boolean> = {};
     if (search) params.search = search;
     if (categoria) params.categoria = categoria;
+    if (ubicacion) params.ubicacion = ubicacion;
     if (vencido) params.vencido = vencido === "si";
     if (bajoStock) params.bajo_stock = true;
     if (porVencer) params.por_vencer = true;
@@ -101,10 +104,20 @@ export default function MyProducts() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-products", search, categoria, vencido, bajoStock, porVencer, sortBy, sortDir, page],
+    queryKey: ["my-products", search, categoria, ubicacion, vencido, bajoStock, porVencer, sortBy, sortDir, page],
     queryFn: async () => {
       const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<MyProduct>>("/me/products", { params })).data;
+    },
+    placeholderData: keepPreviousData,
+  });
+
+  // Stock total y cantidad de productos de la lista, con la búsqueda y los filtros elegidos (como en la app)
+  const summary = useQuery({
+    queryKey: ["my-products-stock-total", search, categoria, ubicacion, vencido, bajoStock, porVencer],
+    queryFn: async () => {
+      const { sort_by: _by, sort_dir: _dir, ...filters } = buildFilterParams();
+      return (await api.get<{ stock_total: number; products: number }>("/me/products/stock-total", { params: filters })).data;
     },
     placeholderData: keepPreviousData,
   });
@@ -260,29 +273,22 @@ export default function MyProducts() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="Inventario" subtitle="Tus productos cargados" />
-        <div className="flex gap-2">
-          <Button tone="outline" data-testid="open-stock-total" onClick={() => setStockTotal({ open: true, initial: null })}>
-            <Layers size={14} /> Stock total
-          </Button>
-          <button
-            type="button"
-            onClick={() => exportProducts("csv")}
-            disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
-          >
-            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
-          </button>
-          <button
-            type="button"
-            onClick={() => exportProducts("xlsx")}
-            disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
-          >
-            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
-          </button>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Inventario</h1>
+          <p className="mt-1 text-sm text-muted">Tus productos cargados</p>
         </div>
+        {summary.data && (
+          <div data-testid="inventory-total-summary" className="rounded-2xl border border-line/70 bg-white px-5 py-3 text-right shadow-card">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Stock total</p>
+            <p data-testid="inventory-total-value" className="text-xl font-bold text-primaryDark">
+              {formatThousands(summary.data.stock_total)} {summary.data.stock_total === 1 ? "unidad" : "unidades"}
+            </p>
+            <p data-testid="inventory-total-products" className="text-xs text-muted">
+              entre {formatThousands(summary.data.products)} {summary.data.products === 1 ? "producto" : "productos"} en el inventario
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -293,6 +299,7 @@ export default function MyProducts() {
           className="min-w-[200px] flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
         />
         <select
+          aria-label="Categoría"
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
           className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
@@ -301,6 +308,19 @@ export default function MyProducts() {
           {(categoriaOptions ?? []).map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Ubicación"
+          value={ubicacion}
+          onChange={(e) => setUbicacion(e.target.value)}
+          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Todas las ubicaciones</option>
+          {ubicacionOptions.map((u) => (
+            <option key={u} value={u}>
+              {u}
             </option>
           ))}
         </select>
@@ -321,6 +341,24 @@ export default function MyProducts() {
           <input type="checkbox" checked={porVencer} onChange={(e) => setPorVencer(e.target.checked)} />
           Por vencer
         </label>
+        <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => exportProducts("csv")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => exportProducts("xlsx")}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+          >
+            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
+          </button>
+        </div>
       </div>
 
       {selected.size > 0 && (

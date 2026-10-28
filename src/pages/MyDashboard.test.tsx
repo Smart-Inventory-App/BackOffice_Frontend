@@ -182,6 +182,7 @@ function renderDashboard() {
           <Route path="/" element={<MyDashboard />} />
           <Route path="/productos" element={<Probe name="PRODUCTOS" />} />
           <Route path="/alertas" element={<Probe name="ALERTAS" />} />
+          <Route path="/metricas" element={<Probe name="METRICAS" />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -354,17 +355,14 @@ describe("MyDashboard · gráficos e información adicional", () => {
     await waitFor(() => expect(screen.getByTestId("dashboard-peak")).toHaveTextContent("Sin consumo"));
   });
 
-  it("la ventana de tendencias se abre desde el gráfico de consumo", async () => {
+  it("el botón «Tendencias» lleva a la página de tendencias", async () => {
     const user = userEvent.setup();
     mockApi();
     renderDashboard();
 
     await user.click(await screen.findByTestId("home-trends"));
 
-    const dialog = await screen.findByRole("dialog", { name: "Tendencias de Consumo" });
-    expect(within(dialog).getByTestId("trends-period-14")).toBeInTheDocument();
-    await user.click(within(dialog).getByLabelText("Volver"));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByText(/METRICAS/)).toBeInTheDocument();
   });
 
   it("ya no hay gráfico de alertas: las alertas se ven desde las tarjetas", async () => {
@@ -561,5 +559,139 @@ describe("MyDashboard · últimos cambios y productos recientes", () => {
     await user.click(await screen.findByRole("button", { name: "Ver inventario" }));
 
     expect(await screen.findByText(/PRODUCTOS/)).toBeInTheDocument();
+  });
+});
+
+describe("MyDashboard · ubicaciones, urgencias y datos adicionales", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const places = [
+    { label: "Heladera", count: 9 },
+    { label: "Alacena", count: 7 },
+    { label: "Freezer", count: 6 },
+    { label: "Estante", count: 5 },
+    { label: "Garage", count: 4 },
+    { label: "Balcón", count: 3 },
+    { label: "Sótano", count: 1 },
+  ];
+
+  it("«Dónde tenés tus productos» muestra las 5 ubicaciones con más productos, sin gráfico", async () => {
+    mockApi({ stats: stats({ products_by_location: [...places].reverse() }) });
+    renderDashboard();
+
+    const section = await screen.findByTestId("dashboard-locations");
+    expect(within(section).getAllByTestId(/^dashboard-location-\d$/)).toHaveLength(5);
+    expect(screen.getByTestId("dashboard-location-0")).toHaveTextContent("Heladera");
+    expect(screen.getByTestId("dashboard-location-0")).toHaveTextContent("9 productos");
+    expect(screen.getByTestId("dashboard-location-4")).toHaveTextContent("Garage");
+    expect(screen.queryByText("Sótano")).not.toBeInTheDocument();
+    expect(section.querySelector(".recharts-responsive-container")).toBeNull();
+  });
+
+  it("«Ver más» de ubicaciones abre el listado completo de mayor a menor y tocar una abre su inventario", async () => {
+    const user = userEvent.setup();
+    mockApi({ stats: stats({ products_by_location: places }) });
+    renderDashboard();
+
+    await user.click(await screen.findByTestId("dashboard-locations-more"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Dónde tenés tus productos" });
+    const items = within(dialog).getAllByTestId(/^locations-modal-item-/);
+    expect(items.map((item) => item.textContent)).toEqual(places.map((p) => `${p.label}${p.count} productos`));
+    await user.click(within(dialog).getByTestId("locations-modal-item-6"));
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"ubicacion":"Sótano"}');
+  });
+
+  it("una ubicación del top abre el inventario filtrado, y con 5 o menos no hay «Ver más»", async () => {
+    const user = userEvent.setup();
+    mockApi();
+    renderDashboard();
+
+    expect(await screen.findByTestId("dashboard-location-0")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-locations-more")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("dashboard-location-1"));
+    expect(await screen.findByText(/PRODUCTOS/)).toHaveTextContent('{"ubicacion":"Sin ubicación"}');
+  });
+
+  it("«Para atender primero» muestra solo las 3 alertas más pertinentes: primero las críticas y las más próximas", async () => {
+    mockApi({
+      expiring: [
+        alert({ key: "expiry-a", product_name: "Pan", level: "warning", days_to_expiry: 1 }),
+        alert({ key: "expiry-b", product_name: "Leche", level: "critical", days_to_expiry: 4 }),
+        alert({ key: "expiry-c", product_name: "Queso", level: "critical", days_to_expiry: 2 }),
+      ],
+      restock: [alert({ key: "stock_low_coverage-d", type: "stock_low_coverage", product_name: "Arroz", level: "critical", days_until_stockout: 3, days_to_expiry: null })],
+    });
+    renderDashboard();
+
+    const upcoming = await screen.findByTestId("dashboard-upcoming");
+    await waitFor(() => expect(within(upcoming).getAllByTestId(/^alert-item-/)).toHaveLength(3));
+    expect(within(upcoming).getAllByTestId(/^alert-item-/).map((item) => item.getAttribute("data-testid"))).toEqual([
+      "alert-item-expiry-c",
+      "alert-item-stock_low_coverage-d",
+      "alert-item-expiry-b",
+    ]);
+    expect(within(upcoming).queryByText("Pan")).not.toBeInTheDocument();
+  });
+
+  it("«Ver más» de las alertas lleva a la página de alertas; con 3 o menos no aparece", async () => {
+    const user = userEvent.setup();
+    mockApi({ expiring: [alert({ key: "e1" }), alert({ key: "e2" }), alert({ key: "e3" }), alert({ key: "e4" })] });
+    const { unmount } = renderDashboard();
+
+    await user.click(await screen.findByTestId("dashboard-upcoming-more"));
+    expect(await screen.findByText(/ALERTAS/)).toBeInTheDocument();
+    unmount();
+
+    mockApi({ expiring: [alert({ key: "e1" })] });
+    renderDashboard();
+    await screen.findByTestId("alert-item-e1");
+    expect(screen.queryByTestId("dashboard-upcoming-more")).not.toBeInTheDocument();
+  });
+
+  it("«Un vistazo más» dice «Datos adicionales del sistema» y suma entradas útiles con su ícono", async () => {
+    mockApi();
+    renderDashboard();
+
+    const section = await screen.findByTestId("dashboard-extra");
+    expect(section).toHaveTextContent("Datos adicionales del sistema");
+    expect(section).not.toHaveTextContent("Datos que no ves en la app del celular");
+    expect(screen.getByTestId("dashboard-expired")).toHaveTextContent("3");
+    expect(screen.getByTestId("dashboard-critical")).toHaveTextContent("3");
+    expect(screen.getByTestId("dashboard-warnings")).toHaveTextContent("1");
+    expect(screen.getByTestId("dashboard-images")).toHaveTextContent("5 de 12");
+    expect(screen.getByTestId("dashboard-no-expiry")).toHaveTextContent("2");
+    expect(screen.getByTestId("dashboard-units-per-product")).toHaveTextContent("102,8");
+    expect(section.querySelectorAll("svg").length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("sin productos, las unidades por producto son 0", async () => {
+    mockApi({ stats: stats({ total_products: 0, total_units: 0 }) });
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByTestId("dashboard-units-per-product")).toHaveTextContent("0"));
+  });
+
+  it("las tres columnas ocupan siempre el mismo alto de fila", async () => {
+    mockApi();
+    renderDashboard();
+
+    for (const id of ["dashboard-locations", "dashboard-extra", "dashboard-upcoming"]) {
+      const card = await screen.findByTestId(id);
+      expect(card.className).toContain("h-full");
+      expect(card.className).toContain("flex-col");
+    }
+    expect(screen.getByTestId("dashboard-locations").parentElement!.className).toContain("items-stretch");
+  });
+
+  it("el gráfico de ingresos es de área y azul, como el de consumo, y sin texto explicativo", async () => {
+    mockApi();
+    renderDashboard();
+
+    const section = await screen.findByTestId("dashboard-incomes");
+    expect(section).not.toHaveTextContent("Todo el stock que se cargó");
+    expect(await screen.findByTestId("dashboard-incomes-chart")).toBeInTheDocument();
   });
 });

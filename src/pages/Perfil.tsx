@@ -17,7 +17,7 @@ export const HOUR_MAX = 23;
 type UserType = MyProfile["user_type"];
 
 const USER_TYPES: { key: UserType; label: string }[] = [
-  { key: "individuo", label: "Individuo" },
+  { key: "individuo", label: "Consumidor final" },
   { key: "comercio", label: "Comercio" },
 ];
 
@@ -29,6 +29,9 @@ const initials = (profile: MyProfile) => {
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
 };
+
+const typeLabel = (type: UserType) => USER_TYPES.find((t) => t.key === type)?.label ?? "";
+const pad = (hour: number) => `${String(hour).padStart(2, "0")}:00`;
 
 /** Un dato del perfil en la vista de solo lectura: vacío se muestra como un guion. */
 function Info({ label, value, testId }: { label: string; value: string; testId: string }) {
@@ -176,7 +179,7 @@ export default function Perfil() {
           <p className="truncate text-sm text-muted">{profile.email}</p>
           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primaryDark px-3 py-0.5 text-xs font-semibold text-white" data-testid="profile-type-badge">
             {profile.user_type === "comercio" ? <Store size={12} /> : <User size={12} />}
-            {profile.user_type === "comercio" ? "Comercio" : "Individuo"}
+            {typeLabel(profile.user_type)}
           </span>
         </div>
         {!editing && (
@@ -207,15 +210,27 @@ export default function Perfil() {
               <Info label="Nombre" value={profile.first_name ?? ""} testId="profile-view-first-name" />
               <Info label="Apellido" value={profile.last_name ?? ""} testId="profile-view-last-name" />
               <Info label="Usuario" value={profile.username ?? ""} testId="profile-view-username" />
-              <Info label="Tipo de cuenta" value={profile.user_type === "comercio" ? "Comercio" : "Individuo"} testId="profile-view-type" />
             </dl>
           </Card>
           <Card className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reglas de alerta</p>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Info label="Stock mínimo" value={`${profile.stock_minimo} días`} testId="profile-view-stock-days" />
-              <Info label="Aviso de vencimiento" value={`${profile.dias_alerta_vencimiento} días`} testId="profile-view-expiry-days" />
-              <Info label="Chequeo diario" value={`${profile.alert_check_hour} h (Argentina)`} testId="profile-view-check-hour" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Configuración</p>
+            <dl className="space-y-3">
+              <div className="rounded-xl bg-canvas px-3 py-2">
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">Tipo de cuenta</dt>
+                <dd className="mt-1">
+                  <span
+                    data-testid="profile-view-type"
+                    className="inline-block rounded-full bg-teal-100 px-3 py-1 text-sm font-semibold text-teal-800"
+                    style={{ backgroundColor: "#d4f1ee", color: "#1f7a70" }}
+                  >
+                    {typeLabel(profile.user_type)}
+                  </span>
+                </dd>
+                <dd className="mt-1 text-xs text-muted">Ajusta las predicciones de consumo a tu escala de uso</dd>
+              </div>
+              <Info label="Alertar si el stock se agota en menos de" value={`${profile.stock_minimo} días`} testId="profile-view-stock-days" />
+              <Info label="Alertar si el producto vence en menos de" value={`${profile.dias_alerta_vencimiento} días`} testId="profile-view-expiry-days" />
+              <Info label="Hora del chequeo diario de alertas" value={`${pad(profile.alert_check_hour)} hs · Hora de Argentina (UTC-3)`} testId="profile-view-check-hour" />
             </dl>
             <p className="text-xs text-muted">
               Estas reglas valen para todos tus productos; si un producto tiene la suya, esa es la que manda.
@@ -261,7 +276,7 @@ export default function Perfil() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <NumberStepper
               testId="profile-stock-days"
-              label="Stock mínimo (días de cobertura)"
+              label="Alertar si el stock se agota en menos de"
               value={stockMinimo}
               onChange={setStockMinimo}
               min={DAYS_MIN}
@@ -271,7 +286,7 @@ export default function Perfil() {
             />
             <NumberStepper
               testId="profile-expiry-days"
-              label="Aviso de vencimiento (días)"
+              label="Alertar si el producto vence en menos de"
               value={diasAlerta}
               onChange={setDiasAlerta}
               min={DAYS_MIN}
@@ -282,7 +297,7 @@ export default function Perfil() {
           </div>
           <NumberStepper
             testId="profile-check-hour"
-            label="Hora del chequeo diario"
+            label="Hora del chequeo diario de alertas"
             value={checkHour}
             onChange={setCheckHour}
             min={0}

@@ -40,6 +40,9 @@ function mockGets(items: MyProduct[], alerts: unknown[] = []) {
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === "/me/products/filters/options") return { data: OPCIONES };
     if (url === "/me/products") return { data: paginated(items) };
+    if (url === "/me/products/stock-total") {
+      return { data: { stock_total: items.reduce((sum, p) => sum + p.stock, 0), products: items.length } };
+    }
     if (url === "/me/alerts/") return { data: { items: alerts, summary: { critical: 0, warning: 0, total: 0, expiring: 0, low_stock: 0 } } };
     throw new Error(`GET no mockeado: ${url}`);
   });
@@ -132,15 +135,31 @@ describe("MyProducts", () => {
     expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("12 unidades");
   });
 
-  it("el botón «Stock total» del encabezado abre la búsqueda por nombre", async () => {
-    const user = userEvent.setup();
-    mockGets([product()]);
+  it("no hay botón «Stock total»: arriba a la derecha se ve el stock total y la cantidad de productos", async () => {
+    mockGets([product({ id: 1, stock: 5 }), product({ id: 2, nombre: "Leche", stock: 1200 })]);
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
 
-    await user.click(screen.getByTestId("open-stock-total"));
+    expect(screen.queryByTestId("open-stock-total")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Stock total/ })).not.toBeInTheDocument();
+    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1.205 unidades");
+    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("entre 2 productos en el inventario");
+  });
 
-    expect(await screen.findByLabelText(/producto/i, { selector: "#stock-total-input" })).toBeInTheDocument();
+  it("el stock total se pide con la búsqueda y los filtros elegidos, y dice «unidad» y «producto» en singular", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ id: 1, stock: 1 })]);
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.selectOptions(await screen.findByRole("option", { name: "Alacena" }).then(() => screen.getByLabelText("Ubicación")), "Alacena");
+
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/me/products/stock-total", { params: expect.objectContaining({ ubicacion: "Alacena" }) }),
+    );
+    expect(api.get).toHaveBeenCalledWith("/me/products", { params: expect.objectContaining({ ubicacion: "Alacena" }) });
+    expect(await screen.findByTestId("inventory-total-value")).toHaveTextContent("1 unidad");
+    expect(screen.getByTestId("inventory-total-products")).toHaveTextContent("entre 1 producto en el inventario");
   });
 
   it("el historial se abre desde la información del producto", async () => {

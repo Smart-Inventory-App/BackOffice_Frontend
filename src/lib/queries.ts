@@ -8,6 +8,8 @@ import type { QueryClient } from "@tanstack/react-query";
 export const INVENTORY_QUERY_KEYS = [
   "my-stats",
   "my-products",
+  "my-products-stock-total",
+  "top-stock",
   "my-recent-products",
   "my-changes",
   "my-alerts",

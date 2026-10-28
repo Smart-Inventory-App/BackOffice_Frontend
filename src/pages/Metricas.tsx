@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { PageHeader } from "@/components/ui";
 import TrendsPanel, { PeriodPicker } from "@/components/TrendsPanel";
 import type { TrendPeriod } from "@/lib/trends";
 
@@ -16,20 +15,27 @@ export default function Metricas() {
   const audience = effectiveIsAdmin ? "platform" : "user";
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader
-        title="Tendencias"
-        subtitle={effectiveIsAdmin ? "Cuánto se consume y cuánto ingresa en toda la plataforma" : "Mirá cuánto consumís y cuánto ingresás"}
-      />
-      <PeriodPicker period={period} onChange={setPeriod} />
+      {/* Título y descripción a la izquierda y el selector de período a la derecha, alineados verticalmente */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Tendencias</h1>
+          <p className="mt-1 text-sm text-muted">
+            {effectiveIsAdmin ? "Cuánto se consume y cuánto ingresa en toda la plataforma" : "Mirá cuánto consumís y cuánto ingresás"}
+          </p>
+        </div>
+        <div data-testid="trends-period-picker" className="[&>div]:mb-0">
+          <PeriodPicker period={period} onChange={setPeriod} />
+        </div>
+      </div>
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <section aria-labelledby="trends-consumption-title" data-testid="trends-section-consumo">
-          <h2 id="trends-consumption-title" className="mb-3 text-lg font-bold text-ink">
+          <h2 id="trends-consumption-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de consumo
           </h2>
           <TrendsPanel endpoint={endpoint} audience={audience} kind="consumo" period={period} onPeriodChange={setPeriod} />
         </section>
         <section aria-labelledby="trends-incomes-title" data-testid="trends-section-ingresos">
-          <h2 id="trends-incomes-title" className="mb-3 text-lg font-bold text-ink">
+          <h2 id="trends-incomes-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de ingresos
           </h2>
           <TrendsPanel endpoint={endpoint} audience={audience} kind="ingresos" period={period} onPeriodChange={setPeriod} />

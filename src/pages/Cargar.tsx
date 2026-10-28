@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, UploadCloud } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, UploadCloud } from "lucide-react";
 import { api } from "@/lib/api";
-import { LARGOS_CODIGO, digitosDelCodigo, limpiarCodigo } from "@/lib/barcode";
+import { LARGOS_CODIGO, digitosDelCodigo } from "@/lib/barcode";
+import { displayToIso, formatDateDigits, isoToDisplay } from "@/lib/dateInput";
 import { Card, PageHeader, Segmented } from "@/components/ui";
 import ImageUpload from "@/components/ImageUpload";
 import { Picklist, addIfMissing } from "@/components/Picklist";
@@ -10,6 +11,9 @@ import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Pr
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
 import { invalidateInventory } from "@/lib/queries";
+
+// Los códigos de barras tienen hasta 14 dígitos (GTIN-14)
+const BARCODE_MAX_DIGITS = 14;
 
 const EMPTY = {
   nombre: "",
@@ -25,9 +29,40 @@ const EMPTY = {
   dias_alerta_vencimiento: "",
 };
 
+// Los mismos límites y textos que el formulario de la app (ProductFormFields y la pantalla de carga)
+export const NOMBRE_MAX = 20;
+export const OPTION_MAX = 20;
+export const DESCRIPCION_MAX = 400;
+export const STOCK_MAX_DIGITS = 6;
+export const STOCK_MINIMO_MAX_DIGITS = 7;
+export const DIAS_ALERTA_MAX_DIGITS = 3;
+export const SALIDA_NOTA_MAX = 50;
+
+const INPUT = "w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary";
+const onlyDigits = (value: string, max: number) => value.replace(/\D/g, "").slice(0, max);
+
+/** El rótulo de un campo y, a la derecha, cuántos caracteres lleva de los que admite (como en la app). */
+function FieldLabel({ children, required, counter, counterId }: { children: string; required?: boolean; counter?: string; counterId?: string }) {
+  return (
+    <div className="mb-1 flex items-end justify-between">
+      <label className="block text-sm font-medium text-ink">
+        {children}
+        {required ? " *" : ""}
+      </label>
+      {counter && (
+        <span data-testid={counterId} className="text-xs text-muted">
+          {counter}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPrefillUsed?: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(EMPTY);
+  const [vencText, setVencText] = useState("");
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
@@ -83,7 +118,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
         .get<ProductSuggestion | null>(`/me/products/by-barcode/${digitos}`)
         .then(({ data }) => setDuplicado(data))
         // Un 400 acá es el mismo rechazo que daría el alta —un código que no tiene el
-        // largo de un código de barras—: se muestra antes de apretar Cargar, no después.
+        // largo de un código de barras—: se muestra antes de apretar Guardar, no después.
         .catch((err: any) => setCodigoError(apiErrorMessage(err, "") || null));
     }, 400);
     return () => clearTimeout(handle);
@@ -91,6 +126,19 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
 
   const set = (field: keyof typeof EMPTY) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  // La fecha se escribe con solo los números (DD/MM/AAAA); el formulario guarda AAAA-MM-DD cuando está completa y es real
+  const onVencimiento = (raw: string) => {
+    const text = formatDateDigits(raw);
+    setVencText(text);
+    setForm((f) => ({ ...f, vencimiento: text === "" ? "" : (displayToIso(text) ?? text) }));
+  };
+  const vencInvalid = vencText.length === 10 && displayToIso(vencText) === null;
+
+  // Si el valor llega de afuera (una sugerencia, el reconocimiento de imagen), se refleja en el campo
+  useEffect(() => {
+    setVencText((current) => (displayToIso(current) === form.vencimiento || current === form.vencimiento ? current : isoToDisplay(form.vencimiento)));
+  }, [form.vencimiento]);
 
   const selectSuggestion = (s: ProductSuggestion) => {
     setForm((f) => ({
@@ -115,7 +163,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
     mutationFn: async () =>
       (
         await api.post("/me/products", {
-          nombre: form.nombre,
+          nombre: form.nombre.trim(),
           marca: form.marca || null,
           categoria: form.categoria,
           stock: Number(form.stock),
@@ -132,6 +180,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
       qc.invalidateQueries({ queryKey: ["my-products"] });
       invalidateInventory(qc);
       setForm((f) => ({ ...EMPTY, categoria: f.categoria, ubicacion: f.ubicacion }));
+      setVencText("");
       setOkMessage(
         data.merged
           ? "Se sumó el stock a un producto que ya tenías cargado."
@@ -140,30 +189,54 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
       setError(null);
     },
     onError: (err: any) => {
-      setError(apiErrorMessage(err, "No se pudo cargar el producto."));
+      setError(apiErrorMessage(err, "No se pudo guardar el producto."));
       setOkMessage(null);
     },
   });
 
+  // Las mismas verificaciones, y con los mismos mensajes, que la app
+  const validate = (): string | null => {
+    if (!form.nombre.trim()) return "El nombre es requerido";
+    if (!form.categoria.trim()) return "La categoría es requerida";
+    if (!form.stock || Number(form.stock) <= 0) return "El stock debe ser mayor a 0";
+    if (vencText && displayToIso(vencText) === null) {
+      return "Fecha de vencimiento inválida. Ingresa el día y el mes con 2 dígitos y el año con 4 dígitos. Por ejemplo: 05/03/2027";
+    }
+    if (form.codigo_barras && !LARGOS_CODIGO.includes(digitosDelCodigo(form.codigo_barras).length)) {
+      return "El código de barras es inválido";
+    }
+    return null;
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setOkMessage(null);
+    const problem = validate();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setError(null);
     create.mutate();
   };
 
   return (
-    <Card className="max-w-xl">
-      <form onSubmit={onSubmit} className="space-y-4">
+    <Card className="w-full">
+      <form onSubmit={onSubmit} noValidate className="space-y-4">
         <div className="relative">
-          <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
+          <FieldLabel required counter={`${form.nombre.length}/${NOMBRE_MAX}`} counterId="nombre-counter">
+            Nombre
+          </FieldLabel>
           <input
             value={form.nombre}
             onChange={set("nombre")}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            required
+            placeholder="ej. Leche entera 1L"
+            maxLength={NOMBRE_MAX}
             autoComplete="off"
-            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            aria-label="Nombre"
+            className={INPUT}
           />
           {showSuggestions && suggestions.length > 0 && (
             <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-line bg-white shadow-lg">
@@ -187,46 +260,60 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           )}
         </div>
         <Picklist
+          label="Categoría *"
+          value={form.categoria}
+          options={categoriaOptions}
+          addPlaceholder="Ej. Lácteos"
+          maxLength={OPTION_MAX}
+          onChange={(v) => {
+            setForm((f) => ({ ...f, categoria: v }));
+            setCategoriaOptions((prev) => addIfMissing(prev, v));
+          }}
+        />
+        <div>
+          <FieldLabel required>Stock</FieldLabel>
+          <input
+            inputMode="numeric"
+            value={form.stock}
+            onChange={(e) => setForm((f) => ({ ...f, stock: onlyDigits(e.target.value, STOCK_MAX_DIGITS) }))}
+            placeholder="0"
+            aria-label="Stock"
+            className={INPUT}
+          />
+        </div>
+        <Picklist
           label="Marca"
           value={form.marca}
           options={marcaOptions}
-          emptyLabel="Sin marca"
+          emptyLabel="Opcional"
+          addPlaceholder="Opcional"
+          maxLength={OPTION_MAX}
           onChange={(v) => {
             setForm((f) => ({ ...f, marca: v }));
             setMarcaOptions((prev) => addIfMissing(prev, v));
           }}
         />
-        <div className="grid grid-cols-2 gap-4">
-          <Picklist
-            label="Categoría"
-            value={form.categoria}
-            options={categoriaOptions}
-            onChange={(v) => {
-              setForm((f) => ({ ...f, categoria: v }));
-              setCategoriaOptions((prev) => addIfMissing(prev, v));
-            }}
-            required
+        <div>
+          <FieldLabel>Fecha de vencimiento</FieldLabel>
+          <input
+            inputMode="numeric"
+            value={vencText}
+            onChange={(e) => onVencimiento(e.target.value)}
+            placeholder="DD/MM/AAAA"
+            maxLength={10}
+            aria-label="Fecha de vencimiento"
+            className={`${INPUT} ${vencInvalid ? "border-danger" : ""}`}
           />
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Stock</label>
-            <input
-              type="number"
-              min={1}
-              value={form.stock}
-              onChange={set("stock")}
-              required
-              className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-            />
-          </div>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-ink">Código de barras</label>
+          <FieldLabel>Código de barras</FieldLabel>
           <input
             inputMode="numeric"
             value={form.codigo_barras}
-            onChange={(e) => setForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))}
-            placeholder="Sin código"
-            className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
+            onChange={(e) => setForm((f) => ({ ...f, codigo_barras: onlyDigits(e.target.value, BARCODE_MAX_DIGITS) }))}
+            placeholder="Opcional"
+                        aria-label="Código de barras"
+            className={`${INPUT} font-mono`}
           />
           {codigoError ? (
             <p className="mt-1 text-xs text-danger">{codigoError}</p>
@@ -260,74 +347,82 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
             </p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Vencimiento</label>
-            <input
-              type="date"
-              value={form.vencimiento}
-              onChange={set("vencimiento")}
-              className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-            />
-          </div>
-          <Picklist
-            label="Ubicación"
-            value={form.ubicacion}
-            options={ubicacionOptions}
-            onChange={(v) => {
-              setForm((f) => ({ ...f, ubicacion: v }));
-              setUbicacionOptions((prev) => addIfMissing(prev, v));
-            }}
-          />
-        </div>
-        <ImageUpload value={form.imagen_url} onChange={(url) => setForm((f) => ({ ...f, imagen_url: url }))} />
         <div>
-          <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
+          <FieldLabel counter={`${form.descripcion.length}/${DESCRIPCION_MAX}`} counterId="descripcion-counter">
+            Descripción
+          </FieldLabel>
           <textarea
             value={form.descripcion}
             onChange={set("descripcion")}
             rows={3}
-            className="w-full resize-none rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            maxLength={DESCRIPCION_MAX}
+            placeholder="Opcional"
+            aria-label="Descripción"
+            className={`${INPUT} resize-none`}
           />
         </div>
+        <Picklist
+          label="Ubicación de guardado"
+          value={form.ubicacion}
+          options={ubicacionOptions}
+          emptyLabel="Ej. Heladera, Alacena A, Freezer"
+          addPlaceholder="Ej. Heladera, Alacena A, Freezer"
+          maxLength={OPTION_MAX}
+          onChange={(v) => {
+            setForm((f) => ({ ...f, ubicacion: v }));
+            setUbicacionOptions((prev) => addIfMissing(prev, v));
+          }}
+        />
 
+        {/* Reglas propias del producto: cerradas al entrar; lo escrito se conserva aunque se cierren */}
         <div className="rounded-2xl border border-line/70 bg-canvas/60 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reglas de alerta de producto</p>
-          <p className="mb-3 mt-0.5 text-xs text-muted">
-            Opcionales: si las dejás vacías, se usan las reglas generales de tu perfil.
-          </p>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días)</label>
-              <input
-                type="number"
-                min={1}
-                max={9999999}
-                value={form.stock_minimo}
-                onChange={set("stock_minimo")}
-                placeholder="Usa tu regla general"
-                className="w-full rounded-xl border border-[#D9D9D9] bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-              />
-              <p className="mt-1 text-xs text-muted">Se avisa si el stock alcanza para menos días.</p>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-ink">Aviso de vencimiento (días)</label>
-              <input
-                type="number"
-                min={1}
-                max={999}
-                value={form.dias_alerta_vencimiento}
-                onChange={set("dias_alerta_vencimiento")}
-                placeholder="Usa tu regla general"
-                className="w-full rounded-xl border border-[#D9D9D9] bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-              />
-              <p className="mt-1 text-xs text-muted">Se avisa si faltan menos días para que venza.</p>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-muted">Reglas de alerta de producto</p>
+            <button
+              type="button"
+              data-testid="alerts-toggle"
+              aria-expanded={alertsOpen}
+              aria-label={alertsOpen ? "Ocultar reglas de alerta de producto" : "Mostrar reglas de alerta de producto"}
+              onClick={() => setAlertsOpen((open) => !open)}
+              className="rounded-full p-1 text-primaryDark transition hover:bg-primary/10"
+            >
+              {alertsOpen ? <ChevronUp size={22} /> : <ChevronDown size={22} />}
+            </button>
           </div>
+          {alertsOpen && (
+            <div data-testid="alerts-section" className="mt-3 space-y-4">
+              <div>
+                <FieldLabel>Stock mínimo (días de cobertura)</FieldLabel>
+                <input
+                  inputMode="numeric"
+                  value={form.stock_minimo}
+                  onChange={(e) => setForm((f) => ({ ...f, stock_minimo: onlyDigits(e.target.value, STOCK_MINIMO_MAX_DIGITS) }))}
+                  placeholder="Opcional"
+                  aria-label="Stock mínimo (días de cobertura)"
+                  className={`${INPUT} bg-white`}
+                />
+                <p className="mt-1 text-xs text-muted">{form.stock_minimo ? "Regla propia de este producto" : "Usando tu regla general"}</p>
+              </div>
+              <div>
+                <FieldLabel>Días de anticipación (vencimiento)</FieldLabel>
+                <input
+                  inputMode="numeric"
+                  value={form.dias_alerta_vencimiento}
+                  onChange={(e) => setForm((f) => ({ ...f, dias_alerta_vencimiento: onlyDigits(e.target.value, DIAS_ALERTA_MAX_DIGITS) }))}
+                  placeholder="Opcional"
+                  aria-label="Días de anticipación (vencimiento)"
+                  className={`${INPUT} bg-white`}
+                />
+                <p className="mt-1 text-xs text-muted">{form.dias_alerta_vencimiento ? "Regla propia de este producto" : "Usando tu regla general"}</p>
+              </div>
+            </div>
+          )}
         </div>
 
+        <ImageUpload value={form.imagen_url} onChange={(url) => setForm((f) => ({ ...f, imagen_url: url }))} />
+
         {error && (
-          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
             {error}
           </div>
         )}
@@ -342,12 +437,21 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           disabled={create.isPending}
           className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
-          {create.isPending ? "Cargando…" : "Cargar producto"}
+          {create.isPending ? "Guardando…" : "Guardar producto"}
         </button>
       </form>
     </Card>
   );
 }
+
+// Los motivos de salida de la app, en su mismo orden
+const EXIT_REASONS = [
+  { key: "sold", label: "Vendido" },
+  { key: "consumed", label: "Consumido" },
+  { key: "expired", label: "Vencido" },
+  { key: "rented", label: "Alquilado" },
+] as const;
+type ExitReason = (typeof EXIT_REASONS)[number]["key"];
 
 function SalidaForm({
   prefill,
@@ -362,7 +466,8 @@ function SalidaForm({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selected, setSelected] = useState<ProductSuggestion | null>(null);
   const [cantidad, setCantidad] = useState("");
-  const [motivo, setMotivo] = useState<"consumed" | "expired">("consumed");
+  // Sin motivo elegido al principio: hay que elegir uno (volver a tocar el elegido lo deselecciona)
+  const [motivo, setMotivo] = useState<ExitReason | null>(null);
   const [nota, setNota] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
@@ -371,7 +476,7 @@ function SalidaForm({
     if (!prefill) return;
     setSelected(null);
     setQuery(prefill.busqueda);
-    setNota(prefill.nota ?? "");
+    setNota((prefill.nota ?? "").slice(0, SALIDA_NOTA_MAX));
     setShowSuggestions(true);
     setOkMessage(null);
     setError(null);
@@ -408,7 +513,7 @@ function SalidaForm({
 
   const salida = useMutation({
     mutationFn: async () => {
-      if (!selected) throw new Error("no seleccionado");
+      if (!selected || !motivo) throw new Error("incompleto");
       return (
         await api.post<{ stock: number }>("/me/products/salida", {
           product_id: selected.id,
@@ -426,6 +531,7 @@ function SalidaForm({
       setQuery("");
       setSelected(null);
       setCantidad("");
+      setMotivo(null);
       setNota("");
     },
     onError: (err: any) => {
@@ -437,8 +543,16 @@ function SalidaForm({
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     setOkMessage(null);
-    if (!selected) {
-      setError("Elegí un producto de la lista de sugerencias — no se puede sacar algo que no existe.");
+    // Las mismas verificaciones, y con los mismos mensajes, que la app
+    const problem = !selected
+      ? "Elegí un producto de la lista de sugerencias"
+      : !cantidad || Number(cantidad) <= 0
+        ? "La cantidad debe ser mayor a 0"
+        : !motivo
+          ? "Elegí el motivo de la salida"
+          : null;
+    if (problem) {
+      setError(problem);
       return;
     }
     setError(null);
@@ -446,19 +560,19 @@ function SalidaForm({
   };
 
   return (
-    <Card className="max-w-xl">
-      <form onSubmit={onSubmit} className="space-y-4">
+    <Card className="w-full">
+      <form onSubmit={onSubmit} noValidate className="space-y-4">
         <div className="relative">
-          <label className="mb-1 block text-sm font-medium text-ink">Producto</label>
+          <FieldLabel required>Producto</FieldLabel>
           <input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onFocus={() => setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            placeholder="Escribí para buscar un producto que ya tengas cargado"
-            required
+            placeholder="Buscá un producto que ya tenés cargado"
             autoComplete="off"
-            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            aria-label="Producto"
+            className={INPUT}
           />
           {showSuggestions && suggestions.length > 0 && (
             <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-line bg-white shadow-lg">
@@ -483,44 +597,65 @@ function SalidaForm({
           {!selected && query.trim().length >= 2 && suggestions.length === 0 && (
             <p className="mt-1 text-xs text-muted">No encontramos ningún producto tuyo con ese nombre.</p>
           )}
+          {selected && (
+            <div data-testid="salida-selected" className="mt-2 rounded-xl bg-canvas px-4 py-2.5 text-sm">
+              <p className="font-medium text-ink">
+                {selected.nombre}
+                {selected.marca && <span className="font-normal text-muted"> · {selected.marca}</span>}
+              </p>
+              <p className="text-xs text-muted">
+                Stock actual: {selected.stock} · {selected.vencimiento ? `Vence ${selected.vencimiento}` : "Sin vencimiento"}
+              </p>
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Cantidad a sacar</label>
-            <input
-              type="number"
-              min={1}
-              value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
-              required
-              className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-ink">Motivo</label>
-            <select
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value as "consumed" | "expired")}
-              className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-            >
-              <option value="consumed">Consumido</option>
-              <option value="expired">Vencido</option>
-            </select>
-          </div>
-        </div>
-
         <div>
-          <label className="mb-1 block text-sm font-medium text-ink">Motivo (opcional)</label>
+          <FieldLabel required>Stock a sacar</FieldLabel>
           <input
+            inputMode="numeric"
+            value={cantidad}
+            onChange={(e) => setCantidad(onlyDigits(e.target.value, STOCK_MAX_DIGITS))}
+            placeholder="0"
+            aria-label="Stock a sacar"
+            className={INPUT}
+          />
+        </div>
+        <div>
+          <FieldLabel required>Motivo</FieldLabel>
+          <div role="group" aria-label="Motivo" className="flex flex-wrap gap-2">
+            {EXIT_REASONS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                data-testid={`salida-motivo-${key}`}
+                aria-pressed={motivo === key}
+                onClick={() => setMotivo(motivo === key ? null : key)}
+                className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                  motivo === key ? "border-primary bg-primary text-white" : "border-line bg-white text-muted hover:text-primaryDark"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <FieldLabel counter={`${nota.length}/${SALIDA_NOTA_MAX}`} counterId="salida-nota-counter">
+            Descripción de Motivo
+          </FieldLabel>
+          <textarea
             value={nota}
             onChange={(e) => setNota(e.target.value)}
-            placeholder="ej. vencido en heladera, pedido especial"
-            className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
+            rows={3}
+            maxLength={SALIDA_NOTA_MAX}
+            placeholder="Descripción de salida (ej. vencido en heladera)"
+            aria-label="Descripción de Motivo"
+            className={`${INPUT} resize-none`}
           />
         </div>
 
         {error && (
-          <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          <div role="alert" className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
             {error}
           </div>
         )}
@@ -532,7 +667,7 @@ function SalidaForm({
 
         <button
           type="submit"
-          disabled={salida.isPending || !selected}
+          disabled={salida.isPending}
           className="w-full rounded-xl bg-danger py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {salida.isPending ? "Registrando…" : "Registrar salida"}
@@ -680,7 +815,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   const activeErrors = active ? validateRowLocal(active.data, direction) : [];
 
   return (
-    <Card className="max-w-5xl">
+    <Card className="w-full">
       <p className="mb-4 text-sm text-muted">
         {direction === "entrada" ? (
           <>

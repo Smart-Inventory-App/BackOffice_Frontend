@@ -123,12 +123,13 @@ describe("TrendsPanel · resumen", () => {
     vi.clearAllMocks();
   });
 
-  it("muestra lo consumido y lo repuesto, el promedio de consumidos por día y el día de mayor consumo", async () => {
+  it("muestra lo consumido, el promedio de consumidos por día y el día de mayor consumo, sin el cuadro «Repuesto»", async () => {
     serve();
     await open();
 
     expect(screen.getByTestId("trends-consumed")).toHaveTextContent("10");
-    expect(screen.getByTestId("trends-restocked")).toHaveTextContent("20");
+    expect(screen.queryByTestId("trends-restocked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Repuesto")).not.toBeInTheDocument();
     expect(screen.getByTestId("trends-average")).toHaveTextContent("0,7");
     expect(screen.getByTestId("trends-peak")).toHaveTextContent("7");
     expect(screen.getByText("Promedio de consumidos por día")).toBeInTheDocument();
@@ -270,7 +271,7 @@ describe("TrendsPanel · gráfico y detalle del día", () => {
     await user.click(screen.getByTestId("trends-bar-5"));
 
     expect(screen.getByTestId("trends-day-title")).toHaveTextContent("Miércoles 14 de octubre");
-    expect(screen.getByTestId("trends-day-hint")).toHaveTextContent("Hacé clic en una barra o usá las flechas para ver cada día.");
+    expect(screen.queryByText(/Hacé clic en una barra/)).not.toBeInTheDocument();
   });
 
   it("dice «Se consumió 1 unidad» en singular", async () => {
@@ -443,5 +444,58 @@ describe("TrendsPanel · ingresos", () => {
     await openIncomes({ period: 14, onPeriodChange: vi.fn() });
 
     expect(screen.queryByTestId("trends-period-14")).not.toBeInTheDocument();
+  });
+});
+
+describe("TrendsPanel · productos con más stock", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const top = [
+    { id: 1, nombre: "Arroz", stock: 40 },
+    { id: 2, nombre: "Fideos", stock: 10 },
+    { id: 3, nombre: "Agotado", stock: 0 },
+  ];
+
+  function serveWithTop(items = top) {
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) => {
+      if (url === "/me/products" || url === "/admin/products/") return { data: { items, total: items.length } };
+      return { data: metrics({ period_days: config.params.period }) };
+    });
+  }
+
+  it("debajo de los ingresos lista los productos con más stock, de más a menos, sin los que no tienen", async () => {
+    serveWithTop();
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+
+    const card = await screen.findByTestId("incomes-top-stock");
+    await waitFor(() => expect(within(card).getByTestId("incomes-top-stock-0")).toHaveTextContent("Arroz"));
+    expect(within(card).getByTestId("incomes-top-stock-0")).toHaveTextContent("40 unidades");
+    expect(within(card).getByTestId("incomes-top-stock-1")).toHaveTextContent("Fideos");
+    expect(within(card).queryByText("Agotado")).not.toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith("/me/products", { params: { sort_by: "stock", sort_dir: "desc", limit: 5 } });
+  });
+
+  it("para un administrador son los de toda la plataforma", async () => {
+    serveWithTop();
+    renderWithProviders(<TrendsPanel kind="ingresos" endpoint="/admin/metrics" audience="platform" />);
+
+    await screen.findByTestId("incomes-top-stock");
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/admin/products/", { params: { sort_by: "stock", sort_dir: "desc", limit: 5 } }),
+    );
+  });
+
+  it("sin productos con stock lo dice, y el consumo no muestra esta tarjeta", async () => {
+    serveWithTop([]);
+    const { unmount } = renderWithProviders(<TrendsPanel kind="ingresos" />);
+    expect(await screen.findByText("Todavía no hay productos con stock.")).toBeInTheDocument();
+    unmount();
+
+    serveWithTop();
+    renderWithProviders(<TrendsPanel kind="consumo" />);
+    await screen.findByTestId("trends-panel");
+    expect(screen.queryByTestId("incomes-top-stock")).not.toBeInTheDocument();
   });
 });

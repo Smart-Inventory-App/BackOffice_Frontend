@@ -31,7 +31,7 @@ export default function AlertDetailModal({ alert, onClose }: { alert: AlertOut; 
             {alert.level === "critical" ? "Alerta crítica" : "Advertencia"}
             {alert.predictive ? " · Predicción" : ""}
           </p>
-          <p className="text-lg font-extrabold leading-tight">{alertTitle(alert)}</p>
+          <p className="text-lg font-medium leading-tight">{alertTitle(alert)}</p>
         </div>
       </div>
 
@@ -41,7 +41,7 @@ export default function AlertDetailModal({ alert, onClose }: { alert: AlertOut; 
         style={{ borderLeftColor: tone.border }}
       >
         {details.map((paragraph, i) => (
-          <p key={i} className={i === 0 ? "font-bold" : "font-medium"}>
+          <p key={i} className={i === 0 ? "font-semibold" : "font-normal"}>
             {paragraph}
           </p>
         ))}

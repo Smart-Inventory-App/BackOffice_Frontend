@@ -83,3 +83,14 @@ describe("AlertDetailModal", () => {
     expect(screen.queryByTestId("alert-detail-location")).not.toBeInTheDocument();
   });
 });
+
+describe("AlertDetailModal · tipografía", () => {
+  it("el texto de la alerta no va en negrita fuerte", () => {
+    render(<AlertDetailModal alert={alert()} onClose={vi.fn()} />);
+
+    const title = within(screen.getByTestId("alert-detail-reason")).getByText("Vence en 2 días");
+    expect(title.className).toContain("font-medium");
+    expect(title.className).not.toMatch(/font-(bold|extrabold)/);
+    expect(screen.getByTestId("alert-detail-text").querySelector("p")!.className).not.toMatch(/font-(bold|extrabold)/);
+  });
+});
