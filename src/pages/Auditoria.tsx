@@ -65,7 +65,7 @@ export default function Auditoria() {
     <div>
       <PageHeader
         title="Auditoría"
-        subtitle="Actividad de usuarios: altas, productos cargados/editados/eliminados, logins y cambios de rol — desde la app y desde el backoffice"
+        subtitle="Actividad de usuarios: altas, productos cargados/editados/eliminados, logins y cambios de rol — desde la app y desde el dashboard"
       />
 
       <p className="mb-4 text-sm text-muted">

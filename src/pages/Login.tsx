@@ -4,8 +4,10 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
-import AuthLayout, { PasswordEye } from "@/components/AuthLayout";
-import { Button, Field, Notice } from "@/components/ui";
+import AuthLayout, { PasswordField } from "@/components/AuthLayout";
+import { Button, ConfirmDialog, Field, Notice } from "@/components/ui";
+import GoogleButton from "@/components/GoogleButton";
+import { googleEnabled } from "@/lib/google";
 
 interface CheckResponse {
   exists: boolean;
@@ -23,7 +25,6 @@ export default function Login() {
   const [step, setStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState(navState?.email ?? "");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleOnly, setGoogleOnly] = useState(false);
   const [notice, setNotice] = useState<string | null>(
@@ -115,17 +116,19 @@ export default function Login() {
           />
           {notice && <Notice tone="ok">{notice}</Notice>}
           {error && <Notice tone="error">{error}</Notice>}
-          {googleOnly && (
-            <Notice tone="info">
-              Esta cuenta se creó con Google y todavía no tiene contraseña.{" "}
-              <Link to="/forgot-password" state={{ email: email.trim() }} className="font-semibold underline">
-                Crear una contraseña
-              </Link>
-            </Notice>
-          )}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>
             {loading ? "Verificando…" : "Continuar"}
           </Button>
+          {googleEnabled() && (
+            <>
+              <div className="flex items-center gap-3" aria-hidden>
+                <span className="h-px flex-1 bg-line" />
+                <span className="text-sm text-muted">o</span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+              <GoogleButton onError={setError} />
+            </>
+          )}
         </form>
       ) : (
         <form onSubmit={onPasswordSubmit} className="space-y-4">
@@ -137,9 +140,8 @@ export default function Login() {
             <ArrowLeft size={16} className="shrink-0" />
             <span className="truncate" title={email}>{email}</span>
           </button>
-          <Field
+          <PasswordField
             label="Contraseña"
-            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
@@ -149,7 +151,6 @@ export default function Login() {
             autoFocus
             placeholder="Tu contraseña"
             error={error}
-            right={<PasswordEye shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
           />
           <Button type="submit" className="w-full" disabled={loading || !password}>
             {loading ? "Ingresando…" : "Continuar"}
@@ -160,6 +161,18 @@ export default function Login() {
             </Link>
           </div>
         </form>
+      )}
+      {/* Cuenta creada con Google y sin contraseña: las dos salidas, como en la app */}
+      {googleOnly && (
+        <ConfirmDialog
+          title="Cuenta de Google"
+          message="Esta cuenta se creó con Google y todavía no tiene contraseña. Ingresá con Google o creá una contraseña."
+          confirmLabel="Crear contraseña"
+          cancelLabel="Volver al login"
+          stacked
+          onConfirm={() => navigate("/forgot-password", { state: { email: email.trim() } })}
+          onCancel={() => setGoogleOnly(false)}
+        />
       )}
     </AuthLayout>
   );

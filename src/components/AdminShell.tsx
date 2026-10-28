@@ -18,10 +18,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
-import type { AlertSummary, AppUser, Paginated } from "@/lib/types";
-import { truncate } from "@/lib/format";
+import type { AlertSummary } from "@/lib/types";
+import AddAdminModal from "@/components/AddAdminModal";
 import logo from "../../assets/brand/logo_con_texto/logo_horizontal_color.png";
-import { apiErrorMessage } from "@/lib/errors";
 
 const ADMIN_NAV = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -34,7 +33,7 @@ const ADMIN_NAV = [
 ];
 
 const USER_NAV = [
-  { to: "/", label: "Inicio", icon: Home },
+  { to: "/", label: "Dashboard", icon: Home },
   { to: "/productos", label: "Inventario", icon: Package },
   { to: "/cargar", label: "Flujo de producto", icon: ArrowLeftRight },
   { to: "/alertas", label: "Alertas", icon: Bell },
@@ -49,13 +48,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
   const NAV = effectiveIsAdmin ? ADMIN_NAV : USER_NAV;
 
   const [showAddAdmin, setShowAddAdmin] = useState(false);
-  const [adminSearch, setAdminSearch] = useState("");
-  const [adminResults, setAdminResults] = useState<AppUser[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
-  const [addError, setAddError] = useState<string | null>(null);
-  const [addOk, setAddOk] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
   // Cuántas alertas críticas tiene el usuario: se muestra junto a «Alertas» para verlas desde cualquier pantalla
   const [criticalAlerts, setCriticalAlerts] = useState(0);
 
@@ -76,53 +68,12 @@ export default function AdminShell({ children }: { children: ReactNode }) {
 
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
-  const resetAddForm = () => {
-    setAdminSearch("");
-    setAdminResults([]);
-    setSelectedUser(null);
-    setAddError(null);
-    setAddOk(null);
-  };
-
-  useEffect(() => {
-    const q = adminSearch.trim();
-    if (selectedUser || q.length < 2) {
-      setAdminResults([]);
-      return;
-    }
-    setSearching(true);
-    const handle = setTimeout(() => {
-      api
-        .get<Paginated<AppUser>>("/admin/users/", { params: { search: q, limit: 8 } })
-        .then(({ data }) => setAdminResults(data.items.filter((u) => !u.is_admin)))
-        .catch(() => setAdminResults([]))
-        .finally(() => setSearching(false));
-    }, 300);
-    return () => clearTimeout(handle);
-  }, [adminSearch, selectedUser]);
-
-  const onGrantAdmin = async () => {
-    if (!selectedUser) return;
-    setAddError(null);
-    setAdding(true);
-    try {
-      await api.post(`/admin/users/${selectedUser.id}/admin`);
-      setAddOk(`${selectedUser.email} ya es administrador. Puede iniciar sesión con su contraseña actual.`);
-      setSelectedUser(null);
-      setAdminSearch("");
-    } catch (err: any) {
-      setAddError(apiErrorMessage(err, "No se pudo otorgar el rol de administrador."));
-    } finally {
-      setAdding(false);
-    }
-  };
-
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
       <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-line/70 bg-white p-5 md:flex">
         <div className="mb-7 flex flex-col items-center px-1 text-center">
           <img src={logo} alt="Smart Inventory" className="h-24 w-auto object-contain" />
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Backoffice</p>
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Dashboard</p>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto">
@@ -153,7 +104,17 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="mt-4 border-t border-line/70 pt-4">
+        {/* Por encima de la línea de la sesión, y solo para un administrador en su vista de administrador */}
+        {admin?.is_admin && effectiveIsAdmin && (
+          <button
+            onClick={() => setShowAddAdmin(true)}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 px-3 py-2 text-sm font-medium text-primaryDark transition hover:bg-primary/10"
+          >
+            <UserPlus size={16} /> Agregar administrador
+          </button>
+        )}
+
+        <div className="mt-3 border-t border-line/70 pt-4">
           <div className="px-2 pb-3 text-center">
             <p className="text-xs uppercase tracking-wide text-muted">Sesión</p>
             <p className="mt-1 truncate text-sm font-medium" title={admin?.email}>
@@ -164,9 +125,14 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                 {admin.full_name}
               </p>
             )}
-            {admin?.is_admin && viewAsUser && (
-              <p className="mt-1 inline-block rounded-full bg-warn/25 px-2.5 py-0.5 text-xs font-medium text-warnInk">
-                Viendo como usuario
+            {admin?.is_admin && (
+              <p
+                data-testid="view-badge"
+                className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  viewAsUser ? "bg-warn/25 text-warnInk" : "bg-primary/15 text-tealInk"
+                }`}
+              >
+                {viewAsUser ? "Viendo como usuario" : "Viendo como administrador"}
               </p>
             )}
           </div>
@@ -184,14 +150,6 @@ export default function AdminShell({ children }: { children: ReactNode }) {
                   <Eye size={16} /> Ver como usuario
                 </>
               )}
-            </button>
-          )}
-          {effectiveIsAdmin && (
-            <button
-              onClick={() => { resetAddForm(); setShowAddAdmin(true); }}
-              className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-primary/40 px-3 py-2 text-sm font-medium text-primaryDark transition hover:bg-primary/10"
-            >
-              <UserPlus size={16} /> Agregar administrador
             </button>
           )}
           <button
@@ -222,102 +180,13 @@ export default function AdminShell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {showAddAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lift">
-            <h3 className="text-lg font-semibold">Agregar administrador</h3>
-            <p className="mt-1 text-sm text-muted">
-              Buscá un usuario ya registrado y hacelo administrador. Va a poder iniciar
-              sesión con la contraseña que ya tiene — no hace falta que defina una nueva.
-            </p>
-
-            <div className="mt-4 space-y-3">
-              {selectedUser ? (
-                <div className="flex items-center justify-between rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm">
-                  <span className="truncate text-ink" title={selectedUser.email ?? selectedUser.id}>
-                    {truncate(selectedUser.email ?? selectedUser.id)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedUser(null)}
-                    className="ml-2 shrink-0 text-xs font-medium text-primaryDark hover:underline"
-                  >
-                    Cambiar
-                  </button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <label className="mb-1 block text-sm font-medium text-ink">Buscar usuario</label>
-                  <input
-                    type="text"
-                    value={adminSearch}
-                    onChange={(e) => setAdminSearch(e.target.value)}
-                    autoFocus
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                    placeholder="Buscar por email…"
-                  />
-                  {adminSearch.trim().length >= 2 && (
-                    <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-line bg-white shadow-lg">
-                      {searching ? (
-                        <p className="px-4 py-2.5 text-sm text-muted">Buscando…</p>
-                      ) : adminResults.length === 0 ? (
-                        <p className="px-4 py-2.5 text-sm text-muted">Sin resultados.</p>
-                      ) : (
-                        adminResults.map((u) => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => { setSelectedUser(u); setAddOk(null); setAddError(null); }}
-                            className="block w-full truncate px-4 py-2.5 text-left text-sm hover:bg-canvas"
-                            title={u.email ?? u.id}
-                          >
-                            {truncate(u.email ?? u.id)}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {addError && (
-                <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger">
-                  {addError}
-                </div>
-              )}
-              {addOk && (
-                <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-primaryDark">
-                  {addOk}
-                </div>
-              )}
-
-              <div className="mt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddAdmin(false)}
-                  className="flex-1 rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  onClick={onGrantAdmin}
-                  disabled={adding || !selectedUser}
-                  className="flex-1 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
-                >
-                  {adding ? "Agregando…" : "Hacer administrador"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {showAddAdmin && admin?.is_admin && <AddAdminModal onClose={() => setShowAddAdmin(false)} />}
 
       {showLogout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Cerrar sesión</h3>
-            <p className="mt-2 text-sm text-muted">¿Seguro que querés salir del backoffice?</p>
+            <p className="mt-2 text-sm text-muted">¿Seguro que querés salir del dashboard?</p>
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setShowLogout(false)}

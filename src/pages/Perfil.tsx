@@ -6,6 +6,7 @@ import { Button, Card, Field, Notice, PageHeader, Segmented, Spinner } from "@/c
 import NumberStepper, { inRange } from "@/components/NumberStepper";
 import type { MyProfile } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
+import { invalidateInventory } from "@/lib/queries";
 
 // Los mismos límites que valida el servicio y la app
 export const TEXT_MAX = 20;
@@ -102,7 +103,7 @@ export default function Perfil() {
       ).data,
     onSuccess: (data) => {
       qc.setQueryData(["my-profile"], data);
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      invalidateInventory(qc);
       qc.invalidateQueries({ queryKey: ["my-alerts"] });
       setOkMessage("Cambios guardados.");
       setError(null);

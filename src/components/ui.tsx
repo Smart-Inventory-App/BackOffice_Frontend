@@ -1,9 +1,9 @@
 import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { ArrowLeft, ChevronRight, type LucideIcon } from "lucide-react";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({ children, className = "", testId }: { children: ReactNode; className?: string; testId?: string }) {
   return (
-    <div className={`rounded-2xl border border-line/70 bg-white p-5 shadow-card ${className}`}>
+    <div data-testid={testId} className={`rounded-2xl border border-line/70 bg-white p-5 shadow-card ${className}`}>
       {children}
     </div>
   );
@@ -345,6 +345,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancelar",
   danger = false,
   busy = false,
+  stacked = false,
   onConfirm,
   onCancel,
 }: {
@@ -354,6 +355,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   danger?: boolean;
   busy?: boolean;
+  /** Los botones uno debajo del otro, con el principal arriba. */
+  stacked?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -363,7 +366,7 @@ export function ConfirmDialog({
       <div role="alertdialog" aria-label={title} className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-lift">
         <h3 className="text-lg font-semibold text-ink">{title}</h3>
         <div className="mt-2 text-sm text-muted">{message}</div>
-        <div className="mt-6 flex gap-3">
+        <div className={`mt-6 flex gap-3 ${stacked ? "flex-col-reverse" : ""}`}>
           <Button tone="outline" className="flex-1" onClick={onCancel}>
             {cancelLabel}
           </Button>

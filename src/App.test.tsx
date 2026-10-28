@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,6 +62,9 @@ const EMPTY_MY_STATS = {
   critical_alerts: 0,
   warning_alerts: 0,
   products_by_category: [],
+  stock_by_category: [],
+  products_by_location: [],
+  expiry_buckets: [],
 };
 
 function mockAdmin(user: typeof ADMIN | typeof REGULAR) {
@@ -108,8 +112,8 @@ describe("App", () => {
     mockAdmin(REGULAR);
     renderApp(["/"]);
     await waitFor(() => expect(screen.getByText("user@test.com")).toBeInTheDocument());
-    expect(await screen.findByText("Bienvenido, Ana")).toBeInTheDocument();
-    expect(screen.getByText("Tu estado")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-greeting")).toHaveTextContent("Bienvenido, Ana · Tu estado");
   });
 
   it("un usuario no admin no puede entrar a /usuarios: es redirigido a la raíz", async () => {
@@ -144,7 +148,7 @@ describe("App", () => {
   it("una ruta desconocida redirige a la raíz", async () => {
     mockAdmin(REGULAR);
     renderApp(["/esto-no-existe"]);
-    await waitFor(() => expect(screen.getByText("Tu estado")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("dashboard-greeting")).toBeInTheDocument());
   });
 
   it("la ruta /set-password se muestra sin el shell del backoffice", async () => {
@@ -164,5 +168,53 @@ describe("App", () => {
     mockAdmin(ADMIN);
     renderApp(["/metricas"]);
     expect(await screen.findByText("Cuánto se consume y se repone en toda la plataforma")).toBeInTheDocument();
+  });
+});
+
+describe("App · contraseña inicial", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const FIRST_LOGIN = { ...ADMIN, must_change_password: true };
+
+  it("un administrador que entró con la contraseña inicial no ve nada hasta cambiarla", async () => {
+    mockAdmin(FIRST_LOGIN as typeof ADMIN);
+    renderApp(["/"]);
+
+    expect(await screen.findByText("Elegí tu contraseña")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar contraseña" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Usuarios" })).not.toBeInTheDocument();
+  });
+
+  it("tampoco puede entrar a las pantallas de administrador sin cambiarla", async () => {
+    mockAdmin(FIRST_LOGIN as typeof ADMIN);
+    renderApp(["/usuarios"]);
+
+    expect(await screen.findByText("Elegí tu contraseña")).toBeInTheDocument();
+    expect(screen.queryByText(/Monitoreo y habilitación de cuentas/)).not.toBeInTheDocument();
+  });
+
+  it("al cambiarla vuelve a pedir la sesión y entra al dashboard", async () => {
+    const user = userEvent.setup();
+    let changed = false;
+    mockAdmin(FIRST_LOGIN as typeof ADMIN);
+    const base = vi.mocked(api.get).getMockImplementation()!;
+    vi.mocked(api.get).mockImplementation(async (url: string, config?: any) =>
+      url === "/admin/auth/me" ? { data: changed ? ADMIN : FIRST_LOGIN } : base(url, config),
+    );
+    vi.mocked(api.post).mockImplementation(async () => {
+      changed = true;
+      return { data: {} };
+    });
+    renderApp(["/"]);
+
+    await screen.findByText("Elegí tu contraseña");
+    await user.type(screen.getByLabelText("Contraseña actual"), "Inicial.2026");
+    await user.type(screen.getByLabelText("Contraseña nueva"), "Definitiva.99");
+    await user.type(screen.getByLabelText("Repetir contraseña"), "Definitiva.99");
+    await user.click(screen.getByRole("button", { name: "Cambiar contraseña" }));
+
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
   });
 });

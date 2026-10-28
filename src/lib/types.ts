@@ -4,6 +4,8 @@ export interface Admin {
   full_name: string | null;
   is_admin: boolean;
   is_active: boolean;
+  /** Ingresó con una contraseña inicial que le dio un administrador: antes de seguir tiene que cambiarla. */
+  must_change_password?: boolean;
 }
 
 export interface Paginated<T> {
@@ -182,6 +184,10 @@ export interface MyStats {
   critical_alerts: number;
   warning_alerts: number;
   products_by_category: CategoryCount[];
+  /** Unidades en stock por categoría, productos por ubicación y cuándo vencen: los gráficos del dashboard. */
+  stock_by_category: CategoryCount[];
+  products_by_location: CategoryCount[];
+  expiry_buckets: CategoryCount[];
 }
 
 export interface MyProduct {

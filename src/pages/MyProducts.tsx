@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History, Layers } from "lucide-react";
 import { api } from "@/lib/api";
@@ -16,6 +17,7 @@ import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
 import { apiErrorMessage } from "@/lib/errors";
+import { invalidateInventory } from "@/lib/queries";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
 
@@ -39,11 +41,13 @@ const EDIT_EMPTY = {
 
 export default function MyProducts() {
   const qc = useQueryClient();
+  // Desde los gráficos del dashboard se llega con un filtro ya elegido; entrando por el menú se ve todo
+  const initial = (useLocation().state ?? {}) as { categoria?: string; vencido?: "si" | "no"; bajoStock?: boolean; porVencer?: boolean };
   const [search, setSearch] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [vencido, setVencido] = useState<"" | "si" | "no">("");
-  const [bajoStock, setBajoStock] = useState(false);
-  const [porVencer, setPorVencer] = useState(false);
+  const [categoria, setCategoria] = useState(initial.categoria ?? "");
+  const [vencido, setVencido] = useState<"" | "si" | "no">(initial.vencido ?? "");
+  const [bajoStock, setBajoStock] = useState(initial.bajoStock ?? false);
+  const [porVencer, setPorVencer] = useState(initial.porVencer ?? false);
   const [sortBy, setSortBy] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
@@ -183,7 +187,7 @@ export default function MyProducts() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      invalidateInventory(qc);
       setEditing(null);
     },
     onError: (err: any) => {
@@ -196,7 +200,7 @@ export default function MyProducts() {
 
   // El nivel de alerta de cada producto, para marcarlo en la lista
   const alerts = useQuery({
-    queryKey: ["my-alerts", "todas", null],
+    queryKey: ["my-alert-levels"],
     queryFn: async () => (await api.get<AlertList>("/me/alerts/")).data.items,
   });
   const alertByProduct = new Map<number, AlertOut>();
@@ -245,7 +249,7 @@ export default function MyProducts() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      invalidateInventory(qc);
       setSelected(new Set());
       setShowBulkEdit(false);
     },
@@ -706,7 +710,7 @@ export default function MyProducts() {
           onClose={() => setHistorialProduct(null)}
           onChanged={() => {
             qc.invalidateQueries({ queryKey: ["my-products"] });
-            qc.invalidateQueries({ queryKey: ["my-stats"] });
+            invalidateInventory(qc);
           }}
         />
       )}

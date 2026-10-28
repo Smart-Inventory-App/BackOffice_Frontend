@@ -39,9 +39,9 @@ function Section({ title, subtitle, alerts, onOpen, testId }: {
 export default function Alertas() {
   const location = useLocation();
   // Desde las tarjetas del inicio se llega con una opción ya elegida; entrando por el menú se ven todas
-  const requested = (location.state as { tipo?: TypeFilter } | null)?.tipo;
-  const [type, setType] = useState<TypeFilter>(requested ?? "todas");
-  const [level, setLevel] = useState<AlertLevel | null>(null);
+  const requested = location.state as { tipo?: TypeFilter; level?: AlertLevel } | null;
+  const [type, setType] = useState<TypeFilter>(requested?.tipo ?? "todas");
+  const [level, setLevel] = useState<AlertLevel | null>(requested?.level ?? null);
   const [detail, setDetail] = useState<AlertOut | null>(null);
 
   const { data, isLoading, isError } = useQuery({

@@ -8,6 +8,19 @@ body,
   height: 100%;
 }
 
+/* El navegador agrega su propio ojo (y una cruz) a los campos de contraseña; el dashboard ya tiene el suyo en cada campo */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+input::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
 body {
   margin: 0;
   background-color: #f5f7fa;

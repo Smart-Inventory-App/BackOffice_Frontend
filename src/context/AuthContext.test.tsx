@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "./AuthContext";
 
+const google = vi.hoisted(() => ({ signOut: vi.fn() }));
+vi.mock("@/lib/google", () => ({ signOutFromGoogle: google.signOut }));
+
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn(), post: vi.fn() },
   getToken: vi.fn(),
@@ -20,7 +23,7 @@ const ADMIN = {
 };
 
 function Probe() {
-  const { admin, loading, login, logout, viewAsUser, setViewAsUser, effectiveIsAdmin } = useAuth();
+  const { admin, loading, login, loginWithGoogle, logout, refresh, viewAsUser, setViewAsUser, effectiveIsAdmin } = useAuth();
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
@@ -28,6 +31,8 @@ function Probe() {
       <span data-testid="effective">{String(effectiveIsAdmin)}</span>
       <span data-testid="viewAsUser">{String(viewAsUser)}</span>
       <button onClick={() => login("admin@test.com", "1234")}>login</button>
+      <button onClick={() => loginWithGoogle("id-token-de-google")}>login-google</button>
+      <button onClick={() => refresh()}>refresh</button>
       <button onClick={() => logout()}>logout</button>
       <button onClick={() => setViewAsUser(true)}>ver-como-usuario</button>
       <button onClick={() => setViewAsUser(false)}>ver-como-admin</button>
@@ -166,5 +171,63 @@ describe("AuthContext", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<Probe />)).toThrow("useAuth must be used within AuthProvider");
     consoleError.mockRestore();
+  });
+});
+
+describe("AuthContext · Google y contraseña inicial", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    vi.mocked(getToken).mockReturnValue(null);
+  });
+
+  function show() {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+  }
+
+  it("el ingreso con Google manda el idToken, guarda el token y trae la sesión", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.post).mockResolvedValue({ data: { access_token: "tok-google" } });
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    show();
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("false"));
+
+    await user.click(screen.getByText("login-google"));
+
+    await waitFor(() => expect(screen.getByTestId("admin")).toHaveTextContent("admin@test.com"));
+    expect(api.post).toHaveBeenCalledWith("/admin/auth/google", { id_token: "id-token-de-google" });
+    expect(setToken).toHaveBeenCalledWith("tok-google");
+    expect(screen.getByTestId("viewAsUser")).toHaveTextContent("false");
+  });
+
+  it("al cerrar sesión también se le avisa a Google, para que la próxima vez deje elegir la cuenta", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getToken).mockReturnValue("tok");
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    show();
+    await waitFor(() => expect(screen.getByTestId("admin")).toHaveTextContent("admin@test.com"));
+
+    await user.click(screen.getByText("logout"));
+
+    expect(google.signOut).toHaveBeenCalledOnce();
+    expect(setToken).toHaveBeenCalledWith(null);
+    expect(screen.getByTestId("admin")).toHaveTextContent("sin-admin");
+  });
+
+  it("refresh vuelve a pedir los datos de la sesión", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getToken).mockReturnValue("tok");
+    vi.mocked(api.get).mockResolvedValue({ data: { ...ADMIN, must_change_password: true } });
+    show();
+    await waitFor(() => expect(screen.getByTestId("admin")).toHaveTextContent("admin@test.com"));
+    vi.mocked(api.get).mockResolvedValue({ data: { ...ADMIN, email: "otro@test.com" } });
+
+    await user.click(screen.getByText("refresh"));
+
+    await waitFor(() => expect(screen.getByTestId("admin")).toHaveTextContent("otro@test.com"));
   });
 });

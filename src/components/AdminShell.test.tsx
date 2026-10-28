@@ -76,59 +76,7 @@ describe("AdminShell", () => {
 
     await user.click(screen.getByRole("button", { name: /Ver como admin/ }));
     expect(screen.queryByText("Viendo como usuario")).not.toBeInTheDocument();
-  });
-
-  it("busca un usuario existente, lo selecciona y lo hace admin; y si falla, el error", async () => {
-    const user = userEvent.setup();
-    vi.mocked(getToken).mockReturnValue("tok");
-    const found = { id: "9", email: "nuevo@test.com", is_admin: false, is_active: true };
-    vi.mocked(api.get).mockImplementation(async (url: string) => {
-      if (url === "/admin/auth/me") return { data: ADMIN };
-      if (url === "/admin/users/") return { data: { items: [found], total: 1 } };
-      throw new Error(`GET no mockeado: ${url}`);
-    });
-    vi.mocked(api.post).mockImplementationOnce(async () => {
-      const err: any = new Error("fallo");
-      err.response = { data: { detail: "Ese usuario ya es administrador." } };
-      throw err;
-    });
-
-    renderShell();
-    await screen.findByText("admin@test.com");
-    await user.click(screen.getByRole("button", { name: /Agregar administrador/ }));
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "nuevo");
-    await user.click(await screen.findByRole("button", { name: "nuevo@test.com" }));
-    expect(screen.getByText("nuevo@test.com")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Hacer administrador" }));
-    expect(await screen.findByText("Ese usuario ya es administrador.")).toBeInTheDocument();
-    expect(api.post).toHaveBeenCalledWith("/admin/users/9/admin");
-
-    vi.mocked(api.post).mockResolvedValueOnce({ data: {} });
-    await user.click(screen.getByRole("button", { name: "Hacer administrador" }));
-    expect(await screen.findByText(/nuevo@test.com ya es administrador/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cerrar" }));
-    expect(screen.queryByText("Agregar administrador", { selector: "h3" })).not.toBeInTheDocument();
-  });
-
-  it("no ofrece como resultado a alguien que ya es admin", async () => {
-    const user = userEvent.setup();
-    vi.mocked(getToken).mockReturnValue("tok");
-    const already = { id: "9", email: "yaadmin@test.com", is_admin: true, is_active: true };
-    vi.mocked(api.get).mockImplementation(async (url: string) => {
-      if (url === "/admin/auth/me") return { data: ADMIN };
-      if (url === "/admin/users/") return { data: { items: [already], total: 1 } };
-      throw new Error(`GET no mockeado: ${url}`);
-    });
-
-    renderShell();
-    await screen.findByText("admin@test.com");
-    await user.click(screen.getByRole("button", { name: /Agregar administrador/ }));
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "yaadmin");
-
-    expect(await screen.findByText("Sin resultados.")).toBeInTheDocument();
+    expect(screen.getByText("Viendo como administrador")).toBeInTheDocument();
   });
 
   it("cierra sesión tras confirmar, y cancelar no cierra sesión", async () => {
@@ -139,7 +87,7 @@ describe("AdminShell", () => {
     renderShell();
     await screen.findByText("admin@test.com");
     await user.click(screen.getByRole("button", { name: /Cerrar sesión/ }));
-    expect(screen.getByText("¿Seguro que querés salir del backoffice?")).toBeInTheDocument();
+    expect(screen.getByText("¿Seguro que querés salir del dashboard?")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(setToken).not.toHaveBeenCalledWith(null);
@@ -147,120 +95,6 @@ describe("AdminShell", () => {
     await user.click(screen.getByRole("button", { name: /Cerrar sesión/ }));
     await user.click(screen.getByRole("button", { name: "Salir" }));
     expect(setToken).toHaveBeenCalledWith(null);
-  });
-});
-
-describe("AdminShell · agregar administrador, casos de borde", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  function mockUsers(items: any[] | Error) {
-    vi.mocked(getToken).mockReturnValue("tok");
-    vi.mocked(api.get).mockImplementation(async (url: string) => {
-      if (url === "/admin/auth/me") return { data: ADMIN };
-      if (url === "/admin/users/") {
-        if (items instanceof Error) throw items;
-        return { data: { items, total: items.length } };
-      }
-      throw new Error(`GET no mockeado: ${url}`);
-    });
-  }
-
-  async function openAddAdmin(user: ReturnType<typeof userEvent.setup>) {
-    renderShell();
-    await screen.findByText("admin@test.com");
-    await user.click(screen.getByRole("button", { name: /Agregar administrador/ }));
-  }
-
-  it("con menos de 2 caracteres no consulta la API", async () => {
-    const user = userEvent.setup();
-    mockUsers([]);
-    await openAddAdmin(user);
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "a");
-
-    await new Promise((r) => setTimeout(r, 450));
-    expect(api.get).not.toHaveBeenCalledWith("/admin/users/", expect.anything());
-    expect(screen.queryByText("Sin resultados.")).not.toBeInTheDocument();
-  });
-
-  it("busca con el término, límite 8 y espera a que el usuario deje de escribir", async () => {
-    const user = userEvent.setup();
-    mockUsers([]);
-    await openAddAdmin(user);
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "ana");
-
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/admin/users/", { params: { search: "ana", limit: 8 } }));
-    const searches = vi.mocked(api.get).mock.calls.filter(([url]) => url === "/admin/users/");
-    expect(searches).toHaveLength(1);
-  });
-
-  it("si la búsqueda falla, muestra 'Sin resultados.' en lugar de romper", async () => {
-    const user = userEvent.setup();
-    mockUsers(new Error("500"));
-    await openAddAdmin(user);
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "ana");
-
-    expect(await screen.findByText("Sin resultados.")).toBeInTheDocument();
-  });
-
-  it("un usuario sin email se muestra y se elige por su id", async () => {
-    const user = userEvent.setup();
-    mockUsers([{ id: "u-77", email: null, is_admin: false, is_active: true }]);
-    await openAddAdmin(user);
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "u-7");
-    await user.click(await screen.findByRole("button", { name: "u-77" }));
-
-    expect(screen.getByRole("button", { name: "Hacer administrador" })).toBeEnabled();
-    expect(screen.getByTitle("u-77")).toBeInTheDocument();
-  });
-
-  it("'Cambiar' descarta la selección y vuelve a la búsqueda", async () => {
-    const user = userEvent.setup();
-    mockUsers([{ id: "9", email: "ana@test.com", is_admin: false, is_active: true }]);
-    await openAddAdmin(user);
-
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "ana");
-    await user.click(await screen.findByRole("button", { name: "ana@test.com" }));
-    expect(screen.getByRole("button", { name: "Hacer administrador" })).toBeEnabled();
-
-    await user.click(screen.getByRole("button", { name: "Cambiar" }));
-
-    expect(screen.getByPlaceholderText("Buscar por email…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hacer administrador" })).toBeDisabled();
-  });
-
-  it("sin usuario elegido, 'Hacer administrador' está deshabilitado y no llama a la API", async () => {
-    const user = userEvent.setup();
-    mockUsers([]);
-    await openAddAdmin(user);
-
-    const button = screen.getByRole("button", { name: "Hacer administrador" });
-    expect(button).toBeDisabled();
-    await user.click(button);
-
-    expect(api.post).not.toHaveBeenCalled();
-  });
-
-  it("al cerrar y reabrir el modal, la búsqueda y los avisos vuelven a empezar", async () => {
-    const user = userEvent.setup();
-    mockUsers([{ id: "9", email: "ana@test.com", is_admin: false, is_active: true }]);
-    vi.mocked(api.post).mockResolvedValue({ data: {} });
-    await openAddAdmin(user);
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "ana");
-    await user.click(await screen.findByRole("button", { name: "ana@test.com" }));
-    await user.click(screen.getByRole("button", { name: "Hacer administrador" }));
-    expect(await screen.findByText(/ana@test.com ya es administrador/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cerrar" }));
-    await user.click(screen.getByRole("button", { name: /Agregar administrador/ }));
-
-    expect(screen.queryByText(/ya es administrador/)).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Buscar por email…")).toHaveValue("");
   });
 });
 
@@ -280,7 +114,7 @@ describe("AdminShell · alertas críticas en el menú", () => {
 
     expect(await screen.findByTestId("nav-alert-count")).toHaveTextContent("4");
     expect(screen.getAllByRole("link", { name: /Alertas/ }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Inicio" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Dashboard" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Inventario" }).length).toBeGreaterThan(0);
   });
 
@@ -306,5 +140,95 @@ describe("AdminShell · alertas críticas en el menú", () => {
     expect(api.get).not.toHaveBeenCalledWith("/me/alerts/summary");
     expect(screen.getAllByRole("link", { name: "Tendencias" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Usuarios" }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("AdminShell · «Agregar administrador» y textos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getToken).mockReturnValue("tok");
+  });
+
+  it("el botón está por encima de la línea horizontal de la sesión", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    renderShell();
+    await screen.findByText("admin@test.com");
+
+    const button = screen.getByRole("button", { name: /Agregar administrador/ });
+    const session = screen.getByText("Sesión");
+    expect(button.compareDocumentPosition(session) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // el bloque de la sesión es el de la línea (borde de arriba) y viene justo después del botón
+    const sessionBlock = session.parentElement!.parentElement!;
+    expect(sessionBlock.className).toContain("border-t");
+    expect(button.nextElementSibling).toBe(sessionBlock);
+    expect(sessionBlock.contains(button)).toBe(false);
+  });
+
+  it("debajo del nombre de la cuenta dice «Viendo como administrador», y «Viendo como usuario» al cambiar de vista", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    renderShell();
+    await screen.findByText("admin@test.com");
+
+    const badge = screen.getByTestId("view-badge");
+    expect(badge).toHaveTextContent("Viendo como administrador");
+    expect(badge.previousElementSibling).toHaveTextContent("Ada Admin");
+    await user.click(screen.getByRole("button", { name: /Ver como usuario/ }));
+    expect(screen.getByTestId("view-badge")).toHaveTextContent("Viendo como usuario");
+    await user.click(screen.getByRole("button", { name: /Ver como admin/ }));
+    expect(screen.getByTestId("view-badge")).toHaveTextContent("Viendo como administrador");
+  });
+
+  it("un usuario común no ve ninguna de las dos marcas", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => ({ data: url === "/admin/auth/me" ? REGULAR : {} }));
+    renderShell();
+    await screen.findByText("user@test.com");
+
+    expect(screen.queryByTestId("view-badge")).not.toBeInTheDocument();
+  });
+
+  it("solo lo ve un administrador en su vista de administrador", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => ({ data: url === "/admin/auth/me" ? ADMIN : {} }));
+    const user = userEvent.setup();
+    renderShell();
+    await screen.findByText("admin@test.com");
+    expect(screen.getByRole("button", { name: /Agregar administrador/ })).toBeInTheDocument();
+
+    // viendo como usuario, un administrador tampoco lo ve
+    await user.click(screen.getByRole("button", { name: /Ver como usuario/ }));
+    expect(screen.queryByRole("button", { name: /Agregar administrador/ })).not.toBeInTheDocument();
+  });
+
+  it("un usuario común no lo ve nunca", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => ({ data: url === "/admin/auth/me" ? REGULAR : {} }));
+    renderShell();
+    await screen.findByText("user@test.com");
+
+    expect(screen.queryByRole("button", { name: /Agregar administrador/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Agregar administrador")).not.toBeInTheDocument();
+  });
+
+  it("abre la ventana de alta y se cierra con «Cerrar»", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    renderShell();
+    await screen.findByText("admin@test.com");
+
+    await user.click(screen.getByRole("button", { name: /Agregar administrador/ }));
+    expect(screen.getByRole("dialog", { name: "Agregar administrador" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("dice «Dashboard» y no «Backoffice»: en la barra lateral y en el menú del usuario", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => ({ data: url === "/admin/auth/me" ? REGULAR : {} }));
+    renderShell();
+    await screen.findByText("user@test.com");
+
+    expect(screen.queryByText(/backoffice/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Dashboard", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Dashboard" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Inicio" })).not.toBeInTheDocument();
   });
 });

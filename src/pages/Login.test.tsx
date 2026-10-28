@@ -192,24 +192,26 @@ describe("Login", () => {
     await user.type(emailField(), "google@test.com");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
 
-    expect(await screen.findByText(/se creó con Google/)).toBeInTheDocument();
+    const dialog = await screen.findByRole("alertdialog", { name: "Cuenta de Google" });
+    expect(dialog).toHaveTextContent("Esta cuenta se creó con Google y todavía no tiene contraseña. Ingresá con Google o creá una contraseña.");
     expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("link", { name: "Crear una contraseña" }));
+    await user.click(screen.getByRole("button", { name: "Crear contraseña" }));
     expect(await screen.findByText(/FORGOT/)).toHaveTextContent('"email":"google@test.com"');
   });
 
-  it("el aviso de Google desaparece al cambiar el email", async () => {
+  it("«Volver al login» cierra el aviso de Google y se queda en el email", async () => {
     const user = userEvent.setup();
     checkReturns({ exists: true, is_admin: false, password_set: false, google_only: true });
 
     renderLogin();
     await user.type(emailField(), "google@test.com");
     await user.click(screen.getByRole("button", { name: "Continuar" }));
-    await screen.findByText(/se creó con Google/);
+    await screen.findByRole("alertdialog");
 
-    await user.type(emailField(), "x");
+    await user.click(screen.getByRole("button", { name: "Volver al login" }));
 
-    expect(screen.queryByText(/se creó con Google/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(emailField()).toHaveValue("google@test.com");
   });
 
   it("«Crear cuenta» lleva a /register con el email ya escrito", async () => {

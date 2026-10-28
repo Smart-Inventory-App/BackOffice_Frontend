@@ -24,6 +24,7 @@ import type {
   ScanState,
 } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
+import { invalidateInventory } from "@/lib/queries";
 
 /** Cada cuánto se le pregunta al módulo si ya terminó. */
 const POLL_MS = 1500;
@@ -48,9 +49,8 @@ type Opciones = { categorias: string[]; ubicaciones: string[]; marcas: string[] 
  * Lo que cambia en otras pantallas cuando entra o sale stock.
  */
 function refrescarInventario(qc: ReturnType<typeof useQueryClient>) {
-  for (const clave of ["my-products", "my-stats", "my-metrics", "my-products-filter-options"]) {
-    qc.invalidateQueries({ queryKey: [clave] });
-  }
+  invalidateInventory(qc);
+  qc.invalidateQueries({ queryKey: ["my-products-filter-options"] });
 }
 
 const OCR_NO_DISPONIBLE =

@@ -79,6 +79,15 @@ describe("ForgotPassword", () => {
     expect(screen.queryByLabelText("Código de 6 dígitos")).not.toBeInTheDocument();
   });
 
+  it("el texto de ejemplo del código es «X X X X X X»", async () => {
+    const user = userEvent.setup();
+    renderForgot("ana@test.com");
+    await toCodeStep(user);
+
+    expect(screen.getByLabelText("Código de 6 dígitos")).toHaveAttribute("placeholder", "X X X X X X");
+    expect(screen.queryByPlaceholderText("123456")).not.toBeInTheDocument();
+  });
+
   it("el código solo admite números, de a seis, y recién entonces deja continuar", async () => {
     const user = userEvent.setup();
     renderForgot("ana@test.com");
@@ -171,7 +180,12 @@ describe("ForgotPassword", () => {
     const user = userEvent.setup();
     await toPasswordStep(user);
 
-    await user.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+    // un ojo por cada campo de contraseña, y cada uno muestra solo su campo
+    expect(screen.getAllByRole("button", { name: "Mostrar contraseña" })).toHaveLength(2);
+    await user.click(screen.getAllByRole("button", { name: "Mostrar contraseña" })[1]);
+    expect(screen.getByLabelText("Repetir contraseña")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Contraseña nueva")).toHaveAttribute("type", "password");
+    await user.click(screen.getAllByRole("button", { name: "Mostrar contraseña" })[0]);
     expect(screen.getByLabelText("Contraseña nueva")).toHaveAttribute("type", "text");
 
     await user.click(screen.getByRole("link", { name: "Volver a iniciar sesión" }));

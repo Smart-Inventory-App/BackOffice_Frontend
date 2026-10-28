@@ -9,6 +9,7 @@ import { Picklist, addIfMissing } from "@/components/Picklist";
 import Procesamiento, { type Prefill, type SalidaPrefill } from "@/components/Procesamiento";
 import type { BulkParsedRow, BulkProductRow, BulkCommitResult, ProductSuggestion } from "@/lib/types";
 import { apiErrorMessage } from "@/lib/errors";
+import { invalidateInventory } from "@/lib/queries";
 
 const EMPTY = {
   nombre: "",
@@ -129,7 +130,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
       ).data,
     onSuccess: (data: { merged?: boolean }) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      invalidateInventory(qc);
       setForm((f) => ({ ...EMPTY, categoria: f.categoria, ubicacion: f.ubicacion }));
       setOkMessage(
         data.merged
@@ -419,8 +420,7 @@ function SalidaForm({
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
-      qc.invalidateQueries({ queryKey: ["my-metrics"] });
+      invalidateInventory(qc);
       setOkMessage(`Se sacaron ${cantidad} unidades de "${selected?.nombre}". Stock actual: ${data.stock}.`);
       setError(null);
       setQuery("");
@@ -668,8 +668,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
-      qc.invalidateQueries({ queryKey: ["my-metrics"] });
+      invalidateInventory(qc);
       setResult(data);
       setRows([]);
       setActiveKey(null);

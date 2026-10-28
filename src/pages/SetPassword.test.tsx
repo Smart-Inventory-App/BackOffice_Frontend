@@ -198,3 +198,11 @@ describe("SetPassword", () => {
     expect(inviteInput()).toHaveAttribute("spellcheck", "false");
   });
 });
+
+describe("SetPassword · el ojo de la contraseña", () => {
+  it("hay un ojo en cada campo de contraseña", () => {
+    renderSetPassword("nuevo@test.com");
+
+    expect(screen.getAllByRole("button", { name: "Mostrar contraseña" })).toHaveLength(2);
+  });
+});

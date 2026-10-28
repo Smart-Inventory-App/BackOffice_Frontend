@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
-import AuthLayout, { PasswordEye, validatePassword } from "@/components/AuthLayout";
+import AuthLayout, { PasswordField, validatePassword } from "@/components/AuthLayout";
 import { Button, Field, Notice } from "@/components/ui";
 
 type Step = "email" | "code" | "password";
@@ -20,7 +20,6 @@ export default function ForgotPassword() {
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -100,7 +99,7 @@ export default function ForgotPassword() {
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             autoFocus
-            placeholder="123456"
+            placeholder="X X X X X X"
             inputClassName="text-center text-lg tracking-[0.4em]"
           />
           {error && <Notice tone="error">{error}</Notice>}
@@ -120,19 +119,16 @@ export default function ForgotPassword() {
 
       {step === "password" && (
         <form onSubmit={savePassword} className="space-y-4">
-          <Field
+          <PasswordField
             label="Contraseña nueva"
-            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoFocus
             placeholder="Tu contraseña nueva"
             help="Mínimo 8 caracteres, con una mayúscula, una minúscula y un número."
-            right={<PasswordEye shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
           />
-          <Field
+          <PasswordField
             label="Repetir contraseña"
-            type={showPassword ? "text" : "password"}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Repetí la contraseña"

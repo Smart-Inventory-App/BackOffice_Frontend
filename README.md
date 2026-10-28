@@ -29,7 +29,7 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | Ruta | Descripción |
 |------|-------------|
 | `/login`, `/register`, `/forgot-password`, `/set-password` | Ingreso en dos pasos (email y contraseña, con el ojo para mostrarla), registro, **recuperar o crear la contraseña** con un código por mail (también para cuentas de Google) y la contraseña del primer ingreso de un administrador |
-| `/` | **Usuario**: inicio con las cuatro tarjetas, tendencias, últimos cambios y productos recientes. **Administrador**: dashboard de la plataforma |
+| `/` | **Dashboard**. Usuario: las cuatro tarjetas de la app, gráficos interactivos, lo que hay que atender, últimos cambios y productos recientes. Administrador: el estado de la plataforma |
 | `/alertas` | Centro de Alertas (usuario) |
 | `/metricas` | Tendencias de Consumo: las del usuario o, para un administrador, las de toda la plataforma |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |
@@ -41,9 +41,9 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | `/cargar` | Flujo de producto (entrada y salida) en modo usuario, con tres formas de carga: manual, por archivo y **por foto** (pestaña Procesamiento) |
 | `/perfil` | Datos de la cuenta, tipo de cuenta y reglas de alerta, en modo usuario |
 
-#### Inicio del usuario
+#### Dashboard del usuario
 
-Como el de la app: «Bienvenido, <nombre>» y «Tu estado»; cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock») con los números con puntos de miles y los cuatro comentarios del mismo largo y centrados; el comentario de Productos va con el fondo del color de su ícono y letra blanca. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, el botón «Tendencias» (ventana), **Últimos Cambios** (5, con «Ver más» al historial con «Cargar más») y **Productos Recientes** (3).
+No es un «inicio»: es un dashboard con la información de su inventario, esté o no en la app del celular. «Dashboard», con «Bienvenido, <nombre> · Tu estado»; cuatro tarjetas (**Productos** → «Total inventario», **Productos en stock** → «Total unidades», **Vencimientos** → «Alertas de productos», **Stock bajo** → «Alertas de stock») con los números con puntos de miles y los cuatro comentarios del mismo largo y centrados; el comentario de Productos va con el fondo del color de su ícono y letra blanca. «Vencimientos» abre el Centro de Alertas con **Vencimiento** ya elegido y «Stock bajo» con **Stock**. Debajo, **gráficos que se pueden recorrer y tocar**: consumo por día (7, 14 o 30 días, con el detalle de cada día al pasar el mouse y el botón «Tendencias»), alertas por nivel (tocar «Críticas» o «Advertencias» abre el Centro de Alertas con ese nivel), vencimientos por tramo (vencidos, de la semana, del mes...), stock por categoría (tocar una abre el inventario de esa categoría) y productos por ubicación. Después, «Un vistazo más» (vencidos con stock, productos con imagen), «Para atender primero» (lo que vence y lo que se acaba, con su detalle), **Últimos Cambios** (5, con «Ver más» al historial con «Cargar más») y **Productos Recientes** (3).
 
 #### Tendencias de Consumo
 
@@ -52,6 +52,14 @@ Períodos de **7, 14 y 30 días** (sin 90), gráfico por día que se ve **entero
 #### Centro de Alertas
 
 «Críticas» y «Advertencias» son filtros: al tocar una, su contorno es **rojo** o **amarillo**; con las opciones Todas / Stock / Vencimiento los números siguen al tipo elegido. «Según tus reglas» va primero y «Generado por el sistema» después, con la marca «Predicción» fija arriba a la derecha de lo que calcula el modelo. Cada alerta tiene dos renglones de descripción («Quedan X ud. restantes que alcanzan para x días. Mínimo configurado de X días.») y un detalle que se desplaza; en un producto ya vencido no se explica la regla de aviso. Los niveles son los de la app: se avisa con **menos de** N días.
+
+#### Administradores y primer ingreso
+
+**Agregar administrador** está en la barra lateral, justo arriba de la información de la sesión, y **solo lo ve un administrador en su vista de administrador**. La ventana pide el email (no sugiere usuarios): si ya tiene cuenta pasa a ser administrador con su contraseña; si no, el dashboard pide una **contraseña inicial** (se genera una y se puede copiar), crea la cuenta y la muestra para pasársela a la persona. Cuando ingresa por primera vez, el dashboard le exige **cambiarla** antes de usar cualquier otra pantalla (`src/pages/ChangePassword.tsx`).
+
+Cada campo de contraseña tiene **un solo ojo, y es suyo**: mostrar «Contraseña» no muestra «Repetir contraseña». El ojo que agrega el navegador (Edge) se oculta por CSS. Las ventanas de «Agregar administrador» dicen «Crear administrador» cuando la cuenta no existía, y la barra lateral aclara «Viendo como administrador» o «Viendo como usuario» debajo del nombre de la cuenta.
+
+Para quien lo usa, el panel se llama **Dashboard** (el nombre «backoffice» es técnico y no aparece en pantalla).
 
 #### Imágenes de producto
 
@@ -85,9 +93,19 @@ La página de OCR habla con `/admin/ocr/*` del backoffice, que a su vez habla co
 
 ```env
 VITE_API_URL=http://localhost:8002
+# ID del cliente "Aplicación web" de Google Cloud; vacío = no hay "Continuar con Google"
+VITE_GOOGLE_CLIENT_ID=
 ```
 
-No hay otras variables: la subida de imágenes también pasa por el `backoffice_backend`.
+La subida de imágenes pasa por el `backoffice_backend`, así que no hace falta otra dirección.
+
+#### Ingreso con Google
+
+Está implementado **como en la app**: en el paso del email, debajo de «Continuar», una «o» y el botón «Continuar con Google» (mientras entra dice «Conectando...»). Sirve para ingresar y también para crear la cuenta (si es la primera vez, `auth` la crea y manda el mail de bienvenida). No aparece en el paso de la contraseña ni en «Crear cuenta», igual que en la app, y **solo si está definido `VITE_GOOGLE_CLIENT_ID`**.
+
+- Es el **mismo ID de cliente Web** que usa la app como `webClientId` y el servicio `auth` como `GOOGLE_CLIENT_ID`: `auth` comprueba que el idToken lo haya emitido Google para ese cliente. En Google Cloud hay que agregar el **origen del dashboard** (por ejemplo `http://localhost:3000` y la URL de producción) a los «Orígenes de JavaScript autorizados» de ese cliente.
+- Se usa Google Identity Services: el botón oficial de Google va (invisible) encima del botón del dashboard para que el clic llegue a Google. Si la persona cierra la ventana de Google no pasa nada; si falla, el error sale en el formulario con los mismos textos que en la app. Al cerrar sesión se le avisa a Google (`disableAutoSelect`) para que la próxima vez deje elegir la cuenta.
+- Una cuenta creada con Google que todavía no tiene contraseña recibe, al escribir su email, el aviso «Esta cuenta se creó con Google y todavía no tiene contraseña. Ingresá con Google o creá una contraseña.» con «Crear contraseña» y «Volver al login»; en «Crear cuenta», el email de una cuenta existente se marca al escribirlo («Ya existe una cuenta con ese email.» o «Cuenta de Google»).
 
 ---
 
@@ -113,4 +131,4 @@ npm test                # vitest
 npm run test:coverage   # con cobertura (umbral del 90 %)
 ```
 
-467 tests, 99 % de cobertura de líneas y 91 % de ramas.
+531 tests, 99 % de cobertura de líneas y 92 % de ramas.

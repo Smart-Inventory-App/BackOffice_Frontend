@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import logo from "../../assets/logo.png";
+import { Field } from "@/components/ui";
 
 /**
  * Marco de las pantallas de acceso (ingreso, registro, recuperar contraseña): el logo, «Smart Inventory» en dos colores
@@ -45,6 +46,15 @@ export function PasswordEye({ shown, onToggle }: { shown: boolean; onToggle: () 
       {shown ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>
   );
+}
+
+/**
+ * Un campo de contraseña con SU ojo: mostrar u ocultar lo que se escribe afecta solo a este campo, no a los demás del
+ * formulario (así «Contraseña» y «Repetir contraseña» se ven por separado).
+ */
+export function PasswordField(props: Omit<ComponentProps<typeof Field>, "type" | "right">) {
+  const [shown, setShown] = useState(false);
+  return <Field {...props} type={shown ? "text" : "password"} right={<PasswordEye shown={shown} onToggle={() => setShown((v) => !v)} />} />;
 }
 
 /** Las reglas de una contraseña nueva, las mismas que valida el servicio de cuentas. */

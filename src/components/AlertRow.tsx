@@ -6,7 +6,7 @@ import ProductImage from "@/components/ProductImage";
  * Una alerta en la lista: fondo blanco, el nivel como una barra de color a la izquierda, el título y una descripción de
  * hasta dos renglones. Las del modelo predictivo llevan la marca «Predicción» fija arriba a la derecha.
  */
-export default function AlertRow({ alert, onClick }: { alert: AlertOut; onClick: () => void }) {
+export default function AlertRow({ alert, onClick, compact = false }: { alert: AlertOut; onClick: () => void; compact?: boolean }) {
   const tone = LEVEL_TONES[alert.level];
   return (
     <li>
@@ -14,7 +14,7 @@ export default function AlertRow({ alert, onClick }: { alert: AlertOut; onClick:
         type="button"
         data-testid={`alert-item-${alert.key}`}
         onClick={onClick}
-        className="relative flex h-[116px] w-full items-center gap-3 overflow-hidden rounded-2xl border border-line/60 bg-white py-3 pl-5 pr-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lift"
+        className={`relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-line/60 bg-white py-3 pl-5 pr-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lift ${compact ? "min-h-[88px]" : "h-[116px]"}`}
       >
         <span aria-hidden className="absolute inset-y-0 left-0 w-2" style={{ backgroundColor: tone.border }} />
         {alert.predictive && (
@@ -25,7 +25,7 @@ export default function AlertRow({ alert, onClick }: { alert: AlertOut; onClick:
             Predicción
           </span>
         )}
-        <ProductImage url={alert.image_url} alt={alert.product_name} className="h-16 w-16 shrink-0 !rounded-xl" />
+        <ProductImage url={alert.image_url} alt={alert.product_name} className={`shrink-0 !rounded-xl ${compact ? "h-12 w-12" : "h-16 w-16"}`} />
         <div className="min-w-0 flex-1 pr-16">
           <p className="truncate text-sm font-bold text-ink" title={alert.product_name}>
             {alert.product_name}

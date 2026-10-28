@@ -1,9 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
-import AuthLayout, { PasswordEye, validatePassword } from "@/components/AuthLayout";
+import AuthLayout, { PasswordField, validatePassword } from "@/components/AuthLayout";
 import { Button, Field, Notice } from "@/components/ui";
+
+// Si el email ya tiene cuenta, o es una cuenta creada con Google que todavía no tiene contraseña (como en la app)
+type EmailStatus = "idle" | "available" | "taken" | "google";
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export default function Register() {
   const location = useLocation();
@@ -13,9 +18,32 @@ export default function Register() {
   const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
+
+  // Se mira si el email ya tiene cuenta cuando se deja de escribir
+  useEffect(() => {
+    const wanted = email.trim();
+    setEmailStatus("idle");
+    if (!EMAIL_SHAPE.test(wanted)) return;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        const res = await api.post<{ exists: boolean; google_only?: boolean }>("/admin/auth/check", { email: wanted });
+        if (cancelled || !res?.data) return;
+        setEmailStatus(!res.data.exists ? "available" : res.data.google_only ? "google" : "taken");
+      } catch {
+        // si no se pudo consultar, el alta dirá si algo está mal
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [email]);
+
+  const emailBlocked = emailStatus === "taken" || emailStatus === "google";
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -56,28 +84,42 @@ export default function Register() {
           required
           autoFocus={!prefillEmail}
           placeholder="tu@email.com"
+          error={
+            emailStatus === "taken"
+              ? "Ya existe una cuenta con ese email."
+              : emailStatus === "google"
+                ? "Cuenta de Google: ese email ya tiene una cuenta creada con Google."
+                : null
+          }
+          help={emailStatus === "available" ? "Email disponible" : undefined}
         />
-        <Field
+        {emailStatus === "google" && (
+          <p data-testid="register-google-hint" className="-mt-2 text-xs text-muted">
+            Ingresá con Google o creá una contraseña desde{" "}
+            <Link to="/forgot-password" state={{ email: email.trim() }} className="font-semibold text-primary hover:underline">
+              «Olvidé mi contraseña»
+            </Link>
+            .
+          </p>
+        )}
+        <PasswordField
           label="Contraseña"
-          type={showPassword ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           autoFocus={Boolean(prefillEmail)}
           placeholder="Tu contraseña"
           help="Mínimo 8 caracteres, con una mayúscula, una minúscula y un número."
-          right={<PasswordEye shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
         />
-        <Field
+        <PasswordField
           label="Repetir contraseña"
-          type={showPassword ? "text" : "password"}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
           placeholder="Repetí la contraseña"
         />
         {error && <Notice tone="error">{error}</Notice>}
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={loading || emailBlocked}>
           {loading ? "Creando cuenta…" : "Crear cuenta"}
         </Button>
       </form>

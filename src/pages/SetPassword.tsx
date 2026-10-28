@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/errors";
-import AuthLayout, { PasswordEye, validatePassword } from "@/components/AuthLayout";
+import AuthLayout, { PasswordField, validatePassword } from "@/components/AuthLayout";
 import { Button, Field, Notice } from "@/components/ui";
 
 export default function SetPassword() {
@@ -13,7 +13,6 @@ export default function SetPassword() {
   const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -60,19 +59,16 @@ export default function SetPassword() {
           spellCheck={false}
           placeholder="Pegá el código que te enviaron"
         />
-        <Field
+        <PasswordField
           label="Nueva contraseña"
-          type={showPassword ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           placeholder="Tu contraseña nueva"
           help="Mínimo 8 caracteres, con una mayúscula, una minúscula y un número."
-          right={<PasswordEye shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
         />
-        <Field
+        <PasswordField
           label="Repetir contraseña"
-          type={showPassword ? "text" : "password"}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
