@@ -442,7 +442,7 @@ describe("MyProducts", () => {
     await screen.findByText("Yerba Mate");
     await user.click(screen.getByRole("button", { name: /Historial/ }));
 
-    expect(await screen.findByText("Historial de consumo")).toBeInTheDocument();
+    expect(await screen.findByText("Historial del Producto")).toBeInTheDocument();
   });
 
   it("exporta a CSV y a Excel", async () => {

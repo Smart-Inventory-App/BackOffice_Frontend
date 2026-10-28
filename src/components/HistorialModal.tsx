@@ -105,10 +105,17 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-lift">
+    // Tocar afuera de la ventana cierra el historial
+    <div
+      data-testid="historial-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div role="dialog" aria-label="Historial del Producto" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-lift">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Historial de consumo</h3>
+          <h3 className="text-lg font-semibold">Historial del Producto</h3>
           <button onClick={onClose} className="text-muted hover:text-ink">
             <X size={20} />
           </button>
@@ -146,8 +153,10 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                           onChange={(e) => setEditQuantity(e.target.value)}
                           className="w-full rounded-lg border border-line px-3 py-1.5 text-sm outline-none focus:border-primary"
                         />
+                        {/* Una entrada sigue siendo entrada y una salida sigue siendo salida: solo la salida cambia de motivo */}
+                        {event.event_type !== "restocked" && (
                         <div className="flex gap-2">
-                          {(["consumed", "expired", "sold", "rented", "restocked"] as const).map((type) => (
+                          {(["consumed", "expired", "sold", "rented"] as const).map((type) => (
                             <button
                               key={type}
                               type="button"
@@ -162,6 +171,7 @@ export default function HistorialModal({ product, onClose, onChanged }: Props) {
                             </button>
                           ))}
                         </div>
+                        )}
                         <input
                           type="text"
                           placeholder="Motivo (opcional)"

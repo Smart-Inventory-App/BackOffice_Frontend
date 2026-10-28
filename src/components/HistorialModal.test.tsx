@@ -128,14 +128,14 @@ describe("HistorialModal", () => {
     const quantityInput = container.querySelector('input[type="number"]') as HTMLInputElement;
     await user.clear(quantityInput);
     await user.type(quantityInput, "4");
-    await user.click(screen.getByRole("button", { name: "Entrada" }));
+    await user.click(screen.getByRole("button", { name: "Vendido" }));
 
     await user.click(screen.getByRole("button", { name: "Guardar" }));
 
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/me/products/1/events/1", {
         quantity: 4,
-        event_type: "restocked",
+        event_type: "sold",
         note: undefined,
       }),
     );
@@ -267,5 +267,61 @@ describe("HistorialModal", () => {
     await screen.findByText("Todavía no hay movimientos para este producto");
     await user.click(container.querySelectorAll("button")[0]);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("HistorialModal · título, cierre y motivos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockResolvedValue({ data: [event()] });
+  });
+
+  it("se llama «Historial del Producto»", async () => {
+    render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    expect(await screen.findByRole("dialog", { name: "Historial del Producto" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Historial del Producto" })).toBeInTheDocument();
+    expect(screen.queryByText("Historial de consumo")).not.toBeInTheDocument();
+  });
+
+  it("tocar afuera de la ventana la cierra, pero tocar adentro no", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<HistorialModal product={PRODUCT} onClose={onClose} onChanged={vi.fn()} />);
+    await screen.findByText("Consumido");
+
+    await user.click(screen.getByRole("dialog", { name: "Historial del Producto" }));
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId("historial-backdrop"));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("una salida puede cambiar de motivo, pero nunca pasar a ser una entrada", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
+    await screen.findByText("Consumido");
+
+    await user.click(container.querySelectorAll("button")[1]);
+
+    ["Consumido", "Vencido", "Vendido", "Alquilado"].forEach((name) => expect(screen.getByRole("button", { name })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Entrada" })).not.toBeInTheDocument();
+  });
+
+  it("una entrada solo cambia de unidades: no ofrece ningún motivo de salida", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: [event({ event_type: "restocked" })] });
+    vi.mocked(api.put).mockResolvedValue({ data: {} });
+    const { container } = render(<HistorialModal product={PRODUCT} onClose={vi.fn()} onChanged={vi.fn()} />);
+    await screen.findByText("Entrada");
+
+    await user.click(container.querySelectorAll("button")[1]);
+
+    ["Consumido", "Vencido", "Vendido", "Alquilado", "Entrada"].forEach((name) =>
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/me/products/1/events/1", { quantity: 2, event_type: "restocked", note: undefined }),
+    );
   });
 });
