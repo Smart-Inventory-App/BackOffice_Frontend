@@ -10,6 +10,7 @@ import { formatDateTime, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import AuditModal from "@/components/AuditModal";
+import FilterDropdown from "@/components/FilterDropdown";
 import { apiErrorMessage } from "@/lib/errors";
 
 export default function Users() {
@@ -75,33 +76,37 @@ export default function Users() {
   const total = data?.total ?? 0;
 
   return (
-    <div>
-      <PageHeader title="Usuarios" subtitle="Monitoreo y habilitación de cuentas de la aplicación" />
+    // En pantallas anchas todo entra sin desplazar la página: solo se desplaza la lista, que ocupa el alto que queda (como en Productos)
+    <div className="md:flex md:h-[calc(100vh-4.5rem)] md:flex-col">
+      <PageHeader title="Usuarios de la Plataforma" subtitle="Monitoreo y habilitación de cuentas de la aplicación" />
 
       <div className="mb-4 flex flex-wrap gap-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por email…"
-          className="flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
+          placeholder="Buscar por mail o nombre de usuario…"
+          className="h-10 min-w-0 flex-1 basis-60 rounded-xl border border-line bg-white px-4 text-sm outline-none focus:border-primary"
         />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as any)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Todos</option>
-          <option value="active">Activos</option>
-          <option value="inactive">Deshabilitados</option>
-          <option value="admin">Administradores</option>
-        </select>
+        <div className="w-56">
+          <FilterDropdown
+            label="Estado"
+            allLabel="Todos los usuarios"
+            value={status}
+            options={[
+              { value: "active", label: "Habilitados" },
+              { value: "inactive", label: "Deshabilitados" },
+              { value: "admin", label: "Administradores" },
+            ]}
+            onChange={(v) => setStatus(v as "" | "active" | "inactive" | "admin")}
+          />
+        </div>
       </div>
 
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="p-0">
-          <div className="max-h-[60vh] overflow-auto">
+        <Card className="flex min-h-0 flex-col p-0 md:flex-1">
+          <div className="max-h-[60vh] min-h-0 overflow-auto md:max-h-none md:flex-1">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">

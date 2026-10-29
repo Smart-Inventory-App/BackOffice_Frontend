@@ -6,8 +6,19 @@ import ChangeRow from "@/components/ChangeRow";
 
 const PAGE = 10;
 
-/** «Historial de Cambios»: todos los cambios de stock, de a 10 con «Cargar más», como en la app. */
-export default function ChangesModal({ onClose }: { onClose: () => void }) {
+/**
+ * «Historial de Cambios»: todos los cambios de stock, de a 10 con «Cargar más», como en la app. Con `endpoint` se ven los
+ * de otro usuario (el administrador desde el detalle de la cuenta).
+ */
+export default function ChangesModal({
+  onClose,
+  endpoint = "/me/changes",
+  title = "Historial de Cambios",
+}: {
+  onClose: () => void;
+  endpoint?: string;
+  title?: string;
+}) {
   const [changes, setChanges] = useState<StockChange[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -17,7 +28,7 @@ export default function ChangesModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setError(false);
     try {
-      const { data } = await api.get<StockChange[]>("/me/changes", { params: { limit: PAGE, offset } });
+      const { data } = await api.get<StockChange[]>(endpoint, { params: { limit: PAGE, offset } });
       setChanges((current) => (offset === 0 ? data : [...current, ...data]));
       setHasMore(data.length === PAGE);
     } catch {
@@ -32,7 +43,7 @@ export default function ChangesModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <Modal title="Historial de Cambios" onClose={onClose} testId="changes-modal" width="max-w-xl">
+    <Modal title={title} onClose={onClose} testId="changes-modal" width="max-w-xl">
       {changes.length === 0 && loading ? (
         <Spinner />
       ) : changes.length === 0 && !error ? (

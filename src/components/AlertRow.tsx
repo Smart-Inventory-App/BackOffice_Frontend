@@ -7,7 +7,18 @@ import ProductImage from "@/components/ProductImage";
  * Una alerta en la lista: fondo blanco, el nivel como una barra de color a la izquierda, el título y una descripción de
  * hasta dos renglones. Las del modelo predictivo llevan la marca «Predicción» fija arriba a la derecha.
  */
-export default function AlertRow({ alert, onClick, compact = false }: { alert: AlertOut; onClick: () => void; compact?: boolean }) {
+export default function AlertRow({
+  alert,
+  onClick,
+  compact = false,
+  heightClass,
+}: {
+  alert: AlertOut;
+  onClick: () => void;
+  compact?: boolean;
+  /** Un alto fijo (por ejemplo `h-28`) en lugar del habitual. */
+  heightClass?: string;
+}) {
   const tone = LEVEL_TONES[alert.level];
   return (
     <li>
@@ -15,7 +26,7 @@ export default function AlertRow({ alert, onClick, compact = false }: { alert: A
         type="button"
         data-testid={`alert-item-${alert.key}`}
         onClick={onClick}
-        className={`relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-line/60 bg-white py-3 pl-5 pr-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lift ${compact ? "min-h-[88px]" : "h-[116px]"}`}
+        className={`relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-line/60 bg-white py-3 pl-5 pr-3 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-lift ${heightClass ?? (compact ? "min-h-[88px]" : "h-[116px]")}`}
       >
         <span aria-hidden className="absolute inset-y-0 left-0 w-2" style={{ backgroundColor: tone.border }} />
         {alert.predictive && (

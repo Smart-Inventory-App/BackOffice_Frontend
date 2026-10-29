@@ -73,13 +73,35 @@ describe("Users", () => {
     expect(await screen.findByText("No se encontraron usuarios.")).toBeInTheDocument();
   });
 
+  it("la lista ocupa el alto que queda de la pantalla, igual que la de productos", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+    await screen.findByText("usuario@test.com");
+
+    const tabla = screen.getByRole("table");
+    const contenedor = tabla.parentElement!;
+    expect(contenedor.className).toContain("md:flex-1");
+    expect(contenedor.className).toContain("md:max-h-none");
+    expect(contenedor.className).toContain("overflow-auto");
+    expect(contenedor.parentElement!.className).toContain("md:flex-1");
+    expect(contenedor.parentElement!.parentElement!.className).toContain("md:h-[calc(100vh-4.5rem)]");
+  });
+
+  it("el título es «Usuarios de la Plataforma»", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+
+    expect(await screen.findByRole("heading", { name: "Usuarios de la Plataforma" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Buscar por mail o nombre de usuario…")).toBeInTheDocument();
+  });
+
   it("filtra por búsqueda y por estado", async () => {
     const user = userEvent.setup();
     mockUsersGet([appUser()]);
     renderUsers();
     await screen.findByText("usuario@test.com");
 
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "usuario");
+    await user.type(screen.getByPlaceholderText("Buscar por mail o nombre de usuario…"), "usuario");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/users/",
@@ -87,7 +109,10 @@ describe("Users", () => {
       ),
     );
 
-    await user.selectOptions(screen.getByDisplayValue("Todos"), "admin");
+    await user.click(screen.getByRole("button", { name: "Estado" }));
+    const opciones = within(screen.getByRole("listbox", { name: "Estado" })).getAllByRole("option").map((o) => o.textContent);
+    expect(opciones).toEqual(["Todos los usuarios", "Habilitados", "Deshabilitados", "Administradores"]);
+    await user.click(screen.getByRole("option", { name: "Administradores" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/users/",

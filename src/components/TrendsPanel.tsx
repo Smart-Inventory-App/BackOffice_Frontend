@@ -18,13 +18,14 @@ import {
 import { Button, Card, EmptyState, Segmented, Spinner } from "@/components/ui";
 
 const CHART_HEIGHT = 150;
+const COMPACT_CHART_HEIGHT = 96;
 const DEFAULT_PERIOD: TrendPeriod = 14;
 
 const unitsText = (n: number) => `${formatThousands(n)} ${n === 1 ? "unidad" : "unidades"}`;
 
 interface Props {
   /** De dónde salen los datos: los del usuario o los de toda la plataforma (administrador). */
-  endpoint?: "/me/metrics" | "/admin/metrics";
+  endpoint?: string;
   /** Quién consume: cambia la frase de la comparación («Consumiste...» o «Se consumió...»). */
   audience?: "user" | "platform";
   /** Qué se muestra: lo que salió del stock (consumo) o todo lo que se cargó (ingresos). */
@@ -32,6 +33,12 @@ interface Props {
   /** Si la página elige el período para varios paneles a la vez, lo pasa acá y el panel no muestra su propio selector. */
   period?: TrendPeriod;
   onPeriodChange?: (period: TrendPeriod) => void;
+  /** Sin los rankings de productos (los del detalle de un usuario muestran solo los gráficos). */
+  showTop?: boolean;
+  /** Más baja: el gráfico y los espacios se achican (el detalle de un usuario). */
+  compact?: boolean;
+  /** Los cuadros de arriba dicen «Productos consumidos» / «Productos ingresados», con letra un poco más grande. */
+  productLabels?: boolean;
 }
 
 /** Textos y datos de cada variante del panel. */
@@ -78,7 +85,17 @@ const KINDS = {
  * consumidos. Hay dos variantes: de consumo (lo que salió) y de ingresos (reposiciones y productos nuevos). Se usa
  * dentro de una ventana (inicio) y como página (Tendencias).
  */
-export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user", kind = "consumo", period: controlled, onPeriodChange }: Props) {
+export default function TrendsPanel({
+  endpoint = "/me/metrics",
+  audience = "user",
+  kind = "consumo",
+  period: controlled,
+  onPeriodChange,
+  showTop = true,
+  compact = false,
+  productLabels = false,
+}: Props) {
+  const chartHeight = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
   const [ownPeriod, setOwnPeriod] = useState<TrendPeriod>(DEFAULT_PERIOD);
   const [selected, setSelected] = useState<number | null>(null);
   const k = KINDS[kind];
@@ -136,7 +153,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
   const chosen = selected !== null ? days[selected] : undefined;
   const segments = monthSegments(days);
   // Con 90 barras se rotula una por semana
-  const labelEvery = period >= 90 ? 7 : period > 14 ? 2 : 1;
+  const labelEvery = period >= 60 ? 7 : period > 14 ? 2 : 1;
   const who =
     kind === "consumo"
       ? audience === "user" ? "Consumiste" : "Se consumió"
@@ -145,16 +162,16 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
   const goToDay = (step: number) => setSelected((index) => (index === null ? index : Math.min(days.length - 1, Math.max(0, index + step))));
 
   return (
-    <div className="space-y-5" data-testid={t("panel")}>
+    <div className={compact ? "space-y-3" : "space-y-5"} data-testid={t("panel")}>
       {picker}
 
       <div className="grid grid-cols-2 gap-3">
         {kind === "consumo" ? (
-          <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label="Consumido" tone={k.tone} wide />
+          <SummaryCard testId="trends-consumed" value={formatThousands(data.total_consumido)} label={productLabels ? "Productos consumidos" : "Consumido"} tone={k.tone} wide large={productLabels} dense={compact} />
         ) : (
-          <SummaryCard testId="incomes-total" value={formatThousands(total)} label="Ingresado" tone={k.tone} wide />
+          <SummaryCard testId="incomes-total" value={formatThousands(total)} label={productLabels ? "Productos ingresados" : "Ingresado"} tone={k.tone} wide large={productLabels} dense={compact} />
         )}
-        <SummaryCard testId={t("average")} value={formatThousands(averagePerDay(total, period))} label={k.average} tone={k.tone} twoLines />
+        <SummaryCard testId={t("average")} value={formatThousands(averagePerDay(total, period))} label={k.average} tone={k.tone} twoLines dense={compact} />
         <SummaryCard
           testId={t("peak")}
           value={peak !== null ? formatThousands(days[peak].quantity) : "–"}
@@ -162,20 +179,21 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
           labelTestId={t("peak-label")}
           tone={k.tone}
           twoLines
+          dense={compact}
         />
       </div>
 
       <ChangeBox change={change} days={period} who={who} testId={t("change")} emptyText={k.compare} />
 
-      <Card className="!p-4">
-        <h3 className="mb-3 text-center text-sm font-semibold text-ink">{k.chartTitle}</h3>
+      <Card className={compact ? "!p-3" : "!p-4"}>
+        <h3 className={`${compact ? "mb-2" : "mb-3"} text-center text-sm font-semibold text-ink`}>{k.chartTitle}</h3>
         {max === 0 ? (
           <p data-testid={t("empty-period")} className="mb-3 text-center text-sm text-muted">
             {k.empty(period)}
           </p>
         ) : null}
 
-        <div data-testid={t("chart")} className="flex items-end gap-[3px]" style={{ height: CHART_HEIGHT }}>
+        <div data-testid={t("chart")} className="flex items-end gap-[3px]" style={{ height: chartHeight }}>
           {days.map((d, i) => (
             <button
               key={d.day}
@@ -191,7 +209,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
                 className={`block w-full rounded-t-md transition ${
                   selected === i ? k.barSelected : d.quantity > 0 ? k.bar : "bg-line"
                 }`}
-                style={{ height: barHeight(d.quantity, max, CHART_HEIGHT - 10) }}
+                style={{ height: barHeight(d.quantity, max, chartHeight - 10) }}
               />
             </button>
           ))}
@@ -218,7 +236,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
           ))}
         </div>
 
-        <div className="mt-4 flex items-center gap-2 border-t border-line/60 pt-3">
+        <div className={`${compact ? "mt-2 pt-2" : "mt-4 pt-3"} flex items-center gap-2 border-t border-line/60`}>
           <button
             type="button"
             data-testid={t("day-prev")}
@@ -229,7 +247,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
           >
             <ChevronLeft size={22} />
           </button>
-          <div className="min-h-[52px] flex-1 text-center">
+          <div className={`${compact ? "min-h-[40px]" : "min-h-[52px]"} flex-1 text-center`}>
             {chosen && (
               <>
                 <p data-testid={t("day-title")} className="text-sm font-bold text-ink">
@@ -254,9 +272,9 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
         </div>
       </Card>
 
-      {kind === "ingresos" && <TopStock endpoint={endpoint} />}
+      {kind === "ingresos" && showTop && <TopStock endpoint={endpoint} />}
 
-      {kind === "consumo" && (
+      {kind === "consumo" && showTop && (
       <Card className="!p-4">
         <h3 className="mb-3 text-center text-sm font-semibold text-ink">Productos con más salidas</h3>
         {data.top_productos.length === 0 ? (
@@ -303,7 +321,7 @@ function OwnerEmail({ email, testId }: { email?: string | null; testId: string }
 }
 
 /** Los productos con más unidades en stock hoy: 5 los del usuario y 10 los de toda la plataforma (administrador). */
-function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) {
+function TopStock({ endpoint }: { endpoint: string }) {
   const platform = endpoint === "/admin/metrics";
   const url = platform ? "/admin/products/" : "/me/products";
   const limit = platform ? 10 : 5;
@@ -344,14 +362,23 @@ function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) 
   );
 }
 
-export function PeriodPicker({ period, onChange }: { period: TrendPeriod; onChange: (period: TrendPeriod) => void }) {
+export function PeriodPicker({
+  period,
+  onChange,
+  periods = TREND_PERIODS,
+}: {
+  period: TrendPeriod;
+  onChange: (period: TrendPeriod) => void;
+  /** Los períodos que se ofrecen (por defecto, 7, 14, 30 y 90 días). */
+  periods?: readonly TrendPeriod[];
+}) {
   return (
     <div className="mb-4">
       <Segmented
         testIdPrefix="trends-period"
         value={period}
         onChange={onChange}
-        options={TREND_PERIODS.map((p) => ({ key: p, label: `${p} días` }))}
+        options={periods.map((p) => ({ key: p, label: `${p} días` }))}
       />
     </div>
   );
@@ -365,6 +392,8 @@ function SummaryCard({
   tone = "text-primary",
   twoLines = false,
   wide = false,
+  large = false,
+  dense = false,
 }: {
   testId: string;
   value: string;
@@ -375,15 +404,19 @@ function SummaryCard({
   twoLines?: boolean;
   /** Ocupa los dos lugares de la fila (cuando es la única tarjeta de su fila). */
   wide?: boolean;
+  /** El rótulo con letra un poco más grande. */
+  large?: boolean;
+  /** Menos alto. */
+  dense?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl border border-line/60 bg-white px-3 py-2 text-center shadow-card ${wide ? "col-span-2" : ""}`}>
+    <div className={`rounded-2xl border border-line/60 bg-white px-3 text-center shadow-card ${dense ? "py-1" : "py-2"} ${wide ? "col-span-2" : ""}`}>
       <p data-testid={testId} className={`text-xl font-bold leading-7 ${tone}`}>
         {value}
       </p>
       <p
         data-testid={labelTestId}
-        className={`text-xs leading-4 text-muted ${twoLines ? "min-h-[2rem]" : ""}`}
+        className={`${large ? "text-sm leading-5" : "text-xs leading-4"} text-muted ${twoLines ? "min-h-[2rem]" : ""}`}
       >
         {label}
       </p>

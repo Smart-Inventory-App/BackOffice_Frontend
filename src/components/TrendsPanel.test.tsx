@@ -118,6 +118,21 @@ describe("TrendsPanel · períodos", () => {
   });
 });
 
+describe("TrendsPanel · variante normal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sin la variante compacta, el gráfico mide 150 y los cuadros dicen «Consumido» e «Ingresado»", async () => {
+    serve();
+    await open();
+
+    expect(screen.getByTestId("trends-chart").style.height).toBe("150px");
+    expect(screen.getByTestId("trends-consumed").nextElementSibling).toHaveTextContent("Consumido");
+    expect(screen.getByTestId("trends-consumed").nextElementSibling!.className).toContain("text-xs");
+  });
+});
+
 describe("TrendsPanel · resumen", () => {
   beforeEach(() => {
     vi.clearAllMocks();

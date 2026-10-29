@@ -16,10 +16,10 @@ const KIND_TONE: Record<StockChange["kind"], string> = {
 };
 
 /** Un cambio de stock: el motivo arriba, el producto, el stock antes y después, y la fecha y hora argentinas. */
-export default function ChangeRow({ change }: { change: StockChange }) {
+export default function ChangeRow({ change, className = "" }: { change: StockChange; className?: string }) {
   const { producto } = change;
   return (
-    <li data-testid={`change-${change.id}`} className="rounded-2xl border border-line/60 bg-white p-3 shadow-card">
+    <li data-testid={`change-${change.id}`} className={`rounded-2xl border border-line/60 bg-white p-3 shadow-card ${className}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${KIND_TONE[change.kind]}`}>
           {KIND_LABEL[change.kind]}
