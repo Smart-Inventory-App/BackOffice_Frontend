@@ -64,15 +64,9 @@ export default function Auditoria() {
   return (
     <div>
       <PageHeader
-        title="Auditoría"
-        subtitle="Actividad de usuarios: altas, productos cargados/editados/eliminados, logins y cambios de rol — desde la app y desde el dashboard"
+        title="Auditoría de Eventos"
+        subtitle="Actividad de usuarios de la plataforma: altas, productos cargados/editados/eliminados, logins y cambios de rol desde la app y el dashboard."
       />
-
-      <p className="mb-4 text-sm text-muted">
-        Los productos y logins se registran desde que se activó este panel — no hay historial de
-        antes de eso. Las altas de usuario sí se completan con la fecha real de registro, aunque
-        se hayan dado antes.
-      </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {(
@@ -97,10 +91,11 @@ export default function Auditoria() {
           <div className="max-h-[65vh] overflow-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                <tr className="border-b border-line text-center text-xs uppercase tracking-wide text-muted whitespace-nowrap">
                   <th className="px-5 py-3">Evento</th>
+                  <th className="px-5 py-3">Usuario</th>
                   <th className="px-5 py-3">Detalle</th>
-                  <th className="px-5 py-3 text-center">Cuándo</th>
+                  <th className="px-5 py-3">Fecha del evento</th>
                 </tr>
               </thead>
               <tbody>
@@ -108,14 +103,15 @@ export default function Auditoria() {
                   const Icon = KIND_ICONS[e.kind];
                   return (
                   <tr key={e.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 text-center whitespace-nowrap">
                       <Badge tone={KIND_TONES[e.kind]}>
                         <span className="inline-flex items-center gap-1">
                           <Icon size={14} /> {KIND_LABELS[e.kind]}
                         </span>
                       </Badge>
                     </td>
-                    <td className="px-5 py-3 text-ink">{e.description}</td>
+                    <td className="px-5 py-3 text-center text-ink">{e.target_email ?? e.actor_email ?? "—"}</td>
+                    <td className="px-5 py-3 text-left text-ink">{e.description}</td>
                     <td className="px-5 py-3 text-center text-muted whitespace-nowrap">
                       {formatDateTime(e.created_at)}
                     </td>
@@ -124,7 +120,7 @@ export default function Auditoria() {
                 })}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={4} className="px-5 py-10 text-center text-muted">
                       No hay actividad registrada todavía.
                     </td>
                   </tr>

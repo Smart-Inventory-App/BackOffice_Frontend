@@ -40,6 +40,27 @@ describe("Auditoria", () => {
     expect(screen.getAllByText("Inicio de sesión").length).toBeGreaterThan(0);
   });
 
+  it("muestra el título, las columnas y el usuario de cada evento", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: paginated([
+        entry({ id: "1", kind: "login", actor_email: "a@test.com", target_email: null }),
+        entry({ id: "2", kind: "role", actor_email: "admin@test.com", target_email: "b@test.com", description: "b@test.com recibió el rol" }),
+        entry({ id: "3", kind: "registered", actor_email: null, target_email: null, description: "alguien se registró" }),
+      ]),
+    });
+    renderWithProviders(<Auditoria />);
+    await screen.findByText("b@test.com recibió el rol");
+
+    expect(screen.getByRole("heading", { name: "Auditoría de Eventos" })).toBeInTheDocument();
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).toEqual(["Evento", "Usuario", "Detalle", "Fecha del evento"]);
+    expect(screen.getByText("a@test.com")).toBeInTheDocument();
+    expect(screen.getByText("b@test.com")).toBeInTheDocument();
+    expect(screen.queryByText("admin@test.com")).not.toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("alguien se registró")).toHaveClass("text-left");
+  });
+
   it("sin actividad, muestra el estado vacío", async () => {
     vi.mocked(api.get).mockResolvedValue({ data: paginated([]) });
     renderWithProviders(<Auditoria />);
