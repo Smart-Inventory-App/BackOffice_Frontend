@@ -29,7 +29,7 @@ Puerto: **3000** (está habilitado en el CORS del `backoffice_backend`).
 | Ruta | Descripción |
 |------|-------------|
 | `/login`, `/register`, `/forgot-password`, `/set-password` | Ingreso en dos pasos (email y contraseña, con el ojo para mostrarla), registro, **recuperar o crear la contraseña** con un código por mail (también para cuentas de Google) y la contraseña del primer ingreso de un administrador |
-| `/` | **Dashboard**. Usuario: las cuatro tarjetas de la app, gráficos interactivos, lo que hay que atender, últimos cambios y productos recientes. Administrador: el estado de la plataforma |
+| `/` | **Dashboard**. Usuario: las cuatro tarjetas de la app, gráficos interactivos, lo que hay que atender, últimos cambios y productos recientes. Administrador: el estado y el rendimiento de la plataforma sobre 7, 14, 30 o 90 días: tres tarjetas (usuarios totales, usuarios activos y productos totales), crecimiento de usuarios, actividad, entradas y salidas de productos por día, los 6 usuarios más activos, rendimiento del OCR, estado de los servicios y adopción y calidad de datos, con los datos de `GET /admin/stats/overview` |
 | `/alertas` | Centro de Alertas (usuario) |
 | `/metricas` | Tendencias, en dos mitades: **Tendencias de consumo** y **Tendencias de ingresos** (las del usuario o, para un administrador, las de toda la plataforma) |
 | `/usuarios` | Lista de usuarios, búsqueda y habilitar/deshabilitar |

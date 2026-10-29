@@ -29,38 +29,6 @@ export interface CategoryCount {
   count: number;
 }
 
-export interface DayCount {
-  day: string;
-  count: number;
-}
-
-export interface UserProductCount {
-  user_id: string;
-  email: string | null;
-  count: number;
-}
-
-export interface DashboardStats {
-  total_users: number;
-  active_users: number;
-  inactive_users: number;
-  new_users_last_7d: number;
-  total_products: number;
-  products_with_image: number;
-  low_stock_products: number;
-  expiring_soon_products: number;
-  expired_products: number;
-  total_units: number;
-  critical_alerts: number;
-  warning_alerts: number;
-  users_with_alerts: number;
-  consumed_last_7d: number;
-  restocked_last_7d: number;
-  products_by_category: CategoryCount[];
-  top_users_by_products: UserProductCount[];
-  products_per_day_last_14d: DayCount[];
-}
-
 export interface AppUser {
   id: string;
   email: string | null;
@@ -477,4 +445,44 @@ export interface SalidaOCRResult {
   procesados: number;
   fallidos: number;
   errores: string[];
+}
+
+/** El resumen de la plataforma que arma el dashboard del administrador. */
+export interface PlatformOverview {
+  period_days: number;
+  users: {
+    total: number;
+    /** Con la cuenta habilitada. */
+    active: number;
+    new_in_period: number;
+    active_in_period: number;
+    with_products: number;
+    registrations_per_day: { day: string; count: number }[];
+  };
+  activity_per_day: { day: string; logins: number; entradas: number; salidas: number }[];
+  inventory: {
+    products: number;
+    units: number;
+    with_image: number;
+    without_expiry: number;
+  };
+  most_active_users: {
+    user_id: string;
+    email: string | null;
+    name: string | null;
+    username: string | null;
+    movements: number;
+    entries: number;
+    exits: number;
+    products: number;
+    units: number;
+    is_active: boolean;
+  }[];
+  ocr: {
+    runs: number;
+    succeeded: number;
+    avg_ms: number | null;
+    avg_confidence: number | null;
+    by_type: { doc_type: string; ejecuciones: number; exitosas: number; fallidas: number }[];
+  };
 }

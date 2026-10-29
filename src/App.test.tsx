@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
+import { platformOverview } from "@/test/fixtures";
 import { AuthProvider } from "@/context/AuthContext";
 import App from "./App";
 
@@ -31,27 +32,6 @@ function renderApp(initialEntries: string[]) {
   );
 }
 
-const EMPTY_STATS = {
-  total_users: 0,
-  active_users: 0,
-  inactive_users: 0,
-  new_users_last_7d: 0,
-  total_products: 0,
-  products_with_image: 0,
-  low_stock_products: 0,
-  expiring_soon_products: 0,
-  expired_products: 0,
-  total_units: 0,
-  critical_alerts: 0,
-  warning_alerts: 0,
-  users_with_alerts: 0,
-  consumed_last_7d: 0,
-  restocked_last_7d: 0,
-  products_by_category: [],
-  top_users_by_products: [],
-  products_per_day_last_14d: [],
-};
-
 const EMPTY_MY_STATS = {
   total_products: 0,
   total_units: 0,
@@ -71,7 +51,7 @@ function mockAdmin(user: typeof ADMIN | typeof REGULAR) {
   vi.mocked(getToken).mockReturnValue("tok");
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === "/admin/auth/me") return { data: user };
-    if (url === "/admin/stats/") return { data: EMPTY_STATS };
+    if (url === "/admin/stats/overview") return { data: platformOverview() };
     if (url === "/me/stats") return { data: EMPTY_MY_STATS };
     if (url === "/me/changes") return { data: [] };
     if (url === "/me/products") return { data: { items: [], total: 0 } };
