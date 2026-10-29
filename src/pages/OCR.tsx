@@ -26,11 +26,15 @@ import type {
 } from "@/lib/types";
 import type { Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, StatCard, Spinner } from "@/components/ui";
+import FilterDropdown from "@/components/FilterDropdown";
+import { PeriodPicker } from "@/components/TrendsPanel";
+import type { TrendPeriod } from "@/lib/trends";
 import Pagination from "@/components/Pagination";
 import { apiErrorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
-const PAGE_SIZE = 15;
+// La auditoría muestra 10 escaneos por página, todos juntos
+const PAGE_SIZE = 10;
 
 const DOC_TYPES: { value: OCRDocType; label: string; hint: string; icon: typeof Tag }[] = [
   {
@@ -73,6 +77,8 @@ const ENGINES = [
   { value: "hybrid", label: "Híbrido" },
 ];
 
+const ENGINE_NAMES: Record<string, string> = { hybrid: "híbrido" };
+
 const CHECK_LABELS: Record<string, string> = {
   redis: "Redis (cola y caché)",
   engine: "Motor configurado",
@@ -99,11 +105,12 @@ function formatPct(valor: number | null | undefined): string {
  * El número solo no dice nada a quien mira; el color sí: por debajo de 0,60 la
  * lectura hay que revisarla sí o sí, y entre 0,60 y 0,85 conviene mirarla.
  */
-function ConfidenceBar({ value }: { value: number }) {
+function ConfidenceBar({ value, align = "start" }: { value: number; align?: "start" | "center" | "end" }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   const color = value >= 0.85 ? "bg-primary" : value >= 0.6 ? "bg-amber-400" : "bg-danger";
+  const justify = { start: "justify-start", center: "justify-center", end: "justify-end" }[align];
   return (
-    <div className="flex items-center gap-2">
+    <div className={`flex items-center gap-2 ${justify}`}>
       <div className="h-2 w-20 overflow-hidden rounded-full bg-canvas">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
@@ -132,7 +139,7 @@ function EngineCard({ engine }: { engine: OCREngineStatus }) {
           {engine.name}
         </span>
         <Badge tone={engine.available ? "ok" : "off"}>
-          {engine.available ? "disponible" : "caído"}
+          {engine.available ? "Disponible" : "Caído"}
         </Badge>
       </div>
       <p className="mt-2 text-xs text-muted">versión {engine.version || "desconocida"}</p>
@@ -173,9 +180,9 @@ function ServiceStatus() {
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-ink">Estado del módulo</h2>
           <Badge tone={data?.available ? "ok" : "off"}>
-            {data?.available ? "operativo" : "no disponible"}
+            {data?.available ? "Operativo" : "No disponible"}
           </Badge>
-          <span className="text-xs text-muted">motor por defecto: {engineName}</span>
+          <span className="text-xs text-muted">motor por defecto: {ENGINE_NAMES[engineName] ?? engineName}</span>
         </div>
         <div className="flex gap-2">
           <button
@@ -233,7 +240,7 @@ function ServiceStatus() {
 
 /* ── cómo viene funcionando ────────────────────────────────────────────── */
 
-function Stats({ dias, onDiasChange }: { dias: number; onDiasChange: (d: number) => void }) {
+function Stats({ dias, onDiasChange }: { dias: TrendPeriod; onDiasChange: (d: TrendPeriod) => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ["ocr-stats", dias],
     queryFn: async () => (await api.get<OCRStats>("/admin/ocr/stats", { params: { dias } })).data,
@@ -248,18 +255,8 @@ function Stats({ dias, onDiasChange }: { dias: number; onDiasChange: (d: number)
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-ink">Cómo viene funcionando</h2>
-        <div className="flex gap-2">
-          {[1, 7, 30].map((d) => (
-            <button
-              key={d}
-              onClick={() => onDiasChange(d)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                dias === d ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
-              }`}
-            >
-              {d === 1 ? "Último día" : `Últimos ${d} días`}
-            </button>
-          ))}
+        <div data-testid="ocr-period-picker" className="[&>div]:mb-0">
+          <PeriodPicker period={dias} onChange={onDiasChange} />
         </div>
       </div>
 
@@ -288,27 +285,27 @@ function Stats({ dias, onDiasChange }: { dias: number; onDiasChange: (d: number)
       <Card className="overflow-x-auto p-0">
         <table className="w-full min-w-[46rem] text-sm">
           <thead>
-            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-5 py-3">Tipo de documento</th>
-              <th className="px-5 py-3 text-right">Ejecuciones</th>
-              <th className="px-5 py-3 text-right">Fallidas</th>
-              <th className="px-5 py-3 text-right">Tiempo promedio</th>
-              <th className="px-5 py-3 text-right">Peor tiempo</th>
-              <th className="px-5 py-3">Confianza</th>
+            <tr className="border-b border-line text-center text-xs uppercase tracking-wide text-muted">
+              <th className="px-5 py-3 text-left">Tipo de documento</th>
+              <th className="px-5 py-3">Ejecuciones</th>
+              <th className="px-5 py-3">Fallidas</th>
+              <th className="px-5 py-3">Tiempo promedio</th>
+              <th className="px-5 py-3">Peor tiempo</th>
+              <th className="px-5 py-3 text-right">Confianza</th>
             </tr>
           </thead>
           <tbody>
             {(data?.por_tipo ?? []).map((t) => (
               <tr key={t.doc_type} className="border-b border-line/60 last:border-0">
                 <td className="px-5 py-3 font-medium text-ink">{DOC_LABELS[t.doc_type] ?? t.doc_type}</td>
-                <td className="px-5 py-3 text-right tabular-nums">{t.ejecuciones}</td>
-                <td className={`px-5 py-3 text-right tabular-nums ${t.fallidas ? "text-danger" : "text-muted"}`}>
+                <td className="px-5 py-3 text-center tabular-nums">{t.ejecuciones}</td>
+                <td className={`px-5 py-3 text-center tabular-nums ${t.fallidas ? "text-danger" : "text-muted"}`}>
                   {t.fallidas}
                 </td>
-                <td className="px-5 py-3 text-right tabular-nums">{formatMs(t.ms_promedio)}</td>
-                <td className="px-5 py-3 text-right tabular-nums text-muted">{formatMs(t.ms_maximo)}</td>
-                <td className="px-5 py-3">
-                  {t.confianza_promedio !== null ? <ConfidenceBar value={t.confianza_promedio} /> : "—"}
+                <td className="px-5 py-3 text-center tabular-nums">{formatMs(t.ms_promedio)}</td>
+                <td className="px-5 py-3 text-center tabular-nums text-muted">{formatMs(t.ms_maximo)}</td>
+                <td className="px-5 py-3 text-right">
+                  {t.confianza_promedio !== null ? <ConfidenceBar value={t.confianza_promedio} align="end" /> : "—"}
                 </td>
               </tr>
             ))}
@@ -323,11 +320,6 @@ function Stats({ dias, onDiasChange }: { dias: number; onDiasChange: (d: number)
         </table>
       </Card>
 
-      <p className="mt-3 text-xs text-muted">
-        Los tiempos y la confianza salen de las ejecuciones reales, no de un banco de pruebas. Un
-        código de barras vuelve en décimas y siempre acierta o falla; un comprobante tarda cerca de
-        un minuto y casi siempre necesita revisión — por eso se los mira separados.
-      </p>
     </section>
   );
 }
@@ -341,7 +333,7 @@ function ReadingDetail({ result, docType }: { result: OCRResult; docType: OCRDoc
     <div className="mt-5 space-y-4">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Badge tone={result.needs_review ? "warn" : "ok"}>
-          {result.needs_review ? "necesita revisión" : "lectura confiable"}
+          {result.needs_review ? "Necesita revisión" : "Lectura confiable"}
         </Badge>
         <span className="text-muted">
           motor <span className="font-medium text-ink">{result.engine || "—"}</span>
@@ -493,13 +485,7 @@ function Playground({ onScanned }: { onScanned: () => void }) {
       <h2 className="text-lg font-semibold text-ink">Probar el módulo</h2>
       <p className="mt-1 text-sm text-muted">
         Subí una foto y mirá exactamente qué leyó: campo por campo, con su confianza, qué motor
-        ganó y cuánto tardó. Es la forma de averiguar por qué una foto sale mal antes de que la
-        reporte un usuario.
-      </p>
-      <p className="mt-2 text-sm text-muted">
-        <strong className="text-ink">La foto no se guarda en ningún lado.</strong> Va directo al
-        coordinador, que la procesa en memoria; de la ejecución sólo queda el renglón de auditoría
-        de más abajo.
+        ganó y cuánto tardó. <strong className="font-bold text-ink">La foto no se guarda en ningún lado.</strong>
       </p>
 
       <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -620,6 +606,19 @@ function Playground({ onScanned }: { onScanned: () => void }) {
 
 /* ── auditoría ─────────────────────────────────────────────────────────── */
 
+function OrigenBadge({ origen }: { origen: string }) {
+  if (origen === "panel") return <Badge tone="neutral">Panel</Badge>;
+  // «App», en celeste verdoso
+  return (
+    <span
+      data-testid="origen-app"
+      className="inline-flex items-center rounded-full bg-[#CDEFF0] px-2.5 py-0.5 text-xs font-medium text-[#0F6E78]"
+    >
+      App
+    </span>
+  );
+}
+
 function Audit() {
   const [user, setUser] = useState("");
   const [docType, setDocType] = useState<"" | OCRDocType>("");
@@ -651,90 +650,87 @@ function Audit() {
       <p className="mt-1 text-sm text-muted">
         Un renglón por ejecución, con quién la pidió y qué salió. Es lo único que queda de cada
         escaneo: las fotos se descartan apenas termina el procesamiento, así que el resumen viene
-        recortado — alcanza para reconocer de qué lectura se trata, no para reconstruirla.
+        recortado.
       </p>
 
-      <div className="my-4 flex flex-wrap items-center gap-2">
+      {/* El buscador y los dos filtros ocupan todo el ancho: el último termina donde termina la lista */}
+      <div data-testid="ocr-audit-filters" className="my-4 flex flex-wrap items-center gap-3">
         <input
           value={user}
           onChange={(e) => setUser(e.target.value)}
           placeholder="Filtrar por usuario"
-          className="rounded-xl border border-line px-4 py-2 text-sm text-ink placeholder:text-muted"
+          className="h-10 min-w-0 flex-1 basis-64 rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none placeholder:text-muted focus:border-primary"
         />
-        <select
-          value={docType}
-          onChange={(e) => setDocType(e.target.value as "" | OCRDocType)}
-          className="rounded-xl border border-line px-3 py-2 text-sm text-ink"
-        >
-          <option value="">Todos los tipos</option>
-          {DOC_TYPES.map((d) => (
-            <option key={d.value} value={d.value}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={origen}
-          onChange={(e) => setOrigen(e.target.value as "" | "app" | "panel")}
-          className="rounded-xl border border-line px-3 py-2 text-sm text-ink"
-        >
-          <option value="">Todos los orígenes</option>
-          <option value="app">Usuarios</option>
-          <option value="panel">Este panel</option>
-        </select>
+        <div className="w-full sm:w-64">
+          <FilterDropdown
+            label="Tipo de escaneo"
+            allLabel="Todos los tipos"
+            value={docType}
+            options={DOC_TYPES.map((d) => ({ value: d.value, label: d.label }))}
+            onChange={(v) => setDocType(v as "" | OCRDocType)}
+          />
+        </div>
+        <div className="w-full sm:w-64">
+          <FilterDropdown
+            label="Origen"
+            allLabel="Todos los orígenes"
+            value={origen}
+            options={[
+              { value: "app", label: "App" },
+              { value: "panel", label: "Panel" },
+            ]}
+            onChange={(v) => setOrigen(v as "" | "app" | "panel")}
+          />
+        </div>
       </div>
 
       {isLoading ? (
         <Spinner />
       ) : (
         <Card className="p-0">
-          <div className="max-h-[60vh] overflow-auto">
-            <table className="w-full min-w-[56rem] text-sm">
-              <thead className="sticky top-0 z-10 bg-white">
-                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3">Cuándo</th>
-                  <th className="px-5 py-3">Usuario</th>
-                  <th className="px-5 py-3">Tipo</th>
-                  <th className="px-5 py-3">Motor</th>
-                  <th className="px-5 py-3 text-right">Tiempo</th>
-                  <th className="px-5 py-3">Confianza</th>
-                  <th className="px-5 py-3">Qué se leyó</th>
+          {/* Los 10 escaneos de la página, todos juntos y sin desplazarse */}
+          <div data-testid="ocr-audit-list" className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-white">
+                <tr className="border-b border-line text-center text-xs uppercase tracking-wide text-muted">
+                  <th className="px-3 py-3">Fecha</th>
+                  <th className="px-3 py-3">Usuario</th>
+                  <th className="px-3 py-3">Origen</th>
+                  <th className="px-3 py-3">Tipo de escaneo</th>
+                  <th className="px-3 py-3">Motor</th>
+                  <th className="px-3 py-3">Tiempo</th>
+                  <th className="px-3 py-3">Confianza</th>
+                  <th className="px-3 py-3">Qué se leyó</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((e) => (
-                  <tr key={e.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="whitespace-nowrap px-5 py-3 text-muted">
-                      {formatDateTime(e.created_at)}
+                  <tr key={e.id} className="border-b border-line/60 text-center last:border-0 hover:bg-canvas/60">
+                    <td className="whitespace-nowrap px-3 py-3 text-muted">{formatDateTime(e.created_at)}</td>
+                    <td className="px-3 py-3 text-ink">{e.user_email}</td>
+                    <td className="px-3 py-3">
+                      <OrigenBadge origen={e.origen} />
                     </td>
-                    <td className="px-5 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-ink">{e.user_email}</span>
-                        <Badge tone="neutral">{e.origen === "panel" ? "panel" : "app"}</Badge>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       {e.status === "failed" ? (
                         <Badge tone="off">{DOC_LABELS[e.doc_type] ?? e.doc_type} · falló</Badge>
                       ) : (
                         <span className="text-ink">{DOC_LABELS[e.doc_type] ?? e.doc_type}</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-muted">{e.engine ?? "—"}</td>
-                    <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums">
-                      {formatMs(e.processing_ms)}
+                    <td className="px-3 py-3 font-mono text-xs text-muted">{e.engine ?? "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-3 tabular-nums">{formatMs(e.processing_ms)}</td>
+                    <td className="px-3 py-3">
+                      {e.confianza !== null ? <ConfidenceBar value={e.confianza} align="center" /> : "—"}
                     </td>
-                    <td className="px-5 py-3">
-                      {e.confianza !== null ? <ConfidenceBar value={e.confianza} /> : "—"}
-                    </td>
-                    <td className="max-w-md truncate px-5 py-3 text-muted" title={e.resumen ?? ""}>
+                    <td className="max-w-xs truncate px-3 py-3 text-muted" title={e.resumen ?? ""}>
                       {e.resumen ?? "—"}
                     </td>
                   </tr>
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted">
                       No hay escaneos registrados con estos filtros.
                     </td>
                   </tr>
@@ -758,7 +754,7 @@ function Audit() {
 
 export default function OCR() {
   const queryClient = useQueryClient();
-  const [dias, setDias] = useState(7);
+  const [dias, setDias] = useState<TrendPeriod>(7);
 
   return (
     <div className="space-y-8">
