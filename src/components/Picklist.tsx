@@ -12,6 +12,8 @@ export function Picklist({
   onChange,
   required,
   emptyLabel,
+  addPlaceholder,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -19,6 +21,10 @@ export function Picklist({
   onChange: (value: string) => void;
   required?: boolean;
   emptyLabel?: string;
+  /** Texto de ayuda del campo donde se escribe una opción nueva. */
+  addPlaceholder?: string;
+  /** Largo máximo de una opción nueva. */
+  maxLength?: number;
 }) {
   const [adding, setAdding] = useState(false);
   const [newValue, setNewValue] = useState("");
@@ -38,6 +44,9 @@ export function Picklist({
           <input
             autoFocus
             value={newValue}
+            placeholder={addPlaceholder}
+            maxLength={maxLength}
+            aria-label={`${label} nueva`}
             onChange={(e) => setNewValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {

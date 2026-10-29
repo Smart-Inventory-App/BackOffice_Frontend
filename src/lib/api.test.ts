@@ -106,3 +106,36 @@ describe("api / getToken / setToken", () => {
     ).rejects.toBe(error);
   });
 });
+
+describe("api · aviso de sesión expirada", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  const rejected = (api: any, error: unknown) => api.interceptors.response.handlers[0].rejected(error);
+
+  it("un 401 con una sesión abierta deja anotado que expiró", async () => {
+    const { api, setToken } = await import("./api");
+    setToken("mi-token");
+    delete (window as any).location;
+    (window as any).location = { pathname: "/productos", href: "" };
+
+    await expect(rejected(api, { response: { status: 401 } })).rejects.toBeDefined();
+
+    const { sessionExpired } = await import("./sessionExpired");
+    expect(sessionExpired()).toBe(true);
+  });
+
+  it("un 401 sin sesión (por ejemplo una contraseña incorrecta) no lo anota", async () => {
+    const { api } = await import("./api");
+    delete (window as any).location;
+    (window as any).location = { pathname: "/login", href: "" };
+
+    await expect(rejected(api, { response: { status: 401 } })).rejects.toBeDefined();
+
+    const { sessionExpired } = await import("./sessionExpired");
+    expect(sessionExpired()).toBe(false);
+  });
+});

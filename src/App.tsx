@@ -4,6 +4,8 @@ import AdminShell from "./components/AdminShell";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import SetPassword from "./pages/SetPassword";
+import ForgotPassword from "./pages/ForgotPassword";
+import ChangePassword from "./pages/ChangePassword";
 import Dashboard from "./pages/Dashboard";
 import MyDashboard from "./pages/MyDashboard";
 import Users from "./pages/Users";
@@ -26,6 +28,8 @@ function Protected({ children }: { children: JSX.Element }) {
     );
   }
   if (!admin) return <Navigate to="/login" replace />;
+  // Con una contraseña inicial que le dio un administrador no se ve nada más hasta cambiarla
+  if (admin.must_change_password) return <ChangePassword />;
   return <AdminShell>{children}</AdminShell>;
 }
 
@@ -37,6 +41,7 @@ function AdminOnly({ children }: { children: JSX.Element }) {
     );
   }
   if (!admin) return <Navigate to="/login" replace />;
+  if (admin.must_change_password) return <ChangePassword />;
   if (!effectiveIsAdmin) return <Navigate to="/" replace />;
   return <AdminShell>{children}</AdminShell>;
 }
@@ -48,6 +53,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/set-password" element={<SetPassword />} />
       <Route
         path="/"

@@ -64,7 +64,8 @@ describe("Users", () => {
     renderUsers();
     expect(await screen.findByText("usuario@test.com")).toBeInTheDocument();
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
-    expect(screen.getByText("Activo")).toBeInTheDocument();
+    expect(screen.getByText("Habilitado")).toBeInTheDocument();
+    expect(screen.queryByText("Activo")).not.toBeInTheDocument();
   });
 
   it("sin usuarios, muestra el estado vacío", async () => {
@@ -73,13 +74,63 @@ describe("Users", () => {
     expect(await screen.findByText("No se encontraron usuarios.")).toBeInTheDocument();
   });
 
+  it("la lista ocupa el alto que queda de la pantalla, igual que la de productos", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+    await screen.findByText("usuario@test.com");
+
+    const tabla = screen.getByRole("table");
+    const contenedor = tabla.parentElement!;
+    expect(contenedor.className).toContain("md:flex-1");
+    expect(contenedor.className).toContain("md:max-h-none");
+    expect(contenedor.className).toContain("overflow-auto");
+    expect(contenedor.parentElement!.className).toContain("md:flex-1");
+    expect(contenedor.parentElement!.parentElement!.className).toContain("md:h-[calc(100vh-4.5rem)]");
+  });
+
+  it("arriba a la derecha, paralelo al título, dice cuántos usuarios hay y cuántos están habilitados", async () => {
+    vi.mocked(api.get).mockImplementation(async () => ({ data: { items: [appUser()], total: 1385, enabled: 88 } }));
+    renderUsers();
+
+    const resumen = await screen.findByTestId("users-summary");
+    expect(screen.getByTestId("users-summary-total")).toHaveTextContent("1.385 Usuarios");
+    expect(screen.getByTestId("users-summary-enabled")).toHaveTextContent("88 Habilitados");
+    const encabezado = screen.getByRole("heading", { name: "Usuarios de la Plataforma" }).parentElement!.parentElement!;
+    expect(encabezado.className).toContain("justify-between");
+    expect(encabezado.lastElementChild).toBe(resumen);
+  });
+
+  it("en singular dice «1 Usuario | 1 Habilitado»", async () => {
+    vi.mocked(api.get).mockImplementation(async () => ({ data: { items: [appUser()], total: 1, enabled: 1 } }));
+    renderUsers();
+
+    expect(await screen.findByTestId("users-summary-total")).toHaveTextContent("1 Usuario");
+    expect(screen.getByTestId("users-summary-enabled")).toHaveTextContent("1 Habilitado");
+    expect(screen.getByTestId("users-summary-total")).not.toHaveTextContent("1 Usuarios");
+  });
+
+  it("si el servidor no manda el conteo de habilitados, muestra cero", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+
+    expect(await screen.findByTestId("users-summary-enabled")).toHaveTextContent("0 Habilitados");
+  });
+
+  it("el título es «Usuarios de la Plataforma»", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+
+    expect(await screen.findByRole("heading", { name: "Usuarios de la Plataforma" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Buscar por mail o nombre de usuario…")).toBeInTheDocument();
+  });
+
   it("filtra por búsqueda y por estado", async () => {
     const user = userEvent.setup();
     mockUsersGet([appUser()]);
     renderUsers();
     await screen.findByText("usuario@test.com");
 
-    await user.type(screen.getByPlaceholderText("Buscar por email…"), "usuario");
+    await user.type(screen.getByPlaceholderText("Buscar por mail o nombre de usuario…"), "usuario");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/users/",
@@ -87,7 +138,10 @@ describe("Users", () => {
       ),
     );
 
-    await user.selectOptions(screen.getByDisplayValue("Todos"), "admin");
+    await user.click(screen.getByRole("button", { name: "Estado" }));
+    const opciones = within(screen.getByRole("listbox", { name: "Estado" })).getAllByRole("option").map((o) => o.textContent);
+    expect(opciones).toEqual(["Todos los usuarios", "Habilitados", "Deshabilitados", "Administradores"]);
+    await user.click(screen.getByRole("option", { name: "Administradores" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/users/",
@@ -125,7 +179,7 @@ describe("Users", () => {
     expect(screen.getByText("Deshabilitar usuario")).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText(/actividad sospechosa/), "cuenta duplicada");
 
-    const modal = screen.getByText("Deshabilitar usuario").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Deshabilitar usuario").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Deshabilitar" }));
 
     await waitFor(() =>
@@ -162,7 +216,7 @@ describe("Users", () => {
     expect(screen.getByText("Admin")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Quitar admin/ }));
-    const modal = screen.getByText("Quitar administrador").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Quitar administrador").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Quitar admin" }));
 
     expect(
@@ -228,7 +282,7 @@ describe("Users", () => {
     await screen.findByText("u3");
 
     await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
-    expect(within(screen.getByText("Deshabilitar usuario").closest(".rounded-2xl") as HTMLElement).getByText("u3")).toBeInTheDocument();
+    expect(within(screen.getByText("Deshabilitar usuario").closest(".rounded-3xl") as HTMLElement).getByText("u3")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     await user.click(screen.getByRole("button", { name: /Quitar admin/ }));

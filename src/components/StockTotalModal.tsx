@@ -18,6 +18,8 @@ interface Props {
   userId?: string;
   /** Si se indica, se abre directamente con el stock total de ese producto. */
   initial?: StockTotalTarget | null;
+  /** «admin» cuenta lo de toda la plataforma (o de un usuario); «me» solo los productos de quien mira. */
+  scope?: "admin" | "me";
 }
 
 const MIN_QUERY = 2;
@@ -26,7 +28,8 @@ const units = (n: number) => `${n.toLocaleString("es-AR")} ${n === 1 ? "unidad" 
 
 // Ventana "Stock total de producto": se busca un producto por nombre y se ve la suma del stock de todos los productos
 // con ese nombre y categoría (de cualquier marca). El nombre y el resumen quedan fijos; solo se desplaza el listado.
-export default function StockTotalModal({ open, onClose, userId, initial }: Props) {
+export default function StockTotalModal({ open, onClose, userId, initial, scope = "admin" }: Props) {
+  const base = scope === "me" ? "/me/products" : "/admin/products";
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<AdminProductGroupSummary[]>([]);
   const [searched, setSearched] = useState(false);
@@ -43,7 +46,7 @@ export default function StockTotalModal({ open, onClose, userId, initial }: Prop
     setLoading(true);
     setError(null);
     api
-      .get<AdminProductGroupDetail>("/admin/products/group", {
+      .get<AdminProductGroupDetail>(`${base}/group`, {
         params: { nombre: key.nombre, categoria: key.categoria, ...(userId ? { user_id: userId } : {}) },
       })
       .then(({ data }) => {
@@ -84,7 +87,7 @@ export default function StockTotalModal({ open, onClose, userId, initial }: Prop
     let cancelled = false;
     const handle = setTimeout(() => {
       api
-        .get<AdminProductGroupSummary[]>("/admin/products/groups", {
+        .get<AdminProductGroupSummary[]>(`${base}/groups`, {
           params: { q, ...(userId ? { user_id: userId } : {}) },
         })
         .then(({ data }) => {
@@ -137,7 +140,7 @@ export default function StockTotalModal({ open, onClose, userId, initial }: Prop
         role="dialog"
         aria-label="Stock total de producto"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white p-6 shadow-xl"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl bg-white p-6 shadow-lift"
       >
         <div className="flex items-center justify-between">
           <h3 className="inline-flex items-center gap-2 text-lg font-semibold">

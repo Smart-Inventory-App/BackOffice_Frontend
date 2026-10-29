@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import Products from "./Products";
-import type { AdminProduct, Paginated } from "@/lib/types";
+import type { AdminProduct, AlertOut, Paginated } from "@/lib/types";
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn(), delete: vi.fn() },
@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 
 const OPCIONES = {
   categorias: ["Almacén"],
+  marcas: ["La Merced"],
   owners: [{ user_id: "u1", email: "duenio@test.com" }],
 };
 
@@ -42,8 +43,48 @@ function mockGets(items: AdminProduct[]) {
   vi.mocked(api.get).mockImplementation(async (url: string) => {
     if (url === "/admin/products/filters/options") return { data: OPCIONES };
     if (url === "/admin/products/") return { data: paginated(items) };
+    if (url === "/admin/products/stock-total") {
+      return { data: { stock_total: items.reduce((n, p) => n + p.stock, 0), products: items.length } };
+    }
     throw new Error(`GET no mockeado: ${url}`);
   });
+}
+
+
+// Los filtros son desplegables propios: se abre el botón y se elige una opción del menú
+// Algunos filtros se llaman igual que una columna que se ordena: el desplegable es el que abre un menú
+const filtroBtn = (name: string) => screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-haspopup"))!;
+const ordenBtn = (name: string) => screen.getAllByRole("button", { name }).find((b) => !b.hasAttribute("aria-haspopup"))!;
+
+async function elegir(user: ReturnType<typeof userEvent.setup>, filtro: string, opcion: string) {
+  await user.click(filtroBtn(filtro));
+  await user.click(within(screen.getByRole("listbox", { name: filtro })).getByRole("option", { name: opcion }));
+}
+
+function alerta(overrides: Partial<AlertOut> = {}): AlertOut {
+  return {
+    key: "expiry-1",
+    product_id: 1,
+    type: "expiry",
+    level: "critical",
+    origin: "rule",
+    days_to_expiry: 1,
+    days_until_stockout: null,
+    units_wasted: null,
+    suggested_qty: null,
+    limit_days: 7,
+    rule_scope: "general",
+    predictive: false,
+    product_name: "Yerba Mate",
+    product_brand: "La Merced",
+    product_category: "Almacén",
+    product_location: null,
+    product_stock: 5,
+    product_expiry: "2026-11-05",
+    image_url: null,
+    user_id: "u1",
+    ...overrides,
+  };
 }
 
 describe("Products (admin)", () => {
@@ -56,7 +97,9 @@ describe("Products (admin)", () => {
     renderWithProviders(<Products />);
     expect(await screen.findByText("Yerba Mate")).toBeInTheDocument();
     expect(screen.getAllByText("duenio@test.com").length).toBeGreaterThan(0);
-    expect(screen.getByText("7791234567890")).toBeInTheDocument();
+    // en el listado solo van el nombre y la marca, sin el código de barras
+    expect(screen.getByText("La Merced")).toBeInTheDocument();
+    expect(screen.queryByText("7791234567890")).not.toBeInTheDocument();
   });
 
   it("sin productos, muestra el estado vacío", async () => {
@@ -65,13 +108,13 @@ describe("Products (admin)", () => {
     expect(await screen.findByText("No se encontraron productos.")).toBeInTheDocument();
   });
 
-  it("filtra por búsqueda, categoría, dueño, vencidos, bajo stock y con imagen", async () => {
+  it("filtra por búsqueda, categoría, marca, usuario y alertas", async () => {
     const user = userEvent.setup();
     mockGets([product()]);
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
 
-    await user.type(screen.getByPlaceholderText("Buscar por nombre o marca…"), "Yerba");
+    await user.type(screen.getByPlaceholderText("Buscar por nombre, marca o mail de usuario…"), "Yerba");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/products/",
@@ -79,7 +122,7 @@ describe("Products (admin)", () => {
       ),
     );
 
-    await user.selectOptions(screen.getByDisplayValue("Todos los usuarios"), "u1");
+    await elegir(user, "Usuario", "duenio@test.com");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/products/",
@@ -87,24 +130,22 @@ describe("Products (admin)", () => {
       ),
     );
 
-    await user.selectOptions(screen.getByDisplayValue("Todas las categorías"), "Almacén");
-    await user.selectOptions(screen.getByDisplayValue("Vencimiento: todos"), "no");
-    await user.click(screen.getByLabelText("Bajo stock"));
-    await user.click(screen.getByLabelText("Solo con imagen"));
+    await elegir(user, "Categoría", "Almacén");
+    await elegir(user, "Marca", "La Merced");
+    await elegir(user, "Nivel de alerta", "Críticas");
 
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/products/",
         expect.objectContaining({
-          params: expect.objectContaining({
-            categoria: "Almacén",
-            vencido: false,
-            bajo_stock: true,
-            only_with_image: true,
-          }),
+          params: expect.objectContaining({ categoria: "Almacén", marca: "La Merced", alert_level: "critical" }),
         }),
       ),
     );
+    // Ya no están los filtros de vencimiento, stock bajo ni imagen
+    expect(screen.queryByLabelText("Stock bajo")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Solo con imagen")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Vencimiento: todos")).not.toBeInTheDocument();
   });
 
   it("ordena por columnas ciclando asc/desc/sin orden", async () => {
@@ -129,18 +170,21 @@ describe("Products (admin)", () => {
     );
   });
 
-  it("marca vencidos y por vencer con el badge correspondiente", async () => {
+  it("muestra el vencimiento en formato argentino y el nivel de alerta que calcula el servidor", async () => {
     mockGets([
-      product({ id: 1, nombre: "Vencido", vencimiento: "2000-01-01" }),
-      product({ id: 2, nombre: "PorVencer", vencimiento: new Date(Date.now() + 86400000).toISOString().slice(0, 10) }),
+      product({ id: 1, nombre: "Vencido", vencimiento: "2000-01-01", alert_level: "critical", alert_types: ["expiry"] }),
+      product({ id: 2, nombre: "PorVencer", vencimiento: "2026-11-02", alert_level: "warning", alert_types: ["expiry"] }),
       product({ id: 3, nombre: "Ok", vencimiento: "2999-01-01" }),
     ]);
     renderWithProviders(<Products />);
     await screen.findByText("Vencido");
 
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows[0]).toHaveTextContent("2000-01-01");
-    expect(rows[2]).toHaveTextContent("2999-01-01");
+    expect(rows[0]).toHaveTextContent("01/01/2000");
+    expect(rows[2]).toHaveTextContent("01/01/2999");
+    expect(screen.getByTestId("product-alert-1")).toHaveTextContent("Crítica");
+    expect(screen.getByTestId("product-alert-2")).toHaveTextContent("Advertencia");
+    expect(screen.getByTestId("product-alert-3")).toHaveTextContent("—");
   });
 
   it("muestra el id del dueño cuando no tiene email", async () => {
@@ -180,7 +224,7 @@ describe("Products (admin)", () => {
     expect(screen.queryByText("Eliminar producto")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Eliminar/ }));
-    const modal = screen.getByText("Eliminar producto").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Eliminar producto").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/admin/products/1"));
   });
@@ -197,7 +241,7 @@ describe("Products (admin)", () => {
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
     await user.click(screen.getByRole("button", { name: /Eliminar/ }));
-    const modal = screen.getByText("Eliminar producto").closest(".rounded-2xl") as HTMLElement;
+    const modal = screen.getByText("Eliminar producto").closest(".rounded-3xl") as HTMLElement;
     await user.click(within(modal).getByRole("button", { name: "Eliminar" }));
 
     expect(await within(modal).findByRole("alert")).toHaveTextContent("No se pudo borrar por una restricción.");
@@ -233,64 +277,241 @@ describe("Products (admin)", () => {
   });
 });
 
-describe("Products (admin) - stock total", () => {
-  const GRUPO = {
-    nombre: "Yerba Mate",
-    categoria: "Almacén",
-    stock_total: 8,
-    lotes: 2,
-    usuarios: 1,
-    proximo_vencimiento: null,
-    productos: [product({ id: 1, stock: 5 }), product({ id: 2, stock: 3, marca: "Taragüi" })],
-  };
-
-  function mockWithGroup() {
-    vi.mocked(api.get).mockImplementation(async (url: string) => {
-      if (url === "/admin/products/filters/options") return { data: OPCIONES };
-      if (url === "/admin/products/") return { data: paginated([product()]) };
-      if (url === "/admin/products/group") return { data: GRUPO };
-      if (url === "/admin/products/groups") return { data: [GRUPO] };
-      throw new Error(`GET no mockeado: ${url}`);
-    });
-  }
-
+describe("Products (admin) - formato del inventario", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("desde un producto de la tabla abre su stock total, acotado al dueño de ese producto", async () => {
-    const user = userEvent.setup();
-    mockWithGroup();
+  it("tiene el título y la descripción de la plataforma, y no tiene el botón «Stock total»", async () => {
+    mockGets([product()]);
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
 
-    await user.click(screen.getByTitle("Ver el stock total de este producto"));
-
-    expect(await screen.findByTestId("stock-total-value")).toHaveTextContent("8 unidades");
-    expect(api.get).toHaveBeenCalledWith("/admin/products/group", {
-      params: { nombre: "Yerba Mate", categoria: "Almacén", user_id: "u1" },
-    });
+    expect(screen.getByRole("heading", { name: "Productos de la Plataforma" })).toBeInTheDocument();
+    expect(screen.getByText("Datos de cada producto cargado por los usuarios de la aplicación")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Stock total/ })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Ver el stock total de este producto")).not.toBeInTheDocument();
   });
 
-  it("desde el botón de arriba busca por nombre en todos los usuarios, o solo en el dueño elegido", async () => {
+  it("arriba muestra las unidades y los productos totales, con la búsqueda y los filtros", async () => {
     const user = userEvent.setup();
-    mockWithGroup();
+    mockGets([product({ stock: 5 }), product({ id: 2, nombre: "Fideos", stock: 7 })]);
+    renderWithProviders(<Products />);
+
+    expect(await screen.findByTestId("products-total-value")).toHaveTextContent("12 Unidades");
+    expect(screen.getByTestId("products-total-products")).toHaveTextContent("2 Productos");
+    await elegir(user, "Marca", "La Merced");
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/admin/products/stock-total", { params: { marca: "La Merced" } }),
+    );
+  });
+
+  it("en singular dice «1 Unidad» y «1 Producto»", async () => {
+    mockGets([product({ stock: 1 })]);
+    renderWithProviders(<Products />);
+
+    expect(await screen.findByTestId("products-total-value")).toHaveTextContent("1 Unidad");
+    expect(screen.getByTestId("products-total-products")).toHaveTextContent("1 Producto");
+  });
+
+  it("los títulos de todas las columnas están en mayúscula, también los de las que se ordenan", async () => {
+    mockGets([product()]);
     renderWithProviders(<Products />);
     await screen.findByText("Yerba Mate");
 
-    await user.click(screen.getByRole("button", { name: "Stock total" }));
-    await user.type(screen.getByLabelText("Nombre del producto"), "yer");
-    await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/admin/products/groups", { params: { q: "yer" } }),
+    const titulos = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(titulos).toEqual(["Imagen", "Producto", "Usuario", "Categoría", "Stock", "Vencimiento", "Alerta", "Acciones"]);
+    // Los de texto simple la heredan de la fila; los botones de orden la piden ellos mismos
+    expect(screen.getAllByRole("columnheader")[0].closest("tr")!.className).toContain("uppercase");
+    ["Producto", "Categoría", "Stock", "Vencimiento"].forEach((name) =>
+      expect(ordenBtn(name).className).toContain("uppercase"),
     );
-    expect(screen.getByText(/todos los usuarios de la plataforma/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cerrar" }));
+  });
 
-    await user.selectOptions(screen.getByDisplayValue("Todos los usuarios"), "u1");
-    await user.click(screen.getByRole("button", { name: "Stock total" }));
-    await user.type(screen.getByLabelText("Nombre del producto"), "yer");
+  it("al tocar un producto abre su información con el mail del usuario arriba de todo y su alerta", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ alert_level: "critical", alert_types: ["expiry"], alerts: [alerta()] })]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-row-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    expect(within(modal).getByTestId("product-detail-owner")).toHaveTextContent("duenio@test.com");
+    expect(within(modal).getByTestId("product-detail-name")).toHaveTextContent("Yerba Mate");
+    // el mail es lo primero que se ve
+    expect(modal.innerHTML.indexOf("product-detail-owner")).toBeLessThan(modal.innerHTML.indexOf("product-detail-name"));
+    // un usuario habilitado no lleva insignia ni va en rojo
+    expect(within(modal).queryByText("Usuario deshabilitado")).not.toBeInTheDocument();
+    expect(within(modal).getByText("duenio@test.com").className).not.toContain("text-danger");
+  });
+
+  it("la alerta del producto se ve con su color y su información, debajo del stock", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ alert_level: "critical", alerts: [alerta()] })]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-row-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    const caja = within(modal).getByTestId("product-detail-alert-0");
+    expect(within(modal).getByTestId("product-detail-alert-title-0")).toHaveTextContent("Vence mañana");
+    expect(caja).toHaveTextContent("Alerta crítica");
+    expect(caja.style.borderColor).not.toBe("");
+    expect(caja.style.background).not.toBe("");
+    const html = modal.innerHTML;
+    expect(html.indexOf("product-detail-stock")).toBeLessThan(html.indexOf("product-detail-alert-0"));
+    expect(html.indexOf("product-detail-alert-0")).toBeLessThan(html.indexOf("product-detail-ubicacion"));
+  });
+
+  it("la alerta trae la explicación completa y, si es una predicción, la medalla «Predicción»", async () => {
+    const user = userEvent.setup();
+    mockGets([
+      product({
+        alerts: [
+          alerta(),
+          alerta({ key: "stock-1", type: "stock_low_coverage", level: "warning", predictive: true, days_until_stockout: 3, days_to_expiry: null, limit_days: 7, suggested_qty: 4 }),
+        ],
+      }),
+    ]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-row-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    const vencimiento = within(modal).getByTestId("product-detail-alert-0");
+    expect(vencimiento).toHaveTextContent("Queda");
+    expect(vencimiento).toHaveTextContent("Te avisamos cuando faltan menos de 7 días");
+    expect(within(vencimiento).queryByText("Predicción")).not.toBeInTheDocument();
+    const stock = within(modal).getByTestId("product-detail-alert-1");
+    expect(within(stock).getByTestId("product-detail-alert-prediction-1")).toHaveTextContent("Predicción");
+    expect(stock).toHaveTextContent("Se sugiere reponer".replace("Se sugiere", "se sugiere"));
+  });
+
+  it("los filtros ocupan todo el ancho: el último termina donde termina el botón «Excel»", async () => {
+    mockGets([product()]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    const filtros = screen.getByTestId("products-filters");
+    expect(filtros.className).toContain("md:grid-cols-4");
+    expect(within(filtros).getAllByRole("button")).toHaveLength(4);
+    // la fila de arriba (buscador y exportación) y la de los filtros comparten el mismo contenedor, sin columnas extra
+    expect(filtros.parentElement!.contains(screen.getByRole("button", { name: /Excel/ }))).toBe(true);
+    expect(filtros.className).not.toContain("auto");
+  });
+
+  it("una advertencia dice «Advertencia» y la ventana del administrador es más ancha", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ alert_level: "warning", alerts: [alerta({ level: "warning", days_to_expiry: 5 })] })]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-row-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    expect(within(modal).getByTestId("product-detail-alert-0")).toHaveTextContent("Advertencia");
+    expect(within(modal).getByTestId("product-detail-alert-title-0")).toHaveTextContent("Vence en 5 días");
+    expect(modal.parentElement!.outerHTML).toContain("max-w-xl");
+  });
+
+  it("un producto sin alerta no muestra la fila de alerta, y sin mail se ve el id del usuario", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ owner: { user_id: "u-sin-email", email: null } })]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-open-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    expect(within(modal).queryByTestId("product-detail-alert")).not.toBeInTheDocument();
+    expect(within(modal).getByTestId("product-detail-owner")).toHaveTextContent("u-sin-email");
+    expect(within(modal).getAllByText("Usando la regla general del usuario").length).toBeGreaterThan(0);
+    await user.click(within(modal).getByRole("button", { name: "Volver" }));
+    expect(screen.queryByTestId("product-detail")).not.toBeInTheDocument();
+  });
+
+  it("eliminar desde la fila no abre la información del producto", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("button", { name: /Eliminar/ }));
+
+    expect(screen.queryByTestId("product-detail")).not.toBeInTheDocument();
+    expect(screen.getByText("Eliminar producto")).toBeInTheDocument();
+  });
+
+  it("si el usuario está deshabilitado, su mail va en rojo en el listado", async () => {
+    mockGets([
+      product({ id: 1, owner: { user_id: "u1", email: "duenio@test.com", is_active: false } }),
+      product({ id: 2, nombre: "Fideos", owner: { user_id: "u2", email: "otro@test.com", is_active: true } }),
+    ]);
+    renderWithProviders(<Products />);
+
+    expect(await screen.findByTestId("product-owner-1")).toHaveClass("text-danger");
+    expect(screen.getByTestId("product-owner-2")).not.toHaveClass("text-danger");
+  });
+
+  it("en la información del producto, el mail de un usuario deshabilitado va en rojo con la insignia «Usuario deshabilitado» a la derecha", async () => {
+    const user = userEvent.setup();
+    mockGets([product({ owner: { user_id: "u1", email: "duenio@test.com", is_active: false } })]);
+    renderWithProviders(<Products />);
+
+    await user.click(await screen.findByTestId("product-row-1"));
+
+    const modal = await screen.findByTestId("product-detail");
+    const owner = within(modal).getByTestId("product-detail-owner");
+    expect(within(owner).getByText("duenio@test.com").className).toContain("text-danger");
+    const insignia = within(owner).getByText("Usuario deshabilitado");
+    expect(insignia).toBeInTheDocument();
+    expect(owner.innerHTML.indexOf("duenio@test.com")).toBeLessThan(owner.innerHTML.indexOf("Usuario deshabilitado"));
+  });
+
+  it("los desplegables muestran las primeras 10 opciones y se desplazan para llegar al resto", async () => {
+    const user = userEvent.setup();
+    const owners = Array.from({ length: 25 }, (_, i) => ({ user_id: `u${i}`, email: `usuario${i}@test.com` }));
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/products/filters/options") return { data: { ...OPCIONES, owners } };
+      if (url === "/admin/products/") return { data: paginated([product()]) };
+      if (url === "/admin/products/stock-total") return { data: { stock_total: 5, products: 1 } };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(screen.getByRole("button", { name: "Usuario" }));
+
+    const menu = screen.getByRole("listbox", { name: "Usuario" });
+    // 10 filas de 2,5 rem a la vista; el resto, con scroll
+    expect(menu.style.maxHeight).toBe("25rem");
+    expect(menu.className).toContain("overflow-y-auto");
+    expect(within(menu).getAllByRole("option")).toHaveLength(26);
+    await user.click(within(menu).getByRole("option", { name: "usuario24@test.com" }));
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Usuario" })).toHaveTextContent("usuario24@test.com");
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/admin/products/groups", { params: { q: "yer", user_id: "u1" } }),
+      expect(api.get).toHaveBeenCalledWith("/admin/products/", expect.objectContaining({ params: expect.objectContaining({ user_id: "u24" }) })),
     );
+  });
+
+  it("el desplegable se cierra con Escape o al tocar afuera, y volver a elegir «Todos» quita el filtro", async () => {
+    const user = userEvent.setup();
+    mockGets([product()]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Yerba Mate");
+
+    await elegir(user, "Marca", "La Merced");
+    expect(screen.getByRole("button", { name: "Marca" })).toHaveAttribute("title", "La Merced");
+    await user.click(screen.getByRole("button", { name: "Marca" }));
+    expect(screen.getByRole("option", { name: "La Merced" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.click(filtroBtn("Categoría"));
+    expect(screen.getByRole("listbox", { name: "Categoría" })).toBeInTheDocument();
+    await user.click(document.body);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await elegir(user, "Marca", "Todas las marcas");
+    expect(screen.getByRole("button", { name: "Marca" })).toHaveTextContent("Todas las marcas");
   });
 });

@@ -1,31 +1,26 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Barcode, Pencil, Download, History } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Download, History, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { limpiarCodigo } from "@/lib/barcode";
 import { downloadFile } from "@/lib/download";
-import type { MyProduct, Paginated } from "@/lib/types";
-import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import type { MyProduct, MyProfile, Paginated } from "@/lib/types";
+import { Card, ConfirmDialog, Notice, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
+import FilterDropdown, { FilterSelect } from "@/components/FilterDropdown";
 import ProductImage from "@/components/ProductImage";
-import { truncate } from "@/lib/format";
+import ImageUpload from "@/components/ImageUpload";
+import ProductDetailModal from "@/components/ProductDetailModal";
+import { formatDate, formatThousands, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import HistorialModal from "@/components/HistorialModal";
 import { apiErrorMessage } from "@/lib/errors";
+import { invalidateInventory } from "@/lib/queries";
+import { OPTION_MAX } from "@/pages/Cargar";
 
 type SortField = "nombre" | "stock" | "vencimiento" | "categoria";
-
-function isExpiringSoon(date: string | null): boolean {
-  if (!date) return false;
-  const d = new Date(date).getTime();
-  const now = Date.now();
-  return d >= now && d <= now + 7 * 24 * 60 * 60 * 1000;
-}
-function isExpired(date: string | null): boolean {
-  if (!date) return false;
-  return new Date(date).getTime() < Date.now();
-}
 
 const EDIT_EMPTY = {
   nombre: "",
@@ -43,15 +38,28 @@ const EDIT_EMPTY = {
 
 export default function MyProducts() {
   const qc = useQueryClient();
+  // Desde los gráficos del dashboard se llega con un filtro ya elegido; entrando por el menú se ve todo
+  const initial = (useLocation().state ?? {}) as {
+    categoria?: string;
+    ubicacion?: string;
+    marca?: string;
+    vencido?: "si" | "no";
+    bajoStock?: boolean;
+    porVencer?: boolean;
+  };
   const [search, setSearch] = useState("");
-  const [categoria, setCategoria] = useState("");
-  const [vencido, setVencido] = useState<"" | "si" | "no">("");
-  const [bajoStock, setBajoStock] = useState(false);
+  const [categoria, setCategoria] = useState(initial.categoria ?? "");
+  const [ubicacion, setUbicacion] = useState(initial.ubicacion ?? "");
+  const [marca, setMarca] = useState(initial.marca ?? "");
+  const [vencido, setVencido] = useState<"" | "si" | "no">(initial.vencido ?? "");
+  const [bajoStock, setBajoStock] = useState(initial.bajoStock ?? false);
+  const [porVencer, setPorVencer] = useState(initial.porVencer ?? false);
   const [sortBy, setSortBy] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<MyProduct | null>(null);
   const [historialProduct, setHistorialProduct] = useState<MyProduct | null>(null);
+  const [detail, setDetail] = useState<MyProduct | null>(null);
   const [editForm, setEditForm] = useState(EDIT_EMPTY);
   const [editError, setEditError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -60,35 +68,52 @@ export default function MyProducts() {
   const [bulkUbicacion, setBulkUbicacion] = useState("");
   const [bulkMarca, setBulkMarca] = useState("");
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<MyProduct | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => setPage(0), [search, categoria, vencido, bajoStock]);
+  useEffect(() => setPage(0), [search, categoria, ubicacion, marca, vencido, bajoStock, porVencer]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["my-products-filter-options"],
     queryFn: async () => {
-      const { data } = await api.get<{ categorias: string[]; ubicaciones: string[] }>(
+      const { data } = await api.get<{ categorias: string[]; ubicaciones: string[]; marcas?: string[] }>(
         "/me/products/filters/options",
       );
       return data;
     },
   });
   const categoriaOptions = filterOptions?.categorias ?? [];
+  const ubicacionOptions = filterOptions?.ubicaciones ?? [];
+  const marcaOptions = filterOptions?.marcas ?? [];
   const [editCategoriaOptions, setEditCategoriaOptions] = useState<string[]>([]);
   const [editUbicacionOptions, setEditUbicacionOptions] = useState<string[]>([]);
+  const [editMarcaOptions, setEditMarcaOptions] = useState<string[]>([]);
 
   useEffect(() => {
     if (filterOptions) {
       setEditCategoriaOptions(filterOptions.categorias);
       setEditUbicacionOptions(filterOptions.ubicaciones);
+      setEditMarcaOptions(filterOptions.marcas ?? []);
     }
   }, [filterOptions]);
+
+  // Las reglas generales del perfil, para la ventana de información del producto
+  const profile = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: async () => (await api.get<MyProfile>("/me/profile")).data,
+  });
+  const generalRules = profile.data ? { coverageDays: profile.data.stock_minimo, expiryDays: profile.data.dias_alerta_vencimiento } : null;
 
   const buildFilterParams = (): Record<string, string | number | boolean> => {
     const params: Record<string, string | number | boolean> = {};
     if (search) params.search = search;
     if (categoria) params.categoria = categoria;
+    if (ubicacion) params.ubicacion = ubicacion;
+    if (marca) params.marca = marca;
     if (vencido) params.vencido = vencido === "si";
     if (bajoStock) params.bajo_stock = true;
+    if (porVencer) params.por_vencer = true;
     if (sortBy) {
       params.sort_by = sortBy;
       params.sort_dir = sortDir;
@@ -97,10 +122,20 @@ export default function MyProducts() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-products", search, categoria, vencido, bajoStock, sortBy, sortDir, page],
+    queryKey: ["my-products", search, categoria, ubicacion, marca, vencido, bajoStock, porVencer, sortBy, sortDir, page],
     queryFn: async () => {
       const params = { ...buildFilterParams(), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       return (await api.get<Paginated<MyProduct>>("/me/products", { params })).data;
+    },
+    placeholderData: keepPreviousData,
+  });
+
+  // Stock total y cantidad de productos de la lista, con la búsqueda y los filtros elegidos (como en la app)
+  const summary = useQuery({
+    queryKey: ["my-products-stock-total", search, categoria, ubicacion, marca, vencido, bajoStock, porVencer],
+    queryFn: async () => {
+      const { sort_by: _by, sort_dir: _dir, ...filters } = buildFilterParams();
+      return (await api.get<{ stock_total: number; products: number }>("/me/products/stock-total", { params: filters })).data;
     },
     placeholderData: keepPreviousData,
   });
@@ -112,7 +147,7 @@ export default function MyProducts() {
       await downloadFile(
         "/me/products/export",
         { ...buildFilterParams(), format },
-        `mis_productos.${format}`,
+        `productos.${format}`,
       );
     } finally {
       setExporting(null);
@@ -134,7 +169,7 @@ export default function MyProducts() {
     <button
       type="button"
       onClick={() => toggleSort(field)}
-      className="inline-flex items-center gap-1 hover:text-primaryDark"
+      className="inline-flex items-center gap-1 uppercase hover:text-primaryDark"
     >
       {label}
       {sortBy === field && (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
@@ -162,6 +197,12 @@ export default function MyProducts() {
   const editSet = (field: keyof typeof EDIT_EMPTY) => (e: { target: { value: string } }) =>
     setEditForm((f) => ({ ...f, [field]: e.target.value }));
 
+  const refreshInventory = () => {
+    qc.invalidateQueries({ queryKey: ["my-products"] });
+    qc.invalidateQueries({ queryKey: ["my-products-filter-options"] });
+    invalidateInventory(qc);
+  };
+
   const saveEdit = useMutation({
     mutationFn: async () => {
       if (!editing) return;
@@ -182,8 +223,7 @@ export default function MyProducts() {
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refreshInventory();
       setEditing(null);
     },
     onError: (err: any) => {
@@ -233,8 +273,7 @@ export default function MyProducts() {
       return (await api.patch<{ updated: number }>("/me/products/bulk-edit", payload)).data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-products"] });
-      qc.invalidateQueries({ queryKey: ["my-stats"] });
+      refreshInventory();
       setSelected(new Set());
       setShowBulkEdit(false);
     },
@@ -243,160 +282,229 @@ export default function MyProducts() {
     },
   });
 
+  const deleteOne = useMutation({
+    mutationFn: async (product: MyProduct) => {
+      await api.delete(`/me/products/${product.id}`);
+      return product.id;
+    },
+    onSuccess: (id) => {
+      refreshInventory();
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setDeleting(null);
+    },
+    onError: (err: any) => {
+      setDeleting(null);
+      setDeleteError(apiErrorMessage(err, "No se pudo eliminar el producto."));
+    },
+  });
+
+  const deleteMany = useMutation({
+    mutationFn: async () => (await api.post<{ deleted: number }>("/me/products/bulk-delete", { product_ids: Array.from(selected) })).data,
+    onSuccess: () => {
+      refreshInventory();
+      setSelected(new Set());
+      setBulkDeleting(false);
+    },
+    onError: (err: any) => {
+      setBulkDeleting(false);
+      setDeleteError(apiErrorMessage(err, "No se pudieron eliminar los productos."));
+    },
+  });
+
+  const count = selected.size;
+
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="Productos" subtitle="Tus productos cargados" />
-        <div className="flex gap-2">
+    // En pantallas anchas todo entra sin desplazar la página: solo se desplaza la lista de productos
+    <div className="md:flex md:h-[calc(100vh-4.5rem)] md:flex-col">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Inventario</h1>
+          <p className="mt-1 text-sm text-muted">Tus productos cargados</p>
+        </div>
+        {summary.data && (
+          <p data-testid="inventory-total-summary" className="flex flex-wrap items-baseline gap-x-3 text-base font-semibold uppercase tracking-wide text-muted">
+            <span>Stock</span>
+            <span data-testid="inventory-total-value" className="text-2xl font-extrabold normal-case text-primaryDark">
+              {formatThousands(summary.data.stock_total)} {summary.data.stock_total === 1 ? "Unidad" : "Unidades"}
+            </span>
+            <span aria-hidden className="text-line">|</span>
+            <span data-testid="inventory-total-products" className="text-2xl font-extrabold normal-case text-ink">
+              {formatThousands(summary.data.products)} {summary.data.products === 1 ? "Producto" : "Productos"}
+            </span>
+          </p>
+        )}
+      </div>
+
+      {/* Una sola cuadrícula: el buscador llega hasta el borde derecho del último filtro; a su derecha va la exportación y, junto a los filtros, las casillas */}
+      <div className="mb-3 grid grid-cols-2 items-center gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre o marca…"
+          className="col-span-2 h-10 min-w-0 rounded-xl border border-line bg-white px-4 text-sm outline-none focus:border-primary md:col-span-4"
+        />
+        <div className="col-span-2 flex justify-end gap-2 md:col-span-1">
           <button
             type="button"
             onClick={() => exportProducts("csv")}
             disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+            className="inline-flex h-10 w-20 items-center justify-center gap-1.5 rounded-xl border border-line px-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
           >
-            <Download size={14} /> {exporting === "csv" ? "Exportando…" : "CSV"}
+            <Download size={14} /> {exporting === "csv" ? "…" : "CSV"}
           </button>
           <button
             type="button"
             onClick={() => exportProducts("xlsx")}
             disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
+            className="inline-flex h-10 w-20 items-center justify-center gap-1.5 rounded-xl border border-line px-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark disabled:opacity-60"
           >
-            <Download size={14} /> {exporting === "xlsx" ? "Exportando…" : "Excel"}
+            <Download size={14} /> {exporting === "xlsx" ? "…" : "Excel"}
           </button>
+        </div>
+        <FilterSelect label="Categoría" allLabel="Todas las categorías" value={categoria} options={categoriaOptions} onChange={setCategoria} />
+        <FilterSelect label="Marca" allLabel="Todas las marcas" value={marca} options={marcaOptions} onChange={setMarca} />
+        <FilterSelect label="Ubicación" allLabel="Todas las ubicaciones" value={ubicacion} options={ubicacionOptions} onChange={setUbicacion} />
+        <FilterDropdown
+          label="Vencimiento"
+          allLabel="Todos los vencimientos"
+          value={vencido}
+          options={[
+            { value: "si", label: "Vencidos" },
+            { value: "no", label: "No vencidos" },
+          ]}
+          onChange={(v) => setVencido(v as "" | "si" | "no")}
+        />
+        <div className="col-span-2 flex items-center justify-end gap-4 md:col-span-1">
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
+            Stock bajo
+          </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={porVencer} onChange={(e) => setPorVencer(e.target.checked)} />
+            Por vencer
+          </label>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre o marca…"
-          className="min-w-[200px] flex-1 rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        />
-        <select
-          value={categoria}
-          onChange={(e) => setCategoria(e.target.value)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Todas las categorías</option>
-          {(categoriaOptions ?? []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={vencido}
-          onChange={(e) => setVencido(e.target.value as any)}
-          className="rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-        >
-          <option value="">Vencimiento: todos</option>
-          <option value="si">Vencidos</option>
-          <option value="no">No vencidos</option>
-        </select>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />
-          Bajo stock
-        </label>
-      </div>
-
-      {selected.size > 0 && (
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5">
-          <p className="text-sm text-primaryDark">
-            {selected.size} producto{selected.size === 1 ? "" : "s"} seleccionado{selected.size === 1 ? "" : "s"}
-          </p>
-          <div className="flex gap-2">
-            <button
+      {/* La barra de selección solo aparece cuando hay productos elegidos */}
+      {count > 0 && (
+      <div
+        data-testid="selection-bar"
+        className="mb-3 flex h-12 shrink-0 items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-4"
+      >
+        <div className="flex items-center gap-2">
+          <button
               type="button"
+              data-testid="selection-clear"
+              aria-label="Deseleccionar todo"
+              title="Deseleccionar todo"
               onClick={() => setSelected(new Set())}
-              className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-muted hover:bg-canvas"
+              className="rounded-full p-1 text-primaryDark transition hover:bg-primary/15"
             >
-              Deseleccionar
+              <X size={16} />
             </button>
-            <button
-              type="button"
-              onClick={openBulkEdit}
-              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >
-              Editar en lote
-            </button>
-          </div>
+          <p data-testid="selection-count" className="text-sm text-primaryDark">
+            {`${count} producto${count === 1 ? "" : "s"} seleccionado${count === 1 ? "" : "s"}`}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="selection-delete"
+            onClick={() => setBulkDeleting(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-danger/40 bg-white px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+          >
+            <Trash2 size={13} /> Borrar todo
+          </button>
+          <button
+            type="button"
+            data-testid="selection-edit"
+            onClick={openBulkEdit}
+            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+          >
+            Editar todo
+          </button>
+        </div>
+      </div>
+      )}
+
+      {deleteError && (
+        <div className="mb-4">
+          <Notice tone="error">{deleteError}</Notice>
         </div>
       )}
 
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="p-0">
-          <div className="max-h-[60vh] overflow-auto">
+        <Card className="flex min-h-0 flex-col p-0 md:flex-1">
+          <div className="max-h-[60vh] min-h-0 overflow-auto md:max-h-none md:flex-1">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <input type="checkbox" checked={allOnPageSelected} onChange={toggleSelectAllOnPage} />
                   </th>
-                  <th className="px-5 py-3 text-center">Imagen</th>
-                  <th className="px-5 py-3">
+                  <th className="px-3 py-3 text-center">Imagen</th>
+                  <th className="px-3 py-3">
                     <SortHeader field="nombre" label="Producto" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="categoria" label="Categoría" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="stock" label="Stock" />
                   </th>
-                  <th className="px-5 py-3 text-center">
+                  <th className="px-3 py-3 text-center">
                     <SortHeader field="vencimiento" label="Vencimiento" />
                   </th>
-                  <th className="px-5 py-3 text-center">Acciones</th>
+                  <th className="px-3 py-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
-                  <tr key={p.id} className="border-b border-line/60 last:border-0 hover:bg-canvas/60">
-                    <td className="px-5 py-3 text-center">
+                  <tr
+                    key={p.id}
+                    data-testid={`product-row-${p.id}`}
+                    onClick={() => setDetail(p)}
+                    className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-canvas/60"
+                  >
+                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
+                        aria-label={`Seleccionar ${p.nombre}`}
                         checked={selected.has(p.id)}
                         onChange={() => toggleSelected(p.id)}
                       />
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex justify-center">
-                        <ProductImage url={p.imagen_url} alt={p.nombre} />
+                        <ProductImage url={p.imagen_url} alt={p.nombre} className="h-14 w-14" />
                       </div>
                     </td>
-                    <td className="px-5 py-3">
-                      <p className="font-medium" title={p.nombre}>{truncate(p.nombre)}</p>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        data-testid={`product-open-${p.id}`}
+                        className="text-left text-base font-semibold text-ink hover:text-primaryDark hover:underline"
+                        title={p.nombre}
+                      >
+                        {truncate(p.nombre)}
+                      </button>
                       {p.marca && <p className="text-xs text-muted" title={p.marca}>{truncate(p.marca)}</p>}
-                      {p.codigo_barras && (
-                        <p
-                          className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-muted"
-                          title="Código de barras"
-                        >
-                          <Barcode size={11} /> {p.codigo_barras}
-                        </p>
-                      )}
                     </td>
-                    <td className="px-5 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
-                    <td className="px-5 py-3 text-center">
-                      {p.stock <= 1 ? <Badge tone="off">{p.stock}</Badge> : p.stock}
+                    <td className="px-3 py-3 text-center text-muted" title={p.categoria}>{truncate(p.categoria)}</td>
+                    <td className="px-3 py-3 text-center font-semibold" data-testid={`product-stock-${p.id}`}>
+                      {p.stock}
                     </td>
-                    <td className="px-5 py-3 text-center">
-                      {p.vencimiento ? (
-                        isExpired(p.vencimiento) ? (
-                          <Badge tone="off">{p.vencimiento}</Badge>
-                        ) : isExpiringSoon(p.vencimiento) ? (
-                          <Badge tone="warn">{p.vencimiento}</Badge>
-                        ) : (
-                          <span className="text-muted">{p.vencimiento}</span>
-                        )
-                      ) : (
-                        "—"
-                      )}
+                    <td className="px-3 py-3 text-center">
+                      {p.vencimiento ? <span className="text-muted">{formatDate(p.vencimiento)}</span> : "—"}
                     </td>
-                    <td className="px-5 py-3 text-center">
+                    <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-center gap-2">
                         <button
                           onClick={() => openEdit(p)}
@@ -409,6 +517,18 @@ export default function MyProducts() {
                           className="inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
                         >
                           <History size={14} /> Historial
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`product-delete-${p.id}`}
+                          aria-label={`Eliminar ${p.nombre}`}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleting(p);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-danger/60 px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger/10"
+                        >
+                          <Trash2 size={14} /> Eliminar
                         </button>
                       </div>
                     </td>
@@ -430,26 +550,31 @@ export default function MyProducts() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Editar producto</h3>
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Nombre</label>
                 <input
+                  placeholder="ej. Leche entera 1L"
                   value={editForm.nombre}
                   onChange={editSet("nombre")}
                   className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
-                  <input
-                    value={editForm.marca}
-                    onChange={editSet("marca")}
-                    className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                  />
-                </div>
+                <Picklist
+                  label="Marca"
+                  value={editForm.marca}
+                  options={editMarcaOptions}
+                  emptyLabel="Sin marca"
+                  addPlaceholder="Opcional"
+                  maxLength={OPTION_MAX}
+                  onChange={(v) => {
+                    setEditForm((f) => ({ ...f, marca: v }));
+                    setEditMarcaOptions((prev) => addIfMissing(prev, v));
+                  }}
+                />
                 <Picklist
                   label="Categoría"
                   value={editForm.categoria}
@@ -485,6 +610,7 @@ export default function MyProducts() {
               <div className="grid grid-cols-2 gap-3">
                 <Picklist
                   label="Ubicación"
+                  addPlaceholder="Ej. Heladera, Alacena A, Freezer"
                   value={editForm.ubicacion}
                   options={editUbicacionOptions}
                   emptyLabel="Sin ubicación"
@@ -501,22 +627,16 @@ export default function MyProducts() {
                     onChange={(e) =>
                       setEditForm((f) => ({ ...f, codigo_barras: limpiarCodigo(e.target.value) }))
                     }
-                    placeholder="Sin código"
+                    placeholder="Opcional"
                     className="w-full rounded-xl border border-line px-4 py-2 font-mono text-sm outline-none focus:border-primary"
                   />
                 </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">URL de imagen</label>
-                <input
-                  value={editForm.imagen_url}
-                  onChange={editSet("imagen_url")}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
+              <ImageUpload value={editForm.imagen_url} onChange={(url) => setEditForm((f) => ({ ...f, imagen_url: url }))} />
               <div>
                 <label className="mb-1 block text-sm font-medium text-ink">Descripción</label>
                 <textarea
+                  placeholder="Opcional"
                   value={editForm.descripcion}
                   onChange={editSet("descripcion")}
                   rows={2}
@@ -524,31 +644,33 @@ export default function MyProducts() {
                 />
               </div>
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Alertas para este producto (opcional)
-                </p>
+                <p className="mb-2 text-sm font-bold text-muted">Reglas de alerta de producto</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Stock mínimo (días de cobertura)</label>
                     <input
                       type="number"
                       min={1}
+                      max={9999999}
                       value={editForm.stock_minimo}
                       onChange={editSet("stock_minimo")}
-                      placeholder="Usa tu regla general"
+                      placeholder="Opcional"
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
+                    <p className="mt-1 text-xs text-muted">{editForm.stock_minimo ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación</label>
+                    <label className="mb-1 block text-sm font-medium text-ink">Días de anticipación (vencimiento)</label>
                     <input
                       type="number"
                       min={1}
+                      max={999}
                       value={editForm.dias_alerta_vencimiento}
                       onChange={editSet("dias_alerta_vencimiento")}
-                      placeholder="Usa tu regla general"
+                      placeholder="Opcional"
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
+                    <p className="mt-1 text-xs text-muted">{editForm.dias_alerta_vencimiento ? "Regla propia de este producto" : "Usando tu regla general"}</p>
                   </div>
                 </div>
               </div>
@@ -581,51 +703,46 @@ export default function MyProducts() {
 
       {showBulkEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lift">
             <h3 className="text-lg font-semibold">Editar {selected.size} productos</h3>
             <p className="mt-1 text-sm text-muted">
               Solo se cambian los campos que completes acá — dejá "No cambiar" en los demás.
             </p>
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Categoría</label>
-                <select
-                  value={bulkCategoria}
-                  onChange={(e) => setBulkCategoria(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">No cambiar</option>
-                  {editCategoriaOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Ubicación</label>
-                <select
-                  value={bulkUbicacion}
-                  onChange={(e) => setBulkUbicacion(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-white px-4 py-2 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">No cambiar</option>
-                  {editUbicacionOptions.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-ink">Marca</label>
-                <input
-                  value={bulkMarca}
-                  onChange={(e) => setBulkMarca(e.target.value)}
-                  placeholder="Dejar vacío para no cambiar"
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
-                />
-              </div>
+              <Picklist
+                label="Marca"
+                value={bulkMarca}
+                options={editMarcaOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkMarca(v);
+                  setEditMarcaOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
+              <Picklist
+                label="Categoría"
+                value={bulkCategoria}
+                options={editCategoriaOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkCategoria(v);
+                  setEditCategoriaOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
+              <Picklist
+                label="Ubicación"
+                addPlaceholder="Ej. Heladera, Alacena A, Freezer"
+                value={bulkUbicacion}
+                options={editUbicacionOptions}
+                emptyLabel="No cambiar"
+                maxLength={OPTION_MAX}
+                onChange={(v) => {
+                  setBulkUbicacion(v);
+                  setEditUbicacionOptions((prev) => addIfMissing(prev, v));
+                }}
+              />
             </div>
 
             {bulkError && (
@@ -653,14 +770,51 @@ export default function MyProducts() {
         </div>
       )}
 
+      {deleting && (
+        <ConfirmDialog
+          title="Eliminar producto"
+          message={`¿Eliminar "${truncate(deleting.nombre)}" del inventario? Se borra también su historial y no se puede deshacer.`}
+          confirmLabel="Eliminar"
+          danger
+          busy={deleteOne.isPending}
+          onConfirm={() => deleteOne.mutate(deleting)}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
+
+      {bulkDeleting && (
+        <ConfirmDialog
+          title="Borrar productos"
+          message={`¿Borrar los ${count} productos seleccionados del inventario? Se borra también su historial y no se puede deshacer.`}
+          confirmLabel="Borrar todo"
+          danger
+          busy={deleteMany.isPending}
+          onConfirm={() => deleteMany.mutate()}
+          onCancel={() => setBulkDeleting(false)}
+        />
+      )}
+
+      {detail && (
+        <ProductDetailModal
+          product={detail}
+          generalRules={generalRules}
+          onClose={() => setDetail(null)}
+          onHistory={() => {
+            setHistorialProduct(detail);
+            setDetail(null);
+          }}
+          onEdit={() => {
+            openEdit(detail);
+            setDetail(null);
+          }}
+        />
+      )}
+
       {historialProduct && (
         <HistorialModal
           product={historialProduct}
           onClose={() => setHistorialProduct(null)}
-          onChanged={() => {
-            qc.invalidateQueries({ queryKey: ["my-products"] });
-            qc.invalidateQueries({ queryKey: ["my-stats"] });
-          }}
+          onChanged={refreshInventory}
         />
       )}
     </div>
