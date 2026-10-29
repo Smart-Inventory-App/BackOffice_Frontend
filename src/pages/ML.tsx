@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, CheckCircle, XCircle, RefreshCw, Zap, BarChart2, BellRing } from "lucide-react";
 import {
@@ -49,13 +49,61 @@ const MODEL_OPTIONS: { value: ModelType; label: string; description: string }[] 
 
 const DATA_SOURCE_OPTIONS: { value: DataSource; label: string; description: string }[] = [
   { value: "real", label: "Datos reales", description: "Eventos de consumo de los usuarios en producción" },
-  { value: "test", label: "Dataset de prueba", description: "Dataset simulado de escala comercial, para evaluar el modelo de forma reproducible" },
+  { value: "test", label: "Dataset de prueba", description: "Dataset simulado de escala comercial reproducible" },
 ];
 
 const SEGMENT_OPTIONS: { value: Segment; label: string; description: string }[] = [
   { value: "individuo", label: "Individuos", description: "Consumo doméstico — se acepta con MAE ≤ 2 u/sem por producto" },
   { value: "comercio", label: "Comercios", description: "Escala comercial — se acepta por error relativo al volumen (≤ 25%)" },
 ];
+
+/** Un grupo de botones para elegir una opción, con su título y, debajo, la descripción de la elegida. */
+function OptionGroup<T extends string>({
+  title,
+  options,
+  value,
+  onChange,
+  note,
+  selectedClass = "border-primary bg-primary text-white",
+  widthClass = "w-40",
+}: {
+  title: string;
+  options: { value: T; label: string; description: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  note?: string;
+  /** Los colores del botón elegido. */
+  selectedClass?: string;
+  /** El ancho de los botones del grupo: todos los de un mismo grupo miden lo mismo. */
+  widthClass?: string;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            title={opt.description}
+            className={`${widthClass} rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+              value === opt.value
+                ? selectedClass
+                : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs text-gray-400">{note ?? options.find((o) => o.value === value)?.description}</p>
+    </div>
+  );
+}
+
+// «Activar» y «Features» miden lo mismo
+const ACTION_BUTTON =
+  "flex w-24 items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors";
 
 function ModelTypeBadge({ modelType }: { modelType?: ModelType }) {
   const colors: Record<ModelType, string> = {
@@ -96,7 +144,7 @@ function PercentBar({ value }: { value: number }) {
   const pct = Math.min(value, 100);
   const color = value <= 15 ? "bg-green-500" : value <= 25 ? "bg-yellow-400" : "bg-red-500";
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-center gap-2">
       <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-100">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
@@ -198,13 +246,6 @@ export default function ML() {
     queryFn: async () => (await api.get("/admin/ml/models")).data,
   });
 
-  const visibleVersions = versions.filter(
-    (v) =>
-      (v.model_type ?? "gbm") === selectedModel &&
-      (v.data_source ?? "real") === dataSource &&
-      (v.segment ?? "individuo") === segment,
-  );
-
   const trainMutation = useMutation({
     mutationFn: async () =>
       (
@@ -254,138 +295,6 @@ export default function ML() {
         ))}
       </div>
 
-      {/* Entrenar */}
-      <Card className="mb-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1">
-            <p className="font-semibold">Entrenar nuevo modelo</p>
-            <p className="mb-4 text-sm text-gray-500">
-              Toma todos los eventos de consumo, entrena el modelo seleccionado y evalúa MAE y
-              MAPE. Si las métricas no pasan los umbrales, el modelo es rechazado.
-            </p>
-
-            {/* Segmento */}
-            <div className="mb-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                Segmento
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {SEGMENT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSegment(opt.value)}
-                    title={opt.description}
-                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                      segment === opt.value
-                        ? "border-primary bg-primary text-white"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-xs text-gray-400">
-                {SEGMENT_OPTIONS.find((o) => o.value === segment)?.description}
-              </p>
-            </div>
-
-            {/* Selector de algoritmo */}
-            <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                Algoritmo
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {MODEL_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSelectedModel(opt.value)}
-                    title={opt.description}
-                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                      selectedModel === opt.value
-                        ? "border-primary bg-primary text-white"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-xs text-gray-400">
-                {MODEL_OPTIONS.find((o) => o.value === selectedModel)?.description}
-              </p>
-            </div>
-
-            {/* Fuente de datos */}
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                Fuente de datos
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {DATA_SOURCE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setDataSource(opt.value)}
-                    title={opt.description}
-                    className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                      dataSource === opt.value
-                        ? "border-primary bg-primary text-white"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-primary hover:text-primary"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-xs text-gray-400">
-                {testDatasetUnavailable
-                  ? "El dataset de prueba es de escala comercial: no hay equivalente para individuos."
-                  : DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.description}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => trainMutation.mutate()}
-            disabled={trainMutation.isPending || testDatasetUnavailable}
-            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
-          >
-            {trainMutation.isPending ? (
-              <RefreshCw size={16} className="animate-spin" />
-            ) : (
-              <Brain size={16} />
-            )}
-            {trainMutation.isPending ? "Entrenando…" : "Iniciar entrenamiento"}
-          </button>
-        </div>
-
-        {trainMutation.isSuccess && trainResult && (
-          <div
-            className={`mt-4 rounded-xl p-3 text-sm ${
-              trainResult.status === "saved"
-                ? "bg-green-50 text-green-800"
-                : "bg-red-50 text-red-800"
-            }`}
-          >
-            {trainResult.status === "saved" ? (
-              <span>
-                Modelo <strong>{trainResult.version?.id}</strong> (
-                {trainResult.model_type?.toUpperCase() ?? "GBM"}) guardado — MAE:{" "}
-                {trainResult.version?.mae} u/sem · MAPE: {trainResult.version?.mape}%
-              </span>
-            ) : (
-              <span>{trainResult.reason}</span>
-            )}
-          </div>
-        )}
-
-        {trainMutation.isError && (
-          <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-            {apiErrorMessage(trainMutation.error, "Error al entrenar")}
-          </div>
-        )}
-      </Card>
-
       {/* Lanzar predicciones */}
       <Card className="mb-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -422,96 +331,170 @@ export default function ML() {
         )}
       </Card>
 
-      {/* Tabla de versiones */}
+      {/* Entrenar */}
+      <Card className="mb-6">
+        {/* El título y la descripción a la izquierda y el botón a su derecha; las opciones ocupan después todo el ancho */}
+        <div data-testid="train-header" className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Entrenar nuevo modelo</p>
+            <p className="text-sm text-gray-500">
+              Toma todos los eventos de consumo, entrena el modelo seleccionado y evalúa MAE y
+              MAPE. Si las métricas no pasan los umbrales, el modelo es rechazado.
+            </p>
+          </div>
+          <button
+            onClick={() => trainMutation.mutate()}
+            disabled={trainMutation.isPending || testDatasetUnavailable}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primaryDark disabled:opacity-50"
+          >
+            {trainMutation.isPending ? (
+              <RefreshCw size={16} className="animate-spin" />
+            ) : (
+              <Brain size={16} />
+            )}
+            {trainMutation.isPending ? "Entrenando…" : "Iniciar entrenamiento"}
+          </button>
+        </div>
+
+        {/* Segmento, algoritmo y fuente de datos: en una fila, separados por una línea gris tenue */}
+        <div
+          data-testid="train-options"
+          className="grid grid-cols-1 divide-y divide-line/60 lg:grid-cols-3 lg:divide-x lg:divide-y-0"
+        >
+          <div className="pb-4 lg:pb-0 lg:pr-5">
+            <OptionGroup
+              title="Segmento"
+              options={SEGMENT_OPTIONS}
+              value={segment}
+              onChange={setSegment}
+              selectedClass="border-[#1B3A8F] bg-[#1B3A8F] text-white"
+              widthClass="w-28"
+            />
+          </div>
+          <div className="py-4 lg:px-5 lg:py-0">
+            <OptionGroup title="Algoritmo" options={MODEL_OPTIONS} value={selectedModel} onChange={setSelectedModel} widthClass="w-24" />
+          </div>
+          <div className="pt-4 lg:pl-5 lg:pt-0">
+            <OptionGroup
+              title="Fuente de datos"
+              options={DATA_SOURCE_OPTIONS}
+              value={dataSource}
+              onChange={setDataSource}
+              note={
+                testDatasetUnavailable
+                  ? "El dataset de prueba es de escala comercial reproducible SOLO PARA COMERCIOS"
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+        {trainMutation.isSuccess && trainResult && (
+          <div
+            className={`mt-4 rounded-xl p-3 text-sm ${
+              trainResult.status === "saved"
+                ? "bg-green-50 text-green-800"
+                : "bg-red-50 text-red-800"
+            }`}
+          >
+            {trainResult.status === "saved" ? (
+              <span>
+                Modelo <strong>{trainResult.version?.id}</strong> (
+                {trainResult.model_type?.toUpperCase() ?? "GBM"}) guardado — MAE:{" "}
+                {trainResult.version?.mae} u/sem · MAPE: {trainResult.version?.mape}%
+              </span>
+            ) : (
+              <span>{trainResult.reason}</span>
+            )}
+          </div>
+        )}
+
+        {trainMutation.isError && (
+          <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+            {apiErrorMessage(trainMutation.error, "Error al entrenar")}
+          </div>
+        )}
+      </Card>
+
+      {/* Tabla de versiones: todas las que se generaron */}
       <Card>
         <div className="mb-4 flex items-center gap-2">
           <h2 className="font-semibold">Versiones del modelo</h2>
-          <ModelTypeBadge modelType={selectedModel} />
-          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-            {SEGMENT_OPTIONS.find((o) => o.value === segment)?.label}
-          </span>
-          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-            {DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label}
-          </span>
-          <span className="text-sm text-gray-400">
-            {visibleVersions.length} de {versions.length}
+          <span className="text-sm text-gray-400" data-testid="versions-count">
+            {versions.length} {versions.length === 1 ? "versión" : "versiones"}
           </span>
         </div>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
-        ) : visibleVersions.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-400">
-            {versions.length === 0
-              ? "Aún no hay modelos entrenados."
-              : `No hay versiones de ${selectedModel.toUpperCase()} entrenadas con ` +
-                `${DATA_SOURCE_OPTIONS.find((o) => o.value === dataSource)?.label.toLowerCase()}.`}
-          </p>
+        ) : versions.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-400">Aún no hay modelos entrenados.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-center text-sm">
               <thead>
-                <tr className="border-b text-left text-xs text-gray-500">
-                  <th className="pb-2 pr-4">Versión</th>
-                  <th className="pb-2 pr-4">Modelo</th>
-                  <th className="pb-2 pr-4">Fecha</th>
-                  <th className="pb-2 pr-4">MAE (u/sem)</th>
-                  <th className="pb-2 pr-4">MAE rel.</th>
-                  <th className="pb-2 pr-4">MAPE</th>
-                  <th className="pb-2 pr-4">Muestras</th>
-                  <th className="pb-2 pr-4">Productos</th>
-                  <th className="pb-2 pr-4">Estado</th>
-                  <th className="pb-2">Acción</th>
+                <tr className="border-b text-xs uppercase text-gray-500">
+                  <th className="px-3 pb-2">Versión</th>
+                  <th className="px-3 pb-2">Fecha</th>
+                  <th className="px-3 pb-2">Modelo</th>
+                  <th className="px-3 pb-2">Segmento</th>
+                  <th className="px-3 pb-2">Fuente de datos</th>
+                  <th className="px-3 pb-2">Muestras</th>
+                  <th className="px-3 pb-2">Productos</th>
+                  <th className="px-3 pb-2">MAE (u/sem)</th>
+                  <th className="px-3 pb-2">MAE rel.</th>
+                  <th className="px-3 pb-2">MAPE</th>
+                  <th className="px-3 pb-2">Estado</th>
+                  <th className="px-3 pb-2">Acción</th>
                 </tr>
               </thead>
               <tbody>
-                {[...visibleVersions].reverse().map((v) => (
-                  <>
-                    <tr key={v.id} className="border-b last:border-0">
-                      <td className="py-3 pr-4 font-mono font-semibold">{v.id}</td>
-                      <td className="py-3 pr-4">
+                {[...versions].reverse().map((v) => (
+                  <Fragment key={v.id}>
+                    <tr className="border-b last:border-0">
+                      <td className="px-3 py-3 font-mono font-semibold">{v.id}</td>
+                      <td className="px-3 py-3 text-gray-500">{formatDateTime(v.trained_at)}</td>
+                      <td className="px-3 py-3">
                         <ModelTypeBadge modelType={v.model_type} />
                       </td>
-                      <td className="py-3 pr-4 text-gray-500">
-                        {formatDateTime(v.trained_at)}
+                      <td className="px-3 py-3 text-gray-600">
+                        {SEGMENT_OPTIONS.find((o) => o.value === (v.segment ?? "individuo"))?.label}
                       </td>
-                      <td className="py-3 pr-4 tabular-nums text-gray-500">
-                        {v.mae.toFixed(3)}
+                      <td className="px-3 py-3 text-gray-600">
+                        {DATA_SOURCE_OPTIONS.find((o) => o.value === (v.data_source ?? "real"))?.label}
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="px-3 py-3 tabular-nums">{v.n_samples}</td>
+                      <td className="px-3 py-3 tabular-nums">{v.n_products}</td>
+                      <td className="px-3 py-3 tabular-nums text-gray-500">{v.mae.toFixed(3)}</td>
+                      <td className="px-3 py-3">
                         {v.mae_relative === undefined ? (
                           <span className="text-sm text-gray-300">—</span>
                         ) : (
                           <PercentBar value={v.mae_relative} />
                         )}
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="px-3 py-3">
                         <PercentBar value={v.mape} />
                       </td>
-                      <td className="py-3 pr-4 tabular-nums">{v.n_samples}</td>
-                      <td className="py-3 pr-4 tabular-nums">{v.n_products}</td>
-                      <td className="py-3 pr-4">
+                      <td className="px-3 py-3">
                         <StatusBadge status={v.status} />
                       </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-2">
                           {v.status !== "active" && v.status !== "rejected" && (
                             <button
                               onClick={() => activateMutation.mutate(v.id)}
                               disabled={activateMutation.isPending}
-                              className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primaryDark disabled:opacity-50"
+                              className={`${ACTION_BUTTON} border-primary bg-primary text-white hover:bg-primaryDark disabled:opacity-50`}
                             >
                               <Zap size={12} />
                               Activar
                             </button>
                           )}
                           <button
-                            onClick={() =>
-                              setExpandedVersion(expandedVersion === v.id ? null : v.id)
-                            }
+                            onClick={() => setExpandedVersion(expandedVersion === v.id ? null : v.id)}
                             title="Ver importancia de features"
-                            className={`flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            className={`${ACTION_BUTTON} ${
                               expandedVersion === v.id
                                 ? "border-primary bg-primary/10 text-primary"
                                 : "border-gray-200 text-gray-500 hover:border-primary hover:text-primary"
@@ -526,13 +509,13 @@ export default function ML() {
 
                     {/* Fila expandible con el gráfico */}
                     {expandedVersion === v.id && (
-                      <tr key={`${v.id}-chart`}>
-                        <td colSpan={10} className="bg-gray-50 px-4 pb-4">
+                      <tr>
+                        <td colSpan={12} className="bg-gray-50 px-4 pb-4">
                           <FeatureImportancesChart versionId={v.id} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

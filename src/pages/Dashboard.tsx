@@ -280,8 +280,10 @@ export default function Dashboard() {
               </span>
             </li>
             {activeModel && (
-              <li data-testid="service-ml-detail" className="pl-6 text-xs text-muted">
-                Error medio {activeModel.mae.toFixed(2)} u/sem · MAPE {activeModel.mape}% · entrenado el {formatDateTime(activeModel.trained_at)}
+              <li data-testid="service-ml-detail" className="space-y-1 pl-6 text-xs text-muted">
+                <p data-testid="service-ml-trained">Entrenado el {formatDateTime(activeModel.trained_at)}</p>
+                <p data-testid="service-ml-mae">Error medio {activeModel.mae.toFixed(2)} u/sem</p>
+                <p data-testid="service-ml-mape">MAPE {activeModel.mape}%</p>
               </li>
             )}
           </ul>

@@ -38,19 +38,205 @@ describe("ML", () => {
     expect(await screen.findByText("Aún no hay modelos entrenados.")).toBeInTheDocument();
   });
 
-  it("filtra versiones por segmento, algoritmo y fuente de datos, y muestra el mensaje sin coincidencias", async () => {
+  it("la tabla muestra absolutamente todas las versiones, sin importar lo que se elige para entrenar", async () => {
     const user = userEvent.setup();
-    vi.mocked(api.get).mockResolvedValue({ data: [version({ id: "v1" })] });
+    vi.mocked(api.get).mockResolvedValue({
+      data: [
+        version({ id: "v1" }),
+        version({ id: "v2", model_type: "xgboost", status: "inactive" }),
+        version({ id: "v3", model_type: "svr", segment: "comercio", data_source: "test", status: "rejected" }),
+      ],
+    });
     renderWithProviders(<ML />);
 
-    expect(await screen.findByText("v1")).toBeInTheDocument();
-    expect(screen.getByText("1 de 1")).toBeInTheDocument();
+    for (const id of ["v1", "v2", "v3"]) expect(await screen.findByText(id)).toBeInTheDocument();
+    expect(screen.getByTestId("versions-count")).toHaveTextContent("3 versiones");
 
-    await user.click(screen.getByRole("button", { name: "XGBoost" }));
-    expect(
-      screen.getByText(/No hay versiones de XGBOOST entrenadas con datos reales\./),
-    ).toBeInTheDocument();
-    expect(screen.getByText("0 de 1")).toBeInTheDocument();
+    // cambiar el algoritmo, el segmento o la fuente de datos de «Entrenar» no oculta ninguna
+    await user.click(screen.getByRole("button", { name: "LightGBM" }));
+    await user.click(screen.getByRole("button", { name: "Comercios" }));
+    await user.click(screen.getByRole("button", { name: "Dataset de prueba" }));
+    for (const id of ["v1", "v2", "v3"]) expect(screen.getByText(id)).toBeInTheDocument();
+    expect(screen.queryByText(/No hay versiones de/)).not.toBeInTheDocument();
+  });
+
+  it("las columnas van en mayúscula y centradas: FECHA a la derecha de VERSIÓN, SEGMENTO y FUENTE DE DATOS a la derecha de MODELO, y MUESTRAS y PRODUCTOS después", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [version({ id: "v1" })] });
+    renderWithProviders(<ML />);
+    await screen.findByText("v1");
+
+    const titulos = screen.getAllByRole("columnheader");
+    expect(titulos.map((h) => h.textContent)).toEqual([
+      "Versión",
+      "Fecha",
+      "Modelo",
+      "Segmento",
+      "Fuente de datos",
+      "Muestras",
+      "Productos",
+      "MAE (u/sem)",
+      "MAE rel.",
+      "MAPE",
+      "Estado",
+      "Acción",
+    ]);
+    expect(titulos[0].closest("tr")!.className).toContain("uppercase");
+    expect(titulos[0].closest("table")!.className).toContain("text-center");
+    titulos.forEach((h) => expect(h.className).not.toContain("text-left"));
+  });
+
+  it("cada versión muestra su segmento y su fuente de datos, y los que faltan se toman como individuos y datos reales", async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: [
+        version({ id: "v1", segment: undefined, data_source: undefined }),
+        version({ id: "v2", segment: "comercio", data_source: "test" }),
+      ],
+    });
+    renderWithProviders(<ML />);
+    await screen.findByText("v1");
+
+    const filas = screen.getAllByRole("row");
+    const v1 = within(filas.find((r) => within(r).queryByText("v1"))!).getAllByRole("cell").map((c) => c.textContent);
+    expect(v1[0]).toBe("v1");
+    expect(v1.slice(2, 7)).toEqual(["GBM", "Individuos", "Datos reales", "100", "20"]);
+    const v2 = within(filas.find((r) => within(r).queryByText("v2"))!).getAllByRole("cell").map((c) => c.textContent);
+    expect(v2.slice(2, 7)).toEqual(["GBM", "Comercios", "Dataset de prueba", "100", "20"]);
+  });
+
+  it("las versiones salen de la más nueva a la más vieja y el contenido de las celdas está centrado", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [version({ id: "v1" }), version({ id: "v2" })] });
+    renderWithProviders(<ML />);
+    await screen.findByText("v1");
+
+    const ids = screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0].textContent);
+    expect(ids).toEqual(["v2", "v1"]);
+    // las barras de porcentaje y los botones de acción también van centrados
+    expect(screen.getAllByText("12.5%")[0].parentElement!.className).toContain("justify-center");
+    expect(screen.getAllByRole("button", { name: /Features/ })[0].parentElement!.className).toContain("justify-center");
+  });
+
+  it("los botones miden lo mismo dentro de su grupo: los de segmento, más ajustados; los de algoritmo, todavía más", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    const botones = within(screen.getByTestId("train-options")).getAllByRole("button");
+    expect(botones.map((b) => b.textContent)).toEqual([
+      "Individuos",
+      "Comercios",
+      "GBM",
+      "XGBoost",
+      "LightGBM",
+      "SVR",
+      "Datos reales",
+      "Dataset de prueba",
+    ]);
+    const ancho = (nombre: string) => screen.getByRole("button", { name: nombre }).className;
+    ["Individuos", "Comercios"].forEach((n) => expect(ancho(n)).toContain("w-28"));
+    ["GBM", "XGBoost", "LightGBM", "SVR"].forEach((n) => expect(ancho(n)).toContain("w-24"));
+    ["Datos reales", "Dataset de prueba"].forEach((n) => expect(ancho(n)).toContain("w-40"));
+  });
+
+  it("el segmento elegido se ve en azul y los otros selectores, en el color de siempre", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    const individuos = screen.getByRole("button", { name: "Individuos" });
+    expect(individuos.className).toContain("bg-[#1B3A8F]");
+    expect(screen.getByRole("button", { name: "Comercios" }).className).not.toContain("bg-[#1B3A8F]");
+    await user.click(screen.getByRole("button", { name: "Comercios" }));
+    expect(screen.getByRole("button", { name: "Comercios" }).className).toContain("bg-[#1B3A8F]");
+    expect(screen.getByRole("button", { name: "Individuos" }).className).not.toContain("bg-[#1B3A8F]");
+    // el algoritmo y la fuente de datos siguen con el color principal
+    expect(screen.getByRole("button", { name: "GBM" }).className).toContain("bg-primary");
+    expect(screen.getByRole("button", { name: "Datos reales" }).className).toContain("bg-primary");
+  });
+
+  it("el botón «Activar» mide lo mismo que el botón «Features»", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [version({ id: "v-inactive", status: "inactive" })] });
+    renderWithProviders(<ML />);
+    await screen.findByText("v-inactive");
+
+    const activar = screen.getByRole("button", { name: /Activar/ });
+    const features = screen.getByRole("button", { name: /Features/ });
+    for (const boton of [activar, features]) {
+      expect(boton.className).toContain("w-24");
+      expect(boton.className).toContain("px-2");
+      expect(boton.className).toContain("py-1.5");
+    }
+  });
+
+  it("un modelo activo no tiene botón de activar ni de desactivar", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [version({ id: "v-active", status: "active" })] });
+    renderWithProviders(<ML />);
+    await screen.findByText("v-active");
+
+    expect(screen.queryByRole("button", { name: /Activar|Desactivar/ })).not.toBeInTheDocument();
+  });
+
+  it("los selectores de «Entrenar nuevo modelo» van en una fila, separados por líneas grises tenues", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    const opciones = screen.getByTestId("train-options");
+    // las tres secciones (segmento, algoritmo y fuente de datos) ocupan exactamente el mismo ancho...
+    expect(opciones.className).toContain("lg:grid-cols-3");
+    expect(opciones.className).not.toContain("fr_");
+    // ...y «Fuente de datos» tiene el mismo margen izquierdo que «Algoritmo»
+    expect(opciones.lastElementChild!.className).toContain("lg:pl-5");
+    expect(opciones.children[1].className).toContain("lg:px-5");
+    expect(opciones.className).toContain("lg:divide-x");
+    expect(opciones.className).toContain("divide-line/60");
+    expect(Array.from(opciones.children)).toHaveLength(3);
+    expect(opciones.textContent).toMatch(/Segmento.*Algoritmo.*Fuente de datos/);
+  });
+
+  it("«Iniciar entrenamiento» está a la derecha del título y la descripción, y no ocupa una columna de las opciones", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    const encabezado = screen.getByTestId("train-header");
+    const boton = screen.getByRole("button", { name: /Iniciar entrenamiento/ });
+    expect(encabezado).toContainElement(boton);
+    expect(encabezado.firstElementChild).toContainElement(screen.getByText("Entrenar nuevo modelo"));
+    expect(encabezado.firstElementChild).toHaveTextContent("Toma todos los eventos de consumo");
+    expect(encabezado.lastElementChild).toBe(boton);
+    expect(encabezado.className).toContain("sm:justify-between");
+    // las opciones van aparte, a todo el ancho de la tarjeta
+    const opciones = screen.getByTestId("train-options");
+    expect(opciones).not.toContainElement(boton);
+    expect(encabezado.parentElement).toBe(opciones.parentElement);
+    expect(encabezado.compareDocumentPosition(opciones) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("la descripción del dataset de prueba dice «Dataset simulado de escala comercial reproducible»", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    await user.click(screen.getByRole("button", { name: "Comercios" }));
+    await user.click(screen.getByRole("button", { name: "Dataset de prueba" }));
+
+    expect(screen.getByText("Dataset simulado de escala comercial reproducible")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dataset de prueba" })).toHaveAttribute(
+      "title",
+      "Dataset simulado de escala comercial reproducible",
+    );
+  });
+
+  it("«Lanzar predicciones a usuarios» está encima de «Entrenar nuevo modelo»", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: [] });
+    renderWithProviders(<ML />);
+    await screen.findByText("Aún no hay modelos entrenados.");
+
+    const lanzar = screen.getByText("Lanzar predicciones a usuarios");
+    const entrenar = screen.getByText("Entrenar nuevo modelo");
+    expect(lanzar.compareDocumentPosition(entrenar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("con segmento comercio y dataset de prueba, deshabilita entrenar para individuos", async () => {
@@ -60,9 +246,8 @@ describe("ML", () => {
     await screen.findByText("Aún no hay modelos entrenados.");
 
     await user.click(screen.getByRole("button", { name: "Dataset de prueba" }));
-    expect(
-      screen.getByText(/El dataset de prueba es de escala comercial/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("El dataset de prueba es de escala comercial reproducible SOLO PARA COMERCIOS")).toBeInTheDocument();
+    expect(screen.queryByText(/no hay equivalente para individuos/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Iniciar entrenamiento/ })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Comercios" }));

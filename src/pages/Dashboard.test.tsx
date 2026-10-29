@@ -370,7 +370,16 @@ describe("Dashboard del administrador · rendimiento del sistema", () => {
     await waitFor(() => expect(screen.getByTestId("service-ocr")).toHaveTextContent("Disponible"));
     expect(screen.getByTestId("service-engine-paddleocr")).toHaveTextContent("Activo");
     await waitFor(() => expect(screen.getByTestId("service-ml")).toHaveTextContent("XGBOOST activo"));
-    expect(screen.getByTestId("service-ml-detail")).toHaveTextContent("Error medio 1.23 u/sem · MAPE 18%");
+    // los datos del modelo, uno debajo del otro: primero la fecha de entrenamiento
+    const detalle = screen.getByTestId("service-ml-detail");
+    expect(Array.from(detalle.children).map((c) => c.getAttribute("data-testid"))).toEqual([
+      "service-ml-trained",
+      "service-ml-mae",
+      "service-ml-mape",
+    ]);
+    expect(screen.getByTestId("service-ml-trained")).toHaveTextContent(/^Entrenado el \d{2}\/\d{2}\/\d{4}/);
+    expect(screen.getByTestId("service-ml-mae")).toHaveTextContent("Error medio 1.23 u/sem");
+    expect(screen.getByTestId("service-ml-mape")).toHaveTextContent("MAPE 18%");
   });
 
   it("con el OCR caído lo marca, y sin modelo activo lo avisa", async () => {
