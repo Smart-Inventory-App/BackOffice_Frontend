@@ -148,7 +148,7 @@ describe("UserDetail · encabezado y perfil", () => {
     const perfil = await screen.findByTestId("user-profile");
     expect(within(perfil).getByTestId("user-profile-name")).toHaveTextContent("Ana Gómez");
     expect(within(perfil).getByTestId("user-profile-username")).toHaveTextContent("usuario1");
-    expect(within(perfil).getByTestId("user-profile-status")).toHaveTextContent("Activo");
+    expect(within(perfil).getByTestId("user-profile-status")).toHaveTextContent("Habilitado");
     expect(within(perfil).getByTestId("user-profile-created")).toHaveTextContent("15/01/2026");
     const orden = Array.from(perfil.querySelectorAll("[data-testid]")).map((e) => e.getAttribute("data-testid"));
     expect(orden).toEqual(["user-profile-name", "user-profile-username", "user-profile-status", "user-profile-created"]);
@@ -159,6 +159,8 @@ describe("UserDetail · encabezado y perfil", () => {
     expect(encabezado.className).toContain("items-center");
     expect(perfil.className).toContain("flex");
     expect(perfil.className).not.toContain("grid");
+    // los cuatro campos, bien separados entre sí
+    expect(perfil.className).toContain("gap-x-14");
   });
 
   it("sin nombre, usuario ni fecha, usa los valores de reemplazo", async () => {

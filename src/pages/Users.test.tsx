@@ -64,7 +64,8 @@ describe("Users", () => {
     renderUsers();
     expect(await screen.findByText("usuario@test.com")).toBeInTheDocument();
     expect(screen.getByText("Ana Gómez")).toBeInTheDocument();
-    expect(screen.getByText("Activo")).toBeInTheDocument();
+    expect(screen.getByText("Habilitado")).toBeInTheDocument();
+    expect(screen.queryByText("Activo")).not.toBeInTheDocument();
   });
 
   it("sin usuarios, muestra el estado vacío", async () => {
@@ -85,6 +86,34 @@ describe("Users", () => {
     expect(contenedor.className).toContain("overflow-auto");
     expect(contenedor.parentElement!.className).toContain("md:flex-1");
     expect(contenedor.parentElement!.parentElement!.className).toContain("md:h-[calc(100vh-4.5rem)]");
+  });
+
+  it("arriba a la derecha, paralelo al título, dice cuántos usuarios hay y cuántos están habilitados", async () => {
+    vi.mocked(api.get).mockImplementation(async () => ({ data: { items: [appUser()], total: 1385, enabled: 88 } }));
+    renderUsers();
+
+    const resumen = await screen.findByTestId("users-summary");
+    expect(screen.getByTestId("users-summary-total")).toHaveTextContent("1.385 Usuarios");
+    expect(screen.getByTestId("users-summary-enabled")).toHaveTextContent("88 Habilitados");
+    const encabezado = screen.getByRole("heading", { name: "Usuarios de la Plataforma" }).parentElement!.parentElement!;
+    expect(encabezado.className).toContain("justify-between");
+    expect(encabezado.lastElementChild).toBe(resumen);
+  });
+
+  it("en singular dice «1 Usuario | 1 Habilitado»", async () => {
+    vi.mocked(api.get).mockImplementation(async () => ({ data: { items: [appUser()], total: 1, enabled: 1 } }));
+    renderUsers();
+
+    expect(await screen.findByTestId("users-summary-total")).toHaveTextContent("1 Usuario");
+    expect(screen.getByTestId("users-summary-enabled")).toHaveTextContent("1 Habilitado");
+    expect(screen.getByTestId("users-summary-total")).not.toHaveTextContent("1 Usuarios");
+  });
+
+  it("si el servidor no manda el conteo de habilitados, muestra cero", async () => {
+    mockUsersGet([appUser()]);
+    renderUsers();
+
+    expect(await screen.findByTestId("users-summary-enabled")).toHaveTextContent("0 Habilitados");
   });
 
   it("el título es «Usuarios de la Plataforma»", async () => {

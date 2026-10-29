@@ -102,7 +102,7 @@ export default function UserDetail() {
           <p className="mt-1 text-sm text-muted">Detalle de la cuenta y datos cargados</p>
         </div>
         <Card className="!p-4">
-          <dl data-testid="user-profile" className="flex flex-wrap items-center gap-x-8 gap-y-3">
+          <dl data-testid="user-profile" className="flex flex-wrap items-center gap-x-14 gap-y-3">
             <ProfileField testId="user-profile-name" label="Nombre">
               {name || "—"}
             </ProfileField>
@@ -110,7 +110,7 @@ export default function UserDetail() {
               {data.username || "—"}
             </ProfileField>
             <ProfileField testId="user-profile-status" label="Estado">
-              {data.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
+              {data.is_active ? <Badge tone="ok">Habilitado</Badge> : <Badge tone="off">Deshabilitado</Badge>}
             </ProfileField>
             <ProfileField testId="user-profile-created" label="Fecha de registro">
               {formatDateTime(data.created_at)}

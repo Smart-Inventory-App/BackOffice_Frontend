@@ -5,8 +5,8 @@ import { History, ShieldOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import type { AppUser, Paginated } from "@/lib/types";
-import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
-import { formatDateTime, truncate } from "@/lib/format";
+import { Badge, Card, Spinner } from "@/components/ui";
+import { formatDateTime, formatThousands, truncate } from "@/lib/format";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import AuditModal from "@/components/AuditModal";
@@ -36,7 +36,7 @@ export default function Users() {
       };
       if (search) params.search = search;
       if (status) params.status_filter = status;
-      return (await api.get<Paginated<AppUser>>("/admin/users/", { params })).data;
+      return (await api.get<Paginated<AppUser> & { enabled?: number }>("/admin/users/", { params })).data;
     },
     placeholderData: keepPreviousData,
   });
@@ -74,11 +74,29 @@ export default function Users() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+  const enabled = data?.enabled ?? 0;
 
   return (
     // En pantallas anchas todo entra sin desplazar la página: solo se desplaza la lista, que ocupa el alto que queda (como en Productos)
     <div className="md:flex md:h-[calc(100vh-4.5rem)] md:flex-col">
-      <PageHeader title="Usuarios de la Plataforma" subtitle="Monitoreo y habilitación de cuentas de la aplicación" />
+      {/* El título y la descripción a la izquierda y, a la derecha, cuántos usuarios hay y cuántos están habilitados */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Usuarios de la Plataforma</h1>
+          <p className="mt-1 text-sm text-muted">Monitoreo y habilitación de cuentas de la aplicación</p>
+        </div>
+        {data && (
+          <p data-testid="users-summary" className="flex flex-wrap items-baseline gap-x-3 text-base font-semibold uppercase tracking-wide text-muted">
+            <span data-testid="users-summary-total" className="text-2xl font-extrabold normal-case text-primaryDark">
+              {formatThousands(total)} {total === 1 ? "Usuario" : "Usuarios"}
+            </span>
+            <span aria-hidden className="text-line">|</span>
+            <span data-testid="users-summary-enabled" className="text-2xl font-extrabold normal-case text-ink">
+              {formatThousands(enabled)} {enabled === 1 ? "Habilitado" : "Habilitados"}
+            </span>
+          </p>
+        )}
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-3">
         <input
@@ -148,7 +166,7 @@ export default function Users() {
                       {formatDateTime(u.created_at)}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      {u.is_active ? <Badge tone="ok">Activo</Badge> : <Badge tone="off">Deshabilitado</Badge>}
+                      {u.is_active ? <Badge tone="ok">Habilitado</Badge> : <Badge tone="off">Deshabilitado</Badge>}
                     </td>
                     <td className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">
