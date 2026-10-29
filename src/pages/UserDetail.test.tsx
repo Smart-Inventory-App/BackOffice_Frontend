@@ -226,14 +226,25 @@ describe("UserDetail · últimos cambios y alertas", () => {
     vi.clearAllMocks();
   });
 
-  it("son dos secciones, separadas por una línea vertical tenue, con el título centrado", async () => {
+  it("son dos secciones, separadas por una línea vertical tenue, con el título a la izquierda y «Ver más» a la derecha", async () => {
     serve();
     renderDetail();
 
     const cambios = await screen.findByTestId("user-changes-section");
     const alertas = screen.getByTestId("user-alerts-section");
-    expect(within(cambios).getByRole("heading", { name: "Últimos cambios del usuario" }).className).toContain("text-center");
-    expect(within(alertas).getByRole("heading", { name: "Alertas del usuario" }).className).toContain("text-center");
+    for (const [seccion, titulo] of [[cambios, "Últimos cambios del usuario"], [alertas, "Alertas del usuario"]] as const) {
+      const heading = within(seccion).getByRole("heading", { name: titulo });
+      expect(heading.className).not.toContain("text-center");
+      const fila = heading.parentElement!;
+      expect(fila.className).toContain("justify-between");
+      // el título primero y el botón a su derecha, en la misma fila
+      expect(fila.firstElementChild).toBe(heading);
+      const boton = within(fila).getByRole("button", { name: "Ver más" });
+      expect(fila.lastElementChild).toBe(boton);
+      // el mismo formato que «Ver más» del dashboard de un usuario
+      expect(boton.className).toContain("!px-3");
+      expect(boton.className).toContain("!py-1.5");
+    }
     expect(alertas.className).toContain("lg:border-l");
     expect(alertas.className).toContain("border-line/60");
   });

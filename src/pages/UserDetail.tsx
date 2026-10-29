@@ -137,9 +137,14 @@ export default function UserDetail() {
       {/* Dos columnas separadas por una línea vertical tenue */}
       <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">
         <section aria-labelledby="user-changes-title" data-testid="user-changes-section" className="lg:pr-6">
-          <h2 id="user-changes-title" className="mb-3 text-center text-lg font-bold text-ink">
-            Últimos cambios del usuario
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="user-changes-title" className="text-base font-bold text-ink">
+              Últimos cambios del usuario
+            </h2>
+            <Button tone="ghost" className="!px-3 !py-1.5" onClick={() => setAllChanges(true)}>
+              Ver más
+            </Button>
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-3">
             <InfoBox testId="user-info-products" tone="blue" value={data.product_count} label={data.product_count === 1 ? "producto total" : "productos totales"} />
             <InfoBox testId="user-info-units" tone="sky" value={data.total_units} label={data.total_units === 1 ? "unidad total" : "unidades totales"} />
@@ -157,17 +162,17 @@ export default function UserDetail() {
               </ul>
             )}
           </div>
-          <div className="mt-4 text-center">
-            <Button tone="outline" onClick={() => setAllChanges(true)}>
-              Ver más
-            </Button>
-          </div>
         </section>
 
         <section aria-labelledby="user-alerts-title" data-testid="user-alerts-section" className="lg:border-l lg:border-line/60 lg:pl-6">
-          <h2 id="user-alerts-title" className="mb-3 text-center text-lg font-bold text-ink">
-            Alertas del usuario
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="user-alerts-title" className="text-base font-bold text-ink">
+              Alertas del usuario
+            </h2>
+            <Button tone="ghost" className="!px-3 !py-1.5" onClick={() => setAllAlerts(true)}>
+              Ver más
+            </Button>
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-3">
             <InfoBox testId="user-info-critical" tone="red" value={data.critical_alerts} label={data.critical_alerts === 1 ? "alerta crítica" : "alertas críticas"} />
             <InfoBox testId="user-info-warning" tone="yellow" value={data.warning_alerts} label={data.warning_alerts === 1 ? "alerta de advertencia" : "alertas de advertencias"} />
@@ -182,11 +187,6 @@ export default function UserDetail() {
                 ))}
               </ul>
             )}
-          </div>
-          <div className="mt-4 text-center">
-            <Button tone="outline" onClick={() => setAllAlerts(true)}>
-              Ver más
-            </Button>
           </div>
         </section>
       </div>
