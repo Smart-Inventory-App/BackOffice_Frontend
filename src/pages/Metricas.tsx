@@ -13,6 +13,8 @@ export default function Metricas() {
   const [period, setPeriod] = useState<TrendPeriod>(14);
   const endpoint = effectiveIsAdmin ? "/admin/metrics" : "/me/metrics";
   const audience = effectiveIsAdmin ? "platform" : "user";
+  // Lo que pasó cada día, para el administrador, es de toda la plataforma
+  const scope = effectiveIsAdmin ? "entre todos los usuarios de la plataforma" : undefined;
   return (
     <div>
       {/* Título y descripción a la izquierda y el selector de período a la derecha, alineados verticalmente */}
@@ -32,13 +34,13 @@ export default function Metricas() {
           <h2 id="trends-consumption-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de consumo
           </h2>
-          <TrendsPanel endpoint={endpoint} audience={audience} kind="consumo" period={period} onPeriodChange={setPeriod} />
+          <TrendsPanel endpoint={endpoint} audience={audience} kind="consumo" period={period} onPeriodChange={setPeriod} scopeText={scope} />
         </section>
         <section aria-labelledby="trends-incomes-title" data-testid="trends-section-ingresos" className="lg:border-l lg:border-line/60 lg:pl-6">
           <h2 id="trends-incomes-title" className="mb-3 text-center text-lg font-bold text-ink">
             Tendencias de ingresos
           </h2>
-          <TrendsPanel endpoint={endpoint} audience={audience} kind="ingresos" period={period} onPeriodChange={setPeriod} />
+          <TrendsPanel endpoint={endpoint} audience={audience} kind="ingresos" period={period} onPeriodChange={setPeriod} scopeText={scope} />
         </section>
       </div>
     </div>

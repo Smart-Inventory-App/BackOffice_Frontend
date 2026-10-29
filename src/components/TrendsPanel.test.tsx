@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
@@ -115,6 +115,89 @@ describe("TrendsPanel · períodos", () => {
     await open("/admin/metrics", "platform");
 
     expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });
+  });
+});
+
+describe("TrendsPanel · interacción con las barras", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("al pasar el mouse sobre una barra de consumo muestra lo que pasó ese día, y al salir lo oculta", async () => {
+    const user = userEvent.setup();
+    serve();
+    await open();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.hover(screen.getByTestId("trends-bar-12"));
+
+    const tip = screen.getByTestId("trends-tooltip-12");
+    expect(tip).toHaveAttribute("role", "tooltip");
+    // únicamente el día y, debajo, la cantidad
+    expect(Array.from(tip.children).map((c) => c.textContent)).toEqual(["Miércoles 21 de octubre", "7 unidades"]);
+    expect(tip).not.toHaveTextContent("Se consumieron");
+    // con el estilo de los gráficos del dashboard: caja blanca con borde gris
+    expect(tip.className).toContain("bg-white");
+    expect(tip.className).toContain("border-[#ccc]");
+    // la barra de otro día no tiene el suyo
+    expect(screen.queryByTestId("trends-tooltip-13")).not.toBeInTheDocument();
+
+    await user.hover(screen.getByTestId("trends-bar-13"));
+    expect(screen.queryByTestId("trends-tooltip-12")).not.toBeInTheDocument();
+    expect(screen.getByTestId("trends-tooltip-units-13")).toHaveTextContent("3 unidades");
+
+    await user.unhover(screen.getByTestId("trends-bar-13"));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("un día sin consumo muestra «0 unidades» en el tooltip", async () => {
+    const user = userEvent.setup();
+    serve();
+    await open();
+
+    await user.hover(screen.getByTestId("trends-bar-0"));
+
+    expect(screen.getByTestId("trends-tooltip-units-0")).toHaveTextContent("0 unidades");
+  });
+
+  it("también con el teclado: el foco en una barra muestra el tooltip y al salir se oculta", async () => {
+    serve();
+    await open();
+    const barra = screen.getByTestId("trends-bar-12");
+
+    act(() => barra.focus());
+    expect(screen.getByTestId("trends-tooltip-12")).toBeInTheDocument();
+
+    act(() => barra.blur());
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("hacer click en una barra sigue mostrando el detalle de ese día", async () => {
+    const user = userEvent.setup();
+    serve();
+    await open();
+
+    await user.click(screen.getByTestId("trends-bar-12"));
+
+    expect(screen.getByTestId("trends-day-title")).toHaveTextContent("Miércoles 21 de octubre");
+    expect(screen.getByTestId("trends-day-units")).toHaveTextContent("Se consumieron 7 unidades");
+    expect(screen.getByTestId("trends-bar-12")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("con un texto de alcance, lo agrega al final del detalle del día, pero no al tooltip", async () => {
+    const user = userEvent.setup();
+    serve();
+    renderWithProviders(<TrendsPanel scopeText="entre todos los usuarios de la plataforma" />);
+    await screen.findByTestId("trends-panel");
+
+    await user.hover(screen.getByTestId("trends-bar-12"));
+    expect(screen.getByTestId("trends-tooltip-12")).not.toHaveTextContent("entre todos los usuarios");
+    expect(screen.getByTestId("trends-tooltip-units-12")).toHaveTextContent("7 unidades");
+    await user.click(screen.getByTestId("trends-bar-12"));
+    expect(screen.getByTestId("trends-day-units")).toHaveTextContent("Se consumieron 7 unidades entre todos los usuarios de la plataforma");
+    // un día sin consumo no lleva el texto de alcance
+    await user.click(screen.getByTestId("trends-bar-0"));
+    expect(screen.getByTestId("trends-day-units")).toHaveTextContent(/^Ese día no hubo consumo$/);
   });
 });
 
@@ -481,6 +564,28 @@ describe("TrendsPanel · ingresos", () => {
     await openIncomes({ period: 14, onPeriodChange: vi.fn() });
 
     expect(screen.queryByTestId("trends-period-14")).not.toBeInTheDocument();
+  });
+
+  it("los ingresos también muestran el tooltip al pasar el mouse", async () => {
+    const user = userEvent.setup();
+    serveIncomes();
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+    await screen.findByTestId("incomes-panel");
+
+    await user.hover(screen.getByTestId("incomes-bar-13"));
+
+    expect(Array.from(screen.getByTestId("incomes-tooltip-13").children).map((c) => c.textContent)).toEqual([
+      "Jueves 22 de octubre",
+      "10 unidades",
+    ]);
+  });
+
+  it("los ingresos de toda la plataforma dicen «Ingresaron … entre todos los usuarios de la plataforma»", async () => {
+    serveIncomes();
+    renderWithProviders(<TrendsPanel kind="ingresos" scopeText="entre todos los usuarios de la plataforma" />);
+    await screen.findByTestId("incomes-panel");
+
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresaron 10 unidades entre todos los usuarios de la plataforma");
   });
 });
 

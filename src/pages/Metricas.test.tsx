@@ -59,6 +59,32 @@ describe("Metricas (Tendencias)", () => {
     expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });
   });
 
+  it("para el administrador, lo que pasó cada día es «entre todos los usuarios de la plataforma»; para un usuario, no", async () => {
+    const dias = Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(9 + i).padStart(2, "0")}`, quantity: i === 13 ? 4 : 0 }));
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+      data: {
+        period_days: config.params.period,
+        total_consumido: 4,
+        total_entradas: 4,
+        total_ingresos: 4,
+        consumo_por_dia: dias,
+        ingresos_por_dia: dias,
+        top_productos: [],
+      },
+    }));
+
+    auth.effectiveIsAdmin = true;
+    const admin = renderWithProviders(<Metricas />);
+    expect(await screen.findByTestId("trends-day-units")).toHaveTextContent("Se consumieron 4 unidades entre todos los usuarios de la plataforma");
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresaron 4 unidades entre todos los usuarios de la plataforma");
+    admin.unmount();
+
+    auth.effectiveIsAdmin = false;
+    renderWithProviders(<Metricas />);
+    expect(await screen.findByTestId("trends-day-units")).toHaveTextContent(/^Se consumieron 4 unidades$/);
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent(/^Ingresaron 4 unidades$/);
+  });
+
   it("la página ocupa todo el ancho, como las demás: sin un ancho máximo ni centrada", async () => {
     renderWithProviders(<Metricas />);
 

@@ -39,6 +39,8 @@ interface Props {
   compact?: boolean;
   /** Los cuadros de arriba dicen «Productos consumidos» / «Productos ingresados», con letra un poco más grande. */
   productLabels?: boolean;
+  /** Se agrega al final de lo que pasó cada día («Se consumieron 5 unidades entre todos los usuarios de la plataforma»). */
+  scopeText?: string;
 }
 
 /** Textos y datos de cada variante del panel. */
@@ -94,10 +96,13 @@ export default function TrendsPanel({
   showTop = true,
   compact = false,
   productLabels = false,
+  scopeText,
 }: Props) {
   const chartHeight = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
   const [ownPeriod, setOwnPeriod] = useState<TrendPeriod>(DEFAULT_PERIOD);
   const [selected, setSelected] = useState<number | null>(null);
+  // La barra sobre la que está el mouse (o que tiene el foco): muestra lo que pasó ese día
+  const [hovered, setHovered] = useState<number | null>(null);
   const k = KINDS[kind];
   const t = (name: string) => `${k.prefix}-${name}`;
   const period = controlled ?? ownPeriod;
@@ -159,6 +164,8 @@ export default function TrendsPanel({
       ? audience === "user" ? "Consumiste" : "Se consumió"
       : audience === "user" ? "Ingresaste" : "Ingresó";
 
+  const dayText = (quantity: number) => `${k.day(quantity)}${scopeText ? ` ${scopeText}` : ""}`;
+
   const goToDay = (step: number) => setSelected((index) => (index === null ? index : Math.min(days.length - 1, Math.max(0, index + step))));
 
   return (
@@ -202,8 +209,27 @@ export default function TrendsPanel({
               aria-label={`${formatDayLong(d.day)}: ${unitsText(d.quantity)}`}
               aria-pressed={selected === i}
               onClick={() => setSelected(i)}
-              className="flex h-full min-w-0 flex-1 items-end"
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered((current) => (current === i ? null : current))}
+              onFocus={() => setHovered(i)}
+              onBlur={() => setHovered((current) => (current === i ? null : current))}
+              className="relative flex h-full min-w-0 flex-1 items-end"
             >
+              {hovered === i && (
+                <span
+                  role="tooltip"
+                  data-testid={t(`tooltip-${i}`)}
+                  className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 w-max -translate-x-1/2 whitespace-nowrap border border-[#ccc] bg-white p-2.5 text-left text-sm leading-snug text-black"
+                >
+                  {/* Como en los gráficos del dashboard: el día y, debajo, la cantidad */}
+                  <span data-testid={t(`tooltip-day-${i}`)} className="block">
+                    {formatDayLong(d.day)}
+                  </span>
+                  <span data-testid={t(`tooltip-units-${i}`)} className={`block ${k.tone}`}>
+                    {unitsText(d.quantity)}
+                  </span>
+                </span>
+              )}
               <span
                 data-testid={t(`bar-fill-${i}`)}
                 className={`block w-full rounded-t-md transition ${
@@ -254,7 +280,7 @@ export default function TrendsPanel({
                   {formatDayLong(chosen.day)}
                 </p>
                 <p data-testid={t("day-units")} className="mt-0.5 text-sm text-muted">
-                  {chosen.quantity > 0 ? k.day(chosen.quantity) : k.dayEmpty}
+                  {chosen.quantity > 0 ? dayText(chosen.quantity) : k.dayEmpty}
                 </p>
               </>
             )}
