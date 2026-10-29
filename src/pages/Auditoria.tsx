@@ -71,14 +71,14 @@ export default function Auditoria() {
         subtitle="Actividad de usuarios de la plataforma: altas, productos cargados/editados/eliminados, logins y cambios de rol desde la app y el dashboard."
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-1">
         {(
           ["", "registered", "login", "product_created", "product_exit", "product_updated", "product_deleted", "status", "role"] as const
         ).map((k) => (
           <button
             key={k}
             onClick={() => setKind(k)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
               kind === k ? "bg-primary text-white" : "bg-canvas text-muted hover:text-primaryDark"
             }`}
           >
@@ -92,7 +92,14 @@ export default function Auditoria() {
       ) : (
         <Card className="p-0">
           <div className="max-h-[65vh] overflow-auto">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
+              {/* Anchos fijos: la columna «Evento» mide lo mismo sea cual sea el tipo de evento que se filtre */}
+              <colgroup>
+                <col className="w-60" />
+                <col className="w-64" />
+                <col />
+                <col className="w-48" />
+              </colgroup>
               <thead className="sticky top-0 z-10 bg-white">
                 <tr className="border-b border-line text-center text-xs uppercase tracking-wide text-muted whitespace-nowrap">
                   <th className="px-5 py-3">Evento</th>

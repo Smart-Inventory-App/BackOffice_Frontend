@@ -307,7 +307,7 @@ describe("TrendsPanel · más consumidos", () => {
     expect(screen.getByTestId("trends-top-bar-0").style.width).toBe("100%");
     expect(screen.getByTestId("trends-top-bar-1").style.width).toBe("50%");
     expect(screen.queryByText("Menos usados")).not.toBeInTheDocument();
-    expect(screen.getByText("Productos más consumidos")).toBeInTheDocument();
+    expect(screen.getByText("Productos con más salidas")).toBeInTheDocument();
   });
 
   it("para un administrador muestra el mail del usuario debajo del nombre de cada producto más consumido", async () => {
@@ -403,7 +403,7 @@ describe("TrendsPanel · ingresos", () => {
     expect(screen.getByTestId("incomes-peak")).toHaveTextContent("10");
     expect(screen.getByTestId("incomes-peak-label")).toHaveTextContent("Día de mayor ingreso: 22 de octubre");
     expect(screen.queryByTestId("trends-consumed")).not.toBeInTheDocument();
-    expect(screen.queryByText("Productos más consumidos")).not.toBeInTheDocument();
+    expect(screen.queryByText("Productos con más salidas")).not.toBeInTheDocument();
     expect(screen.getByText("Ingresos por día")).toBeInTheDocument();
   });
 
@@ -562,7 +562,7 @@ describe("TrendsPanel · títulos y tarjetas centrados", () => {
     expect(screen.getByTestId("trends-peak").parentElement!.className).toContain("text-center");
     expect(screen.getByTestId("trends-change").className).toContain("justify-center");
     expect(screen.getByText("Consumo por día").className).toContain("text-center");
-    expect(screen.getByText("Productos más consumidos").className).toContain("text-center");
+    expect(screen.getByText("Productos con más salidas").className).toContain("text-center");
   });
 
   it("en los ingresos también: el título, las tarjetas y «Productos con más stock»", async () => {

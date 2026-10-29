@@ -258,7 +258,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
 
       {kind === "consumo" && (
       <Card className="!p-4">
-        <h3 className="mb-3 text-center text-sm font-semibold text-ink">Productos más consumidos</h3>
+        <h3 className="mb-3 text-center text-sm font-semibold text-ink">Productos con más salidas</h3>
         {data.top_productos.length === 0 ? (
           <EmptyState>Todavía no hay suficiente historial.</EmptyState>
         ) : (
