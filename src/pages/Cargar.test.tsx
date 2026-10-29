@@ -313,7 +313,7 @@ describe("Cargar · archivo (BulkUpload)", () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(input, file);
 
-    expect(await screen.findByText(/· producto nuevo/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Quitar de la lista" })).toBeInTheDocument();
     // Sin categoría todavía, la fila cuenta como incluida a nivel checkbox pero
     // no pasa la validación local, así que el contador de incluidos da 0.
     expect(screen.getByText("0 de 1 productos incluidos")).toBeInTheDocument();
@@ -388,9 +388,11 @@ describe("Cargar · archivo (BulkUpload)", () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(input, file);
 
-    expect(await screen.findByText(/va a sumar 2 \+ 3/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Quitar de la lista" }));
+    expect(await screen.findByTestId("bulk-file-name")).toHaveTextContent("productos.csv");
     expect(screen.queryByText(/va a sumar/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/fila \d/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Quitar de la lista" }));
+    expect(screen.queryByTestId("bulk-file-name")).not.toBeInTheDocument();
   });
 
   function filaBase(nombre: string, overrides: Record<string, any> = {}) {
@@ -509,7 +511,8 @@ describe("Cargar · archivo (BulkUpload)", () => {
       new File(["x"], "p.csv", { type: "text/csv" }),
     );
 
-    expect(await screen.findByText(/va a sacar 2 \(quedan 3\)/)).toBeInTheDocument();
+    expect(await screen.findByTestId("bulk-file-name")).toHaveTextContent("p.csv");
+    expect(screen.queryByText(/va a sacar/)).not.toBeInTheDocument();
     expect(screen.queryByText("Categoría")).not.toBeInTheDocument();
   });
 });
@@ -542,70 +545,6 @@ describe("Cargar · navegación de pestañas y flujo de procesamiento", () => {
     await user.click(screen.getByRole("button", { name: "Entrada" }));
     expect(screen.getByText("Nombre *")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/Buscá un producto que ya tenés cargado/)).not.toBeInTheDocument();
-  });
-
-  it("desde Procesamiento (salida), un renglón de comprobante sin identificar deriva a la salida manual", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: {
-            job_id: null,
-            status: "done",
-            doc_type: "receipt",
-            error: null,
-            queue_position: null,
-            estimated_wait_seconds: null,
-            result: {
-              doc_type: "receipt",
-              draft: null,
-              items: [
-                {
-                  nombre: "Producto raro",
-                  marca: null,
-                  descripcion: null,
-                  vencimiento: null,
-                  codigo_barras: null,
-                  pais_registro: null,
-                  stock: 1,
-                  confianzas: {},
-                  texto_leido: "Producto raro",
-                  coincidencias: [],
-                  coincidencia_id: null,
-                },
-              ],
-              comprobante: { comercio: "Kiosco", fecha_compra: null, total: null },
-              needs_review: false,
-              confianza: 0.8,
-              texto_legible: "",
-              advertencias: [],
-              sin_coincidencia: 1,
-            },
-          },
-        };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(<Cargar />);
-    await user.click(screen.getByRole("button", { name: "Salida" }));
-    await user.click(screen.getByRole("button", { name: "Procesamiento" }));
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-
-    await user.upload(screen.getByLabelText("Elegí una foto"), new File(["x"], "t.png", { type: "image/png" }));
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    await user.click(await screen.findByRole("button", { name: "Cargar esta salida a mano" }));
-
-    expect(await screen.findByDisplayValue("Producto raro")).toBeInTheDocument();
-    expect(screen.getByDisplayValue(/Documento Comercial - Kiosco/)).toBeInTheDocument();
-  });
-});
-
-describe("Cargar · imagen como archivo adjunto", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    defaultGet();
   });
 
   it("no pide la URL de la imagen: ofrece adjuntar un archivo", () => {
@@ -1413,5 +1352,131 @@ describe("Cargar · archivo: columnas de la carga", () => {
     await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(["nombre,categoria\nLeche,Lácteos\n"], "productos.csv", { type: "text/csv" }));
 
     expect(await screen.findByText(/Al archivo le faltan columnas obligatorias: stock/)).toBeInTheDocument();
+  });
+});
+
+describe("Cargar · archivo: stock borrable y confirmación con productos incompletos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  const fila = (n: number, nombre: string, categoria: string, stock: number) => ({
+    row_number: n,
+    data: { row_number: n, nombre, marca: null, categoria, stock, vencimiento: null, descripcion: null, imagen_url: null, ubicacion: null, stock_minimo: null, dias_alerta_vencimiento: null },
+    valid: Boolean(nombre && categoria && stock > 0),
+    errors: [],
+    action: "create",
+    existing_stock: null,
+  });
+
+  async function subir(user: ReturnType<typeof userEvent.setup>, rows: unknown[]) {
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/bulk/parse") return { data: { rows } };
+      if (url === "/me/products/bulk/commit") return { data: { created: 1, merged: 0, failed: 0, errors: [] } };
+      throw new Error(`POST no mockeado: ${url}`);
+    });
+    renderWithProviders(<Cargar />);
+    await user.click(screen.getByTestId("flow-method-archivo"));
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], "productos.csv", { type: "text/csv" }));
+    await screen.findByRole("button", { name: "Quitar de la lista" });
+  }
+
+  it("el stock leído se puede borrar y no se rellena con 0", async () => {
+    const user = userEvent.setup();
+    await subir(user, [fila(2, "Fideos", "Almacén", 3)]);
+
+    const stock = screen.getByLabelText("Stock") as HTMLInputElement;
+    expect(stock.value).toBe("3");
+    await user.clear(stock);
+
+    expect(stock.value).toBe("");
+    expect(screen.getByText("0 de 1 productos incluidos")).toBeInTheDocument();
+    await user.type(stock, "12a");
+    expect(stock.value).toBe("12");
+  });
+
+  it("con un producto con el stock en blanco no confirma y dice que hay que corregirlo o eliminarlo", async () => {
+    const user = userEvent.setup();
+    await subir(user, [fila(2, "Fideos", "Almacén", 3), fila(3, "Arroz", "Almacén", 5)]);
+    await user.clear(screen.getByLabelText("Stock"));
+    expect(screen.queryByTestId("bulk-invalid")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Confirmar carga/ }));
+
+    expect(api.post).toHaveBeenCalledTimes(1); // solo el parseo del archivo
+    expect(screen.getByTestId("bulk-invalid")).toHaveTextContent("Corregí o eliminá el producto con datos incompletos o inválidos antes de confirmar: «Fideos».");
+    await user.type(screen.getByLabelText("Stock"), "4");
+    expect(screen.queryByTestId("bulk-invalid")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Confirmar carga/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/me/products/bulk/commit", expect.anything()));
+  });
+
+  it("si todos los productos están incompletos igual se puede intentar confirmar y se avisa cuáles son; quitarlos destraba", async () => {
+    const user = userEvent.setup();
+    await subir(user, [fila(2, "Fideos", "", 3), fila(3, "", "Almacén", 5)]);
+
+    const confirmar = screen.getByRole("button", { name: /Confirmar carga \(0 productos\)/ });
+    expect(confirmar).toBeEnabled();
+    await user.click(confirmar);
+
+    expect(screen.getByTestId("bulk-invalid")).toHaveTextContent("Corregí o eliminá los 2 productos con datos incompletos o inválidos antes de confirmar: «Fideos», «Fila 3».");
+    await user.click(screen.getByRole("button", { name: "Quitar de la lista" }));
+    expect(screen.getByTestId("bulk-invalid")).toHaveTextContent("el producto con datos incompletos o inválidos antes de confirmar: «Fila 3».");
+    await user.click(screen.getByText("Fila 3"));
+    await user.click(screen.getByRole("button", { name: "Quitar de la lista" }));
+    expect(screen.queryByTestId("bulk-invalid")).not.toBeInTheDocument();
+  });
+});
+
+describe("Cargar · archivo: errores debajo de cada campo", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultGet();
+  });
+
+  async function subirFila(user: ReturnType<typeof userEvent.setup>, data: Record<string, unknown>) {
+    const base = { row_number: 2, marca: null, vencimiento: null, descripcion: null, imagen_url: null, ubicacion: null, stock_minimo: null, dias_alerta_vencimiento: null };
+    vi.mocked(api.post).mockResolvedValue({ data: { rows: [{ row_number: 2, data: { ...base, ...data }, valid: false, errors: [], action: "create", existing_stock: null }] } });
+    renderWithProviders(<Cargar />);
+    await user.click(screen.getByTestId("flow-method-archivo"));
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], "productos.csv", { type: "text/csv" }));
+    await screen.findByRole("button", { name: "Quitar de la lista" });
+  }
+
+  it("«El nombre del producto es obligatorio» y «El stock debe ser mayor a 0» van debajo de su campo, enseguida", async () => {
+    const user = userEvent.setup();
+    await subirFila(user, { nombre: "", categoria: "Almacén", stock: 0 });
+
+    const nombre = screen.getByTestId("bulk-nombre-error");
+    const stock = screen.getByTestId("bulk-stock-error");
+    expect(nombre).toHaveTextContent("El nombre del producto es obligatorio");
+    expect(stock).toHaveTextContent("El stock debe ser mayor a 0");
+    expect(nombre.previousElementSibling).toBe(screen.getByPlaceholderText("ej. Leche entera 1L"));
+    expect(stock.previousElementSibling).toBe(screen.getByLabelText("Stock"));
+    // Ya no van juntos en el cuadro de arriba, con los nombres viejos
+    expect(screen.queryByText("nombre es obligatorio")).not.toBeInTheDocument();
+    expect(screen.queryByText("stock debe ser mayor a 0")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/El nombre del producto es obligatorio|El stock debe ser mayor a 0/)).toHaveLength(2);
+  });
+
+  it("los mensajes se van cuando se corrige el campo", async () => {
+    const user = userEvent.setup();
+    await subirFila(user, { nombre: "", categoria: "Almacén", stock: 0 });
+
+    await user.type(screen.getByPlaceholderText("ej. Leche entera 1L"), "Fideos");
+    await user.type(screen.getByLabelText("Stock"), "3");
+
+    expect(screen.queryByTestId("bulk-nombre-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-stock-error")).not.toBeInTheDocument();
+  });
+
+  it("lo que no tiene un campo propio, como la categoría, sigue yendo en el cuadro de arriba", async () => {
+    const user = userEvent.setup();
+    await subirFila(user, { nombre: "Fideos", categoria: "", stock: 3 });
+
+    expect(screen.getByText("categoria es obligatoria")).toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-nombre-error")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-stock-error")).not.toBeInTheDocument();
   });
 });

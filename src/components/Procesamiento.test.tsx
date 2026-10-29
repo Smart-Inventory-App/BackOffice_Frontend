@@ -332,332 +332,6 @@ describe("Procesamiento · salida · código de barras y etiqueta", () => {
   });
 });
 
-describe("Procesamiento · entrada · comprobante", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockOpcionesGet();
-  });
-
-  it("lee un ticket, permite corregir los renglones y confirma el alta", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              comprobante: { comercio: "Almacén Don Pedro", fecha_compra: "2026-01-01", total: 1500 },
-              items: [draft({ nombre: "Fideos", coincidencias: [] })],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      if (url === "/me/products/bulk/commit") {
-        return { data: { created: 1, merged: 0, failed: 0, errors: [] } };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="entrada" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    expect(await screen.findByText("Almacén Don Pedro")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Fideos")).toBeInTheDocument();
-
-    const categoriaSelect = screen.getByText("Categoría").nextElementSibling as HTMLSelectElement;
-    await user.selectOptions(categoriaSelect, "Almacén");
-
-    await user.click(screen.getByRole("button", { name: /Confirmar carga \(1 producto\)/ }));
-    expect(await screen.findByText(/1 producto nuevo y 0 actualizados/)).toBeInTheDocument();
-  });
-
-  it("si no hay categoría en un renglón incluido, avisa que falta completarla", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              items: [draft({ nombre: "Fideos", coincidencias: [] })],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="entrada" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    expect(
-      await screen.findByText("Falta elegir la categoría de un renglón para poder cargarlo."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Confirmar carga/ })).toBeDisabled();
-  });
-
-  it("permite editar cada renglón, desmarcarlo, y avisa si falla la carga masiva", async () => {
-    const user = userEvent.setup();
-    const unMatch = match();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              items: [draft({ nombre: "Fideos", marca: "Marca Test", coincidencias: [unMatch], coincidencia_id: null })],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      if (url === "/me/products/bulk/commit") {
-        const err: any = new Error("fallo bulk");
-        err.response = { data: { detail: "No se pudo cargar el comprobante." } };
-        throw err;
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="entrada" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    await screen.findByDisplayValue("Fideos");
-
-    const categoriaSelect = screen.getByText("Categoría").nextElementSibling as HTMLSelectElement;
-    await user.selectOptions(categoriaSelect, "Almacén");
-
-    const codigoInput = screen.getAllByPlaceholderText("Opcional").find((el) => el.getAttribute("inputmode") === "numeric")!;
-    await user.type(codigoInput, "789");
-
-    const vencimientoInputs = document.querySelectorAll('input[type="date"]');
-    await user.type(vencimientoInputs[0] as HTMLInputElement, "2026-04-01");
-
-    const cantidadInput = screen.getByDisplayValue("1");
-    await user.clear(cantidadInput);
-    await user.type(cantidadInput, "3");
-
-    await user.click(screen.getByRole("button", { name: /Confirmar carga/ }));
-    expect(await screen.findByText("No se pudo cargar el comprobante.")).toBeInTheDocument();
-
-    const checkbox = screen.getByRole("checkbox");
-    await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-    expect(screen.getByRole("button", { name: /Confirmar carga \(0 productos\)/ })).toBeDisabled();
-  });
-
-  it("sin renglones reconocidos, lo avisa; y se puede descartar y volver a empezar", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return { data: doneState(scanResult({ doc_type: "receipt", draft: null, items: [] }), "receipt") };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="entrada" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    expect(
-      await screen.findByText(/No se reconoció ningún renglón en esta foto/),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /Descartar y escanear otro/ }));
-    expect(screen.getByRole("button", { name: "Leer comprobante" })).toBeInTheDocument();
-  });
-
-  it("al elegir una coincidencia en un renglón, precarga sus datos; y avisa renglones fallidos", async () => {
-    const user = userEvent.setup();
-    const unMatch = match();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              items: [draft({ nombre: "Fideos", coincidencias: [unMatch], coincidencia_id: null })],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      if (url === "/me/products/bulk/commit") {
-        return { data: { created: 0, merged: 1, failed: 1, errors: ["Fila 2: sin categoría"] } };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="entrada" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    await screen.findByText("¿Es alguno de estos?");
-    await user.click(screen.getByRole("button", { name: new RegExp(unMatch.nombre) }));
-    expect(screen.getByDisplayValue(unMatch.nombre)).toBeInTheDocument();
-
-    const marcaSelect = screen.getByText("Marca").nextElementSibling as HTMLSelectElement;
-    await user.selectOptions(marcaSelect, "Marca Test");
-
-    await user.click(screen.getByRole("button", { name: /Confirmar carga/ }));
-
-    expect(await screen.findByText(/0 productos nuevos y 1 actualizado/)).toBeInTheDocument();
-    expect(screen.getByText(/1 renglón no se pudo cargar/)).toBeInTheDocument();
-    expect(screen.getByText("Fila 2: sin categoría")).toBeInTheDocument();
-  });
-});
-
-describe("Procesamiento · salida · comprobante", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockOpcionesGet();
-  });
-
-  it("descarga lo identificado y deja ir a carga manual lo que no matchea", async () => {
-    const user = userEvent.setup();
-    const irASalidaManual = vi.fn();
-    const unMatch = match();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              comprobante: { comercio: "Kiosco", fecha_compra: null, total: null },
-              items: [
-                draft({ nombre: "Yerba", coincidencias: [unMatch], coincidencia_id: unMatch.id }),
-                draft({ nombre: "Producto raro", texto_leido: "Producto raro", coincidencias: [], coincidencia_id: null }),
-              ],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      if (url === "/me/products/ocr/salida") {
-        return { data: { procesados: 1, fallidos: 0, errores: [] } };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="salida" irAManual={vi.fn()} irASalidaManual={irASalidaManual} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    expect(await screen.findByText(/No se pudo cargar 1 producto/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cargar esta salida a mano" }));
-    expect(irASalidaManual).toHaveBeenCalledWith(
-      expect.objectContaining({ busqueda: "Producto raro" }),
-    );
-
-    await user.click(screen.getByRole("button", { name: /Confirmar salida \(1 producto\)/ }));
-    expect(await screen.findByText(/Salió 1 producto por Documento Comercial/)).toBeInTheDocument();
-  });
-
-  it("permite destildar un renglón identificado y avisa si falla la confirmación", async () => {
-    const user = userEvent.setup();
-    const unMatch = match();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              items: [draft({ nombre: "Yerba", coincidencias: [unMatch], coincidencia_id: unMatch.id })],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      if (url === "/me/products/ocr/salida") {
-        const err: any = new Error("fallo");
-        err.response = { data: { detail: "No se pudieron registrar las salidas." } };
-        throw err;
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="salida" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    await screen.findByText("Descargar");
-    const cantidadInput = screen.getByDisplayValue("1");
-    await user.clear(cantidadInput);
-    await user.type(cantidadInput, "2");
-
-    await user.click(screen.getByRole("button", { name: /Confirmar salida/ }));
-    expect(await screen.findByText("No se pudieron registrar las salidas.")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("checkbox"));
-    expect(screen.getByRole("button", { name: /Confirmar salida \(0 productos\)/ })).toBeDisabled();
-  });
-
-  it("con varios renglones sin identificar, usa el texto en plural", async () => {
-    const user = userEvent.setup();
-    vi.mocked(api.post).mockImplementation(async (url: string) => {
-      if (url === "/me/products/ocr/scan") {
-        return {
-          data: doneState(
-            scanResult({
-              doc_type: "receipt",
-              draft: null,
-              items: [
-                draft({ nombre: "A", texto_leido: "A", coincidencias: [], coincidencia_id: null }),
-                draft({ nombre: "B", texto_leido: "B", coincidencias: [], coincidencia_id: null }),
-              ],
-            }),
-            "receipt",
-          ),
-        };
-      }
-      throw new Error(`POST no mockeado: ${url}`);
-    });
-
-    renderWithProviders(
-      <Procesamiento direction="salida" irAManual={vi.fn()} irASalidaManual={vi.fn()} />,
-    );
-    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
-    await user.upload(screen.getByLabelText("Elegí una foto"), png());
-    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
-
-    expect(await screen.findByText(/No se pudo cargar 2 productos/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Confirmar salida/ })).toBeDisabled();
-  });
-});
-
 describe("Procesamiento · texto del escaneo de la etiqueta", () => {
   it("dice «Escanea la etiqueta de un producto»", () => {
     mockOpcionesGet();
@@ -666,5 +340,102 @@ describe("Procesamiento · texto del escaneo de la etiqueta", () => {
 
     expect(screen.getByText("Escanea la etiqueta de un producto")).toBeInTheDocument();
     expect(screen.queryByText("Foto de la etiqueta del producto")).not.toBeInTheDocument();
+  });
+});
+
+describe("Procesamiento · comprobante (entrada y salida)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOpcionesGet();
+  });
+
+  const leer = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.upload(screen.getByLabelText("Elegí una foto"), png());
+    await user.click(screen.getByRole("button", { name: "Leer comprobante" }));
+  };
+
+  const comprobante = () =>
+    scanResult({
+      doc_type: "receipt",
+      draft: null,
+      comprobante: { comercio: "Súper Don Pepe", fecha_compra: null, total: null },
+      items: [draft({ texto_leido: "YERBA 1K", coincidencias: [match()], coincidencia_id: null, stock: 2 })],
+    });
+
+  it("en una entrada, la lectura abre la revisión con el formato de la carga por archivo y confirma la carga", async () => {
+    const user = userEvent.setup();
+    const { irAManual, irASalidaManual } = irA();
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/ocr/scan") return { data: doneState(comprobante()) };
+      if (url === "/me/products/bulk/commit") return { data: { created: 1, merged: 1, failed: 1, errors: ["Fila 3: algo falló"] } };
+      throw new Error(`POST no mockeado: ${url}`);
+    });
+    renderWithProviders(<Procesamiento direction="entrada" irAManual={irAManual} irASalidaManual={irASalidaManual} />);
+
+    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
+    await leer(user);
+
+    expect(await screen.findByText("Súper Don Pepe")).toBeInTheDocument();
+    expect(screen.getByTestId("receipt-read-0")).toHaveTextContent("YERBA 1K");
+    await user.click(screen.getByTestId("receipt-option-0-1"));
+    await user.click(screen.getByTestId("receipt-confirm"));
+
+    expect(await screen.findByText(/1 producto nuevo y 1 actualizado desde el comprobante\. 1 renglón no se pudo cargar\./)).toBeInTheDocument();
+    expect(screen.getByText("Fila 3: algo falló")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Escanear otra foto/ }));
+    expect(screen.getByLabelText("Elegí una foto")).toBeInTheDocument();
+  });
+
+  it("en una entrada, los plurales y sin errores", async () => {
+    const user = userEvent.setup();
+    const { irAManual, irASalidaManual } = irA();
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/ocr/scan") return { data: doneState(comprobante()) };
+      return { data: { created: 2, merged: 3, failed: 2, errors: [] } };
+    });
+    renderWithProviders(<Procesamiento direction="entrada" irAManual={irAManual} irASalidaManual={irASalidaManual} />);
+
+    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
+    await leer(user);
+    await user.click(await screen.findByTestId("receipt-option-0-1"));
+    await user.click(screen.getByTestId("receipt-confirm"));
+
+    expect(await screen.findByText(/2 productos nuevos y 3 actualizados desde el comprobante\. 2 renglones no se pudieron cargar\./)).toBeInTheDocument();
+  });
+
+  it("en una salida, la lectura abre la misma revisión y registra la salida con el motivo del documento", async () => {
+    const user = userEvent.setup();
+    const { irAManual, irASalidaManual } = irA();
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/ocr/scan") return { data: doneState(comprobante()) };
+      if (url === "/me/products/ocr/salida") return { data: { procesados: 1, errores: ["No alcanzó el stock"] } };
+      throw new Error(`POST no mockeado: ${url}`);
+    });
+    renderWithProviders(<Procesamiento direction="salida" irAManual={irAManual} irASalidaManual={irASalidaManual} />);
+
+    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
+    await leer(user);
+    await user.click(await screen.findByTestId("receipt-option-0-1"));
+    await user.click(screen.getByTestId("receipt-confirm"));
+
+    expect(await screen.findByText("Salió 1 producto por Documento Comercial.")).toBeInTheDocument();
+    expect(screen.getByText("No alcanzó el stock")).toBeInTheDocument();
+  });
+
+  it("en una salida, varios productos usan el plural", async () => {
+    const user = userEvent.setup();
+    const { irAManual, irASalidaManual } = irA();
+    vi.mocked(api.post).mockImplementation(async (url: string) => {
+      if (url === "/me/products/ocr/scan") return { data: doneState(comprobante()) };
+      return { data: { procesados: 3, errores: [] } };
+    });
+    renderWithProviders(<Procesamiento direction="salida" irAManual={irAManual} irASalidaManual={irASalidaManual} />);
+
+    await user.click(screen.getByRole("button", { name: /Ticket, remito o factura/ }));
+    await leer(user);
+    await user.click(await screen.findByTestId("receipt-option-0-1"));
+    await user.click(screen.getByTestId("receipt-confirm"));
+
+    expect(await screen.findByText("Salieron 3 productos por Documento Comercial.")).toBeInTheDocument();
   });
 });

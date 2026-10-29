@@ -66,12 +66,12 @@ function Field({ label, children, error }: { label: string; children: ReactNode;
 }
 
 /** La información del producto elegido: lo que hay que ver antes de ingresarle stock. */
-function ProductCard({ product }: { product: ProductSuggestion }) {
+export function ProductCard({ product, testIdPrefix = "existing-selected" }: { product: ProductSuggestion; testIdPrefix?: string }) {
   return (
-    <div data-testid="existing-selected" className="flex items-start gap-4 rounded-xl border border-primary/40 bg-primary/5 p-4">
+    <div data-testid={testIdPrefix} className="flex items-center gap-4 rounded-xl border border-primary/40 bg-primary/5 p-4">
       <ProductImage url={product.imagen_url ?? null} alt={product.nombre} className="h-20 w-20 shrink-0 !rounded-xl" />
       <div className="min-w-0 space-y-0.5 text-sm">
-        <p data-testid="existing-selected-name" className="break-words text-base font-semibold text-ink">
+        <p data-testid={`${testIdPrefix}-name`} className="break-words text-base font-semibold text-ink">
           {product.nombre}
         </p>
         {product.marca && <p className="text-muted">{product.marca}</p>}

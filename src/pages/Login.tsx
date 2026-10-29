@@ -120,7 +120,7 @@ export default function Login() {
             autoFocus
             placeholder="email@example.com"
           />
-          {expired && !notice && <Notice tone="info">Tu sesión expiró. Volvé a iniciar sesión para seguir.</Notice>}
+          {expired && !notice && <Notice tone="info" center>Tu sesión expiró. Volvé a iniciar sesión para seguir.</Notice>}
           {notice && <Notice tone="ok">{notice}</Notice>}
           {error && <Notice tone="error">{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>

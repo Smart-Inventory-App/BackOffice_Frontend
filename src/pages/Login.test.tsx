@@ -279,3 +279,24 @@ describe("Login · sesión expirada", () => {
     expect(screen.queryByText(/Tu sesión expiró/)).not.toBeInTheDocument();
   });
 });
+
+describe("Login · aviso de sesión expirada centrado", () => {
+  it("el texto va centrado en su cuadro amarillo", async () => {
+    vi.clearAllMocks();
+    markSessionExpired();
+    renderLogin();
+
+    const aviso = await screen.findByText("Tu sesión expiró. Volvé a iniciar sesión para seguir.");
+    expect(aviso.className).toContain("text-center");
+    expect(aviso.className).toContain("bg-warn/15");
+    clearSessionExpired();
+  });
+
+  it("los demás avisos no cambian de alineación", async () => {
+    vi.clearAllMocks();
+    clearSessionExpired();
+    renderLogin({ registered: true });
+
+    expect((await screen.findByText("Cuenta creada. Iniciá sesión con tu contraseña.")).className).not.toContain("text-center");
+  });
+});

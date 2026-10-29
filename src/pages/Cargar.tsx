@@ -827,11 +827,15 @@ interface EditableRow {
   included: boolean;
 }
 
+// Los mensajes de la carga por archivo: van debajo del campo al que se refieren
+const NOMBRE_REQUERIDO = "El nombre del producto es obligatorio";
+const STOCK_INVALIDO = "El stock debe ser mayor a 0";
+
 function validateRowLocal(data: BulkProductRow, direction: "entrada" | "salida"): string[] {
   const errors: string[] = [];
-  if (!data.nombre.trim()) errors.push("nombre es obligatorio");
+  if (!data.nombre.trim()) errors.push(NOMBRE_REQUERIDO);
   if (direction === "entrada" && !data.categoria.trim()) errors.push("categoria es obligatoria");
-  if (!data.stock || data.stock <= 0) errors.push("stock debe ser mayor a 0");
+  if (!data.stock || data.stock <= 0) errors.push(STOCK_INVALIDO);
   return errors;
 }
 
@@ -846,6 +850,8 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   const [categoriaOptions, setCategoriaOptions] = useState<string[]>([]);
   const [ubicacionOptions, setUbicacionOptions] = useState<string[]>([]);
   const [result, setResult] = useState<BulkCommitResult | null>(null);
+  // Se intentó confirmar con productos incompletos: se avisa cuáles hay que corregir o quitar
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     api
@@ -951,6 +957,18 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
   });
 
   const includedRows = rows.filter((r) => r.included && validateRowLocal(r.data, direction).length === 0);
+  const invalidRows = rows.filter((r) => validateRowLocal(r.data, direction).length > 0);
+
+  // Con un producto al que le falta un dato o con un stock inválido no se confirma: hay que corregirlo o quitarlo
+  const confirmarCarga = () => {
+    if (invalidRows.length > 0) {
+      setBlocked(true);
+      setActiveKey(invalidRows[0].key);
+      return;
+    }
+    setBlocked(false);
+    commit.mutate();
+  };
   const active = rows.find((r) => r.key === activeKey) ?? null;
   const activeErrors = active ? validateRowLocal(active.data, direction) : [];
 
@@ -993,7 +1011,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
           <button
             type="button"
             onClick={clearAll}
-            className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
+            className="ml-auto rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-canvas"
           >
             Limpiar todo
           </button>
@@ -1074,19 +1092,8 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
             {active ? (
               <div className="space-y-3 rounded-xl border border-line p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted">
-                    {active.fileName} · fila {active.row_number}
-                    {active.action === "merge" && (
-                      <> · va a sumar {active.existing_stock ?? 0} + {active.data.stock}</>
-                    )}
-                    {active.action === "create" && <> · producto nuevo</>}
-                    {active.action === "salida" && (
-                      <>
-                        {" "}
-                        · va a sacar {active.data.stock} (quedan{" "}
-                        {(active.existing_stock ?? 0) - active.data.stock})
-                      </>
-                    )}
+                  <p data-testid="bulk-file-name" className="text-xs text-muted">
+                    {active.fileName}
                   </p>
                   <button
                     type="button"
@@ -1097,9 +1104,9 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                   </button>
                 </div>
 
-                {activeErrors.length > 0 && (
+                {activeErrors.filter((e) => e !== NOMBRE_REQUERIDO && e !== STOCK_INVALIDO).length > 0 && (
                   <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-                    {activeErrors.join(" · ")}
+                    {activeErrors.filter((e) => e !== NOMBRE_REQUERIDO && e !== STOCK_INVALIDO).join(" · ")}
                   </div>
                 )}
 
@@ -1111,6 +1118,11 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                     onChange={(e) => updateRow(active.key, { nombre: e.target.value })}
                     className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                   />
+                  {activeErrors.includes(NOMBRE_REQUERIDO) && (
+                    <p data-testid="bulk-nombre-error" className="mt-1 text-xs text-danger">
+                      {NOMBRE_REQUERIDO}
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1141,14 +1153,21 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                     <label className="mb-1 block text-sm font-medium text-ink">
                       {direction === "entrada" ? "Stock" : "Cantidad a sacar"}
                     </label>
+                    {/* El stock leído se puede borrar: en blanco queda sin completar (no se rellena con 0) y hay que cargarlo */}
                     <input
                       placeholder="0"
-                      type="number"
-                      min={1}
-                      value={active.data.stock}
-                      onChange={(e) => updateRow(active.key, { stock: Number(e.target.value) })}
+                      inputMode="numeric"
+                      aria-label={direction === "entrada" ? "Stock" : "Cantidad a sacar"}
+                      maxLength={STOCK_MAX_DIGITS}
+                      value={active.data.stock > 0 ? String(active.data.stock) : ""}
+                      onChange={(e) => updateRow(active.key, { stock: Number(onlyDigits(e.target.value, STOCK_MAX_DIGITS)) })}
                       className="w-full rounded-xl border border-line px-4 py-2 text-sm outline-none focus:border-primary"
                     />
+                    {activeErrors.includes(STOCK_INVALIDO) && (
+                      <p data-testid="bulk-stock-error" className="mt-1 text-xs text-danger">
+                        {STOCK_INVALIDO}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-ink">Vencimiento</label>
@@ -1230,10 +1249,17 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
         </div>
       )}
 
+      {blocked && invalidRows.length > 0 && (
+        <p data-testid="bulk-invalid" role="alert" className="mt-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          Corregí o eliminá {invalidRows.length === 1 ? "el producto" : `los ${invalidRows.length} productos`} con datos incompletos o inválidos antes de confirmar:{" "}
+          {invalidRows.map((r) => `«${r.data.nombre || `Fila ${r.row_number}`}»`).join(", ")}.
+        </p>
+      )}
+
       {rows.length > 0 && (
         <button
-          onClick={() => commit.mutate()}
-          disabled={commit.isPending || includedRows.length === 0}
+          onClick={confirmarCarga}
+          disabled={commit.isPending || (includedRows.length === 0 && invalidRows.length === 0)}
           className="mt-4 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {commit.isPending ? "Confirmando…" : `Confirmar carga (${includedRows.length} productos)`}

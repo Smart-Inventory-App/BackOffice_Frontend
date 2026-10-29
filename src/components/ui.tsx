@@ -383,14 +383,14 @@ export function ConfirmDialog({
 }
 
 /** Franja de mensaje (éxito, error o información) dentro de un formulario. */
-export function Notice({ tone, children }: { tone: "error" | "ok" | "info"; children: ReactNode }) {
+export function Notice({ tone, children, center = false }: { tone: "error" | "ok" | "info"; children: ReactNode; /** El texto va centrado en su cuadro. */ center?: boolean }) {
   const tones = {
     error: "border-danger/30 bg-danger/10 text-danger",
     ok: "border-primary/30 bg-primary/10 text-primaryDark",
     info: "border-warn/40 bg-warn/15 text-warnInk",
   };
   return (
-    <div role={tone === "error" ? "alert" : "status"} className={`rounded-xl border px-4 py-2.5 text-sm ${tones[tone]}`}>
+    <div role={tone === "error" ? "alert" : "status"} className={`rounded-xl border px-4 py-2.5 text-sm ${center ? "text-center" : ""} ${tones[tone]}`}>
       {children}
     </div>
   );
