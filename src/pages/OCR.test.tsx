@@ -489,14 +489,18 @@ describe("OCR · panel de administración", () => {
       "Motor",
       "Tiempo",
       "Confianza",
-      "Qué se leyó",
+      "Lectura del escaneo",
     ]);
     expect(titulos[0].closest("tr")!.className).toContain("text-center");
     expect(titulos[0].closest("tr")!.className).toContain("uppercase");
-    titulos.forEach((h) => expect(h.className).not.toMatch(/text-(left|right)/));
+    // todo centrado, salvo «Lectura del escaneo», que va a la izquierda
+    titulos.slice(0, 7).forEach((h) => expect(h.className).not.toMatch(/text-(left|right)/));
+    expect(titulos[7].className).toContain("text-left");
     const celdas = within(within(tabla).getAllByRole("row")[1]).getAllByRole("cell");
     expect(celdas[0].closest("tr")!.className).toContain("text-center");
-    celdas.forEach((c) => expect(c.className).not.toMatch(/text-(left|right)/));
+    celdas.slice(0, 7).forEach((c) => expect(c.className).not.toMatch(/text-(left|right)/));
+    expect(celdas[7].className).toContain("text-left");
+    expect(celdas[7]).toHaveTextContent("Yerba Mate 1kg");
     expect(celdas[1]).toHaveTextContent("user@test.com");
     expect(celdas[1]).not.toHaveTextContent("App");
     expect(celdas[2]).toHaveTextContent("App");
@@ -572,6 +576,29 @@ describe("OCR · panel de administración", () => {
     expect(lista.className).not.toContain("overflow-auto");
     // con la paginación de siempre, como las demás listas
     expect(screen.getByText(/1–10 de 25|1-10 de 25|de 25/)).toBeInTheDocument();
+  });
+
+  it("la foto que se adjunta para escanear se puede ampliar con un clic, y se cierra", async () => {
+    const user = userEvent.setup();
+    mockDefaultGets();
+    const crear = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:foto");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    renderWithProviders(<OCR />);
+    await screen.findByText("Probar el módulo");
+    expect(screen.queryByRole("button", { name: "Ampliar la foto a escanear" })).not.toBeInTheDocument();
+
+    await user.upload(screen.getByLabelText(/Elegí una foto/), new File(["foto"], "etiqueta.png", { type: "image/png" }));
+    const ampliar = await screen.findByRole("button", { name: "Ampliar la foto a escanear" });
+    expect(ampliar.className).toContain("cursor-zoom-in");
+    expect(crear).toHaveBeenCalled();
+
+    await user.click(ampliar);
+
+    const visor = screen.getAllByAltText("Foto a escanear");
+    expect(visor.length).toBe(2); // la miniatura y la imagen grande
+    expect(visor.some((img) => img.getAttribute("src") === "blob:foto")).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.getAllByAltText("Foto a escanear")).toHaveLength(1);
   });
 
   it("permite elegir un motor específico en el playground", async () => {

@@ -27,6 +27,7 @@ import type {
 import type { Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, StatCard, Spinner } from "@/components/ui";
 import FilterDropdown from "@/components/FilterDropdown";
+import ImageViewer from "@/components/ImageViewer";
 import { PeriodPicker } from "@/components/TrendsPanel";
 import type { TrendPeriod } from "@/lib/trends";
 import Pagination from "@/components/Pagination";
@@ -450,6 +451,7 @@ function Playground({ onScanned }: { onScanned: () => void }) {
   const [engine, setEngine] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [viewing, setViewing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // La vista previa vive sólo en el navegador y se libera al cambiar de foto:
@@ -579,11 +581,19 @@ function Playground({ onScanned }: { onScanned: () => void }) {
 
       {preview && (
         <div className="mt-4 flex items-start gap-4">
-          <img
-            src={preview}
-            alt="Foto a escanear"
-            className="max-h-48 rounded-xl border border-line object-contain"
-          />
+          {/* Un clic en la foto la agranda, como las demás imágenes del dashboard */}
+          <button
+            type="button"
+            aria-label="Ampliar la foto a escanear"
+            onClick={() => setViewing(true)}
+            className="shrink-0 cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <img
+              src={preview}
+              alt="Foto a escanear"
+              className="max-h-48 rounded-xl border border-line object-contain"
+            />
+          </button>
           {scan.isPending && (
             <p className="text-sm text-muted">
               Un comprobante puede tardar cerca de un minuto: se prueban varios giros y filtros
@@ -592,6 +602,8 @@ function Playground({ onScanned }: { onScanned: () => void }) {
           )}
         </div>
       )}
+
+      {viewing && preview && <ImageViewer url={preview} alt="Foto a escanear" onClose={() => setViewing(false)} />}
 
       {scan.isError && (
         <p className="mt-4 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -700,7 +712,7 @@ function Audit() {
                   <th className="px-3 py-3">Motor</th>
                   <th className="px-3 py-3">Tiempo</th>
                   <th className="px-3 py-3">Confianza</th>
-                  <th className="px-3 py-3">Qué se leyó</th>
+                  <th className="px-3 py-3 text-left">Lectura del escaneo</th>
                 </tr>
               </thead>
               <tbody>
@@ -723,7 +735,7 @@ function Audit() {
                     <td className="px-3 py-3">
                       {e.confianza !== null ? <ConfidenceBar value={e.confianza} align="center" /> : "—"}
                     </td>
-                    <td className="max-w-xs truncate px-3 py-3 text-muted" title={e.resumen ?? ""}>
+                    <td className="max-w-xs truncate px-3 py-3 text-left text-muted" title={e.resumen ?? ""}>
                       {e.resumen ?? "—"}
                     </td>
                   </tr>
