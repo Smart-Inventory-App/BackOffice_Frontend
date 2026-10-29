@@ -438,7 +438,7 @@ export default function ReceiptReview({
       </div>
       <Picklist
         label="Ubicación de guardado"
-        addPlaceholder="Ej. Heladera, Alacena A, Freezer"
+        addPlaceholder="Opcional"
         maxLength={NOMBRE_MAX}
         value={item.ubicacion}
         options={opciones.ubicaciones}

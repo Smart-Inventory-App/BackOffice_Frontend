@@ -952,6 +952,17 @@ describe("Cargar · formulario de entrada en renglones", () => {
     expect((screen.getByText("Ubicación de guardado").nextElementSibling as HTMLSelectElement).value).toBe("");
   });
 
+  it("al ingresar una ubicación nueva, el campo dice «Opcional»", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Cargar />);
+
+    await user.selectOptions(screen.getByText("Ubicación de guardado").nextElementSibling as HTMLSelectElement, "+ Nueva…");
+
+    const campo = within(screen.getByText("Ubicación de guardado").parentElement as HTMLElement).getByRole("textbox");
+    expect(campo).toHaveAttribute("placeholder", "Opcional");
+    expect(screen.queryByPlaceholderText(/Heladera/)).not.toBeInTheDocument();
+  });
+
   it("con una sola unidad dice «1 unidad»", async () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: { merged: true, stock: 4 } });
