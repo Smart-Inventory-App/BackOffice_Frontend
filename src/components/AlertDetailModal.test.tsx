@@ -46,7 +46,9 @@ describe("AlertDetailModal", () => {
   it("una advertencia predictiva lo dice", () => {
     render(<AlertDetailModal alert={alert({ level: "warning", predictive: true, type: "stock_low_coverage", days_until_stockout: 5 })} onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("alert-detail-reason")).toHaveTextContent("Advertencia · Predicción");
+    const reason = screen.getByTestId("alert-detail-reason");
+    expect(reason).toHaveTextContent("Advertencia");
+    expect(within(reason).getByTestId("alert-detail-prediction")).toHaveTextContent("Predicción");
   });
 
   it("los datos cortos se muestran enteros", () => {
@@ -102,5 +104,26 @@ describe("AlertDetailModal · marca «Predicción»", () => {
     const badge = screen.getByTestId("alert-detail-prediction");
     expect(badge).toHaveTextContent("Predicción");
     expect(badge.firstElementChild).toBe(within(badge).getByTestId("prediction-icon"));
+  });
+
+  it("la marca está dentro del recuadro de color de la alerta, arriba a la derecha", () => {
+    render(<AlertDetailModal alert={alert({ predictive: true })} onClose={vi.fn()} />);
+
+    const reason = screen.getByTestId("alert-detail-reason");
+    const badge = screen.getByTestId("alert-detail-prediction");
+    expect(reason).toContainElement(badge);
+    expect(badge.className).toContain("absolute");
+    expect(badge.className).toContain("right-3");
+    expect(badge.className).toContain("top-3");
+    expect(badge.className).not.toContain("left-");
+    expect(reason.className).toContain("relative");
+    // y ya no está junto al nombre del producto
+    expect(screen.getByTestId("alert-detail-name").parentElement).not.toContainElement(badge);
+  });
+
+  it("una alerta que no es una predicción no lleva la marca", () => {
+    render(<AlertDetailModal alert={alert({ predictive: false })} onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId("alert-detail-prediction")).not.toBeInTheDocument();
   });
 });

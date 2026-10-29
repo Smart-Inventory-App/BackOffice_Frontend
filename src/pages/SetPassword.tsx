@@ -74,7 +74,7 @@ export default function SetPassword() {
           required
           placeholder="Repetí la contraseña"
         />
-        {error && <Notice tone="error">{error}</Notice>}
+        {error && <Notice tone="error" center>{error}</Notice>}
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? "Guardando…" : "Definir contraseña"}
         </Button>

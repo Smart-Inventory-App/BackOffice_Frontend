@@ -206,6 +206,7 @@ export function Field({
   className = "",
   inputClassName = "",
   right,
+  centerMessages = false,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   label?: string;
@@ -214,6 +215,8 @@ export function Field({
   inputClassName?: string;
   /** Algo a la derecha del campo (el ojo de la contraseña, por ejemplo). */
   right?: ReactNode;
+  /** El aviso de error o la ayuda de abajo van centrados. */
+  centerMessages?: boolean;
 }) {
   const id = props.id ?? (label ? `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` : undefined);
   return (
@@ -233,7 +236,11 @@ export function Field({
         />
         {right && <div className="absolute inset-y-0 right-0 flex items-center pr-3">{right}</div>}
       </div>
-      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : help ? <p className="mt-1 text-xs text-muted">{help}</p> : null}
+      {error ? (
+        <p className={`mt-1 text-xs text-danger ${centerMessages ? "text-center" : ""}`}>{error}</p>
+      ) : help ? (
+        <p className={`mt-1 text-xs text-muted ${centerMessages ? "text-center" : ""}`}>{help}</p>
+      ) : null}
     </div>
   );
 }

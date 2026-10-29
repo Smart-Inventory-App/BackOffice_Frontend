@@ -82,7 +82,7 @@ export default function ForgotPassword() {
         <form onSubmit={sendCode} className="space-y-4">
           <p className="text-sm text-muted">Te mandamos un código por mail para crear o cambiar tu contraseña.</p>
           <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="email@example.com" />
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error" center>{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>
             {loading ? "Enviando…" : "Enviar código"}
           </Button>
@@ -91,7 +91,7 @@ export default function ForgotPassword() {
 
       {step === "code" && (
         <form onSubmit={verifyCode} className="space-y-4">
-          {notice && <Notice tone="ok">{notice}</Notice>}
+          {notice && <Notice tone="ok" center>{notice}</Notice>}
           <Field
             label="Código de 6 dígitos"
             inputMode="numeric"
@@ -102,7 +102,7 @@ export default function ForgotPassword() {
             placeholder="X X X X X X"
             inputClassName="text-center text-lg tracking-[0.4em]"
           />
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error" center>{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || code.length !== 6}>
             {loading ? "Verificando…" : "Continuar"}
           </Button>
@@ -133,7 +133,7 @@ export default function ForgotPassword() {
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Repetí la contraseña"
           />
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error" center>{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Guardando…" : "Guardar contraseña"}
           </Button>

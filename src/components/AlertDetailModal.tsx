@@ -23,16 +23,19 @@ export default function AlertDetailModal({ alert, onClose }: { alert: AlertOut; 
       {/* La alerta primero: es lo que la persona vino a ver */}
       <div
         data-testid="alert-detail-reason"
-        className="flex items-center gap-3 rounded-2xl border-2 px-4 py-3.5"
+        className="relative rounded-2xl border-2 px-4 py-3.5"
         style={{ backgroundColor: tone.background, borderColor: tone.border, color: tone.text }}
       >
-        <Icon size={26} className="shrink-0" />
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
-            {alert.level === "critical" ? "Alerta crítica" : "Advertencia"}
-            {alert.predictive ? " · Predicción" : ""}
-          </p>
-          <p className="text-lg font-medium leading-tight">{alertTitle(alert)}</p>
+        {/* La medalla va dentro del recuadro de color, en el extremo derecho de arriba */}
+        {alert.predictive && <PredictionBadge size="md" className="absolute right-3 top-3" testId="alert-detail-prediction" />}
+        <div className="flex items-center gap-3 pr-28">
+          <Icon size={26} className="shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+              {alert.level === "critical" ? "Alerta crítica" : "Advertencia"}
+            </p>
+            <p className="text-lg font-medium leading-tight">{alertTitle(alert)}</p>
+          </div>
         </div>
       </div>
 
@@ -58,9 +61,6 @@ export default function AlertDetailModal({ alert, onClose }: { alert: AlertOut; 
             <p data-testid="alert-detail-brand" className="text-sm text-muted" title={brandAndCategory}>
               {truncate(brandAndCategory)}
             </p>
-          )}
-          {alert.predictive && (
-            <PredictionBadge size="md" className="mt-1" testId="alert-detail-prediction" />
           )}
         </div>
       </div>

@@ -76,6 +76,25 @@ describe("Login", () => {
     expect(screen.getByRole("button", { name: "Continuar" })).toBeDisabled();
   });
 
+  it("si el usuario está deshabilitado, lo avisa en el login y no pasa al paso de contraseña", async () => {
+    const user = userEvent.setup();
+    checkReturns({ exists: false, is_admin: false, password_set: false, disabled: true });
+
+    renderLogin();
+    await user.type(emailField(), "off@test.com");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+
+    expect(
+      await screen.findByText("El usuario del mail ingresado se encuentra deshabilitado. Por favor, ingresa con otra cuenta"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No existe una cuenta con ese email.")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
+    // los mensajes del login van centrados en su cuadro
+    expect(
+      screen.getByText("El usuario del mail ingresado se encuentra deshabilitado. Por favor, ingresa con otra cuenta"),
+    ).toHaveClass("text-center");
+  });
+
   it("si el email no existe, muestra el error sin pasar al paso de contraseña", async () => {
     const user = userEvent.setup();
     checkReturns({ exists: false, is_admin: false, password_set: false });
@@ -292,11 +311,11 @@ describe("Login · aviso de sesión expirada centrado", () => {
     clearSessionExpired();
   });
 
-  it("los demás avisos no cambian de alineación", async () => {
+  it("los demás avisos del login también van centrados", async () => {
     vi.clearAllMocks();
     clearSessionExpired();
     renderLogin({ registered: true });
 
-    expect((await screen.findByText("Cuenta creada. Iniciá sesión con tu contraseña.")).className).not.toContain("text-center");
+    expect((await screen.findByText("Cuenta creada. Iniciá sesión con tu contraseña.")).className).toContain("text-center");
   });
 });

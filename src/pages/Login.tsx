@@ -15,7 +15,12 @@ interface CheckResponse {
   is_admin: boolean;
   password_set: boolean;
   google_only?: boolean;
+  /** La cuenta existe pero está deshabilitada. */
+  disabled?: boolean;
 }
+
+// Lo mismo que le dice el servidor a quien intenta entrar con una cuenta deshabilitada
+const DISABLED_MESSAGE = "El usuario del mail ingresado se encuentra deshabilitado. Por favor, ingresa con otra cuenta";
 
 export default function Login() {
   const { admin, login } = useAuth();
@@ -52,6 +57,10 @@ export default function Login() {
     setLoading(true);
     try {
       const { data } = await api.post<CheckResponse>("/admin/auth/check", { email: email.trim() });
+      if (data.disabled) {
+        setError(DISABLED_MESSAGE);
+        return;
+      }
       if (!data.exists) {
         setError("No existe una cuenta con ese email.");
         return;
@@ -109,6 +118,7 @@ export default function Login() {
       {step === "email" ? (
         <form onSubmit={onEmailSubmit} className="space-y-4">
           <Field
+            centerMessages
             label="Email"
             type="email"
             value={email}
@@ -121,8 +131,8 @@ export default function Login() {
             placeholder="email@example.com"
           />
           {expired && !notice && <Notice tone="info" center>Tu sesión expiró. Volvé a iniciar sesión para seguir.</Notice>}
-          {notice && <Notice tone="ok">{notice}</Notice>}
-          {error && <Notice tone="error">{error}</Notice>}
+          {notice && <Notice tone="ok" center>{notice}</Notice>}
+          {error && <Notice tone="error" center>{error}</Notice>}
           <Button type="submit" className="w-full" disabled={loading || !email.trim()}>
             {loading ? "Verificando…" : "Continuar"}
           </Button>
@@ -148,6 +158,7 @@ export default function Login() {
             <span className="truncate" title={email}>{email}</span>
           </button>
           <PasswordField
+            centerMessages
             label="Contraseña"
             value={password}
             onChange={(e) => {

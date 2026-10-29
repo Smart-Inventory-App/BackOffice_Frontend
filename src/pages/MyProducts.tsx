@@ -8,6 +8,7 @@ import { downloadFile } from "@/lib/download";
 import type { MyProduct, MyProfile, Paginated } from "@/lib/types";
 import { Card, ConfirmDialog, Notice, Spinner } from "@/components/ui";
 import { Picklist, addIfMissing } from "@/components/Picklist";
+import FilterDropdown, { FilterSelect } from "@/components/FilterDropdown";
 import ProductImage from "@/components/ProductImage";
 import ImageUpload from "@/components/ImageUpload";
 import ProductDetailModal from "@/components/ProductDetailModal";
@@ -34,38 +35,6 @@ const EDIT_EMPTY = {
   stock_minimo: "",
   dias_alerta_vencimiento: "",
 };
-
-// Todos los filtros miden lo mismo, entren o no los textos: lo que no entra se corta con «...»
-const FILTER_CLASS =
-  "h-10 w-full min-w-0 truncate rounded-xl border border-line bg-white px-4 text-sm outline-none focus:border-primary";
-
-/** Un filtro de la lista: siempre del mismo ancho; las opciones largas se cortan con «...» y se leen enteras al apuntarlas. */
-function FilterSelect({
-  label,
-  allLabel,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  allLabel: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  // El filtro que se trae del dashboard puede no estar entre las opciones todavía
-  const shown = value && !options.includes(value) ? [value, ...options] : options;
-  return (
-    <select aria-label={label} title={value || undefined} value={value} onChange={(e) => onChange(e.target.value)} className={FILTER_CLASS}>
-      <option value="">{allLabel}</option>
-      {shown.map((option) => (
-        <option key={option} value={option} title={option}>
-          {truncate(option)}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 export default function MyProducts() {
   const qc = useQueryClient();
@@ -399,16 +368,16 @@ export default function MyProducts() {
         <FilterSelect label="Categoría" allLabel="Todas las categorías" value={categoria} options={categoriaOptions} onChange={setCategoria} />
         <FilterSelect label="Marca" allLabel="Todas las marcas" value={marca} options={marcaOptions} onChange={setMarca} />
         <FilterSelect label="Ubicación" allLabel="Todas las ubicaciones" value={ubicacion} options={ubicacionOptions} onChange={setUbicacion} />
-        <select
-          aria-label="Vencimiento"
+        <FilterDropdown
+          label="Vencimiento"
+          allLabel="Todos los vencimientos"
           value={vencido}
-          onChange={(e) => setVencido(e.target.value as "" | "si" | "no")}
-          className={FILTER_CLASS}
-        >
-          <option value="">Todos los vencimientos</option>
-          <option value="si">Vencidos</option>
-          <option value="no">No vencidos</option>
-        </select>
+          options={[
+            { value: "si", label: "Vencidos" },
+            { value: "no", label: "No vencidos" },
+          ]}
+          onChange={(v) => setVencido(v as "" | "si" | "no")}
+        />
         <div className="col-span-2 flex items-center justify-end gap-4 md:col-span-1">
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={bajoStock} onChange={(e) => setBajoStock(e.target.checked)} />

@@ -76,6 +76,8 @@ export interface AppUser {
 export interface ProductOwner {
   user_id: string;
   email: string | null;
+  /** false si la cuenta del usuario está deshabilitada. */
+  is_active?: boolean;
 }
 
 export interface AdminProduct {
@@ -95,6 +97,8 @@ export interface AdminProduct {
   /** La alerta más grave que tiene hoy el producto, y de qué tipos son. */
   alert_level?: AlertLevel | null;
   alert_types?: AlertType[];
+  /** Las alertas del producto con todo lo necesario para mostrarlas. */
+  alerts?: AlertOut[];
   owner: ProductOwner;
 }
 

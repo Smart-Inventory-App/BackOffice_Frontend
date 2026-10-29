@@ -52,6 +52,16 @@ function mockGets(items: MyProduct[], alerts: unknown[] = []) {
   });
 }
 
+// Los filtros son desplegables propios: se abre el botón y se elige una opción del menú
+// Algunos filtros se llaman igual que una columna que se ordena: el desplegable es el que abre un menú
+const filtroBtn = (name: string) => screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-haspopup"))!;
+const ordenBtn = (name: string) => screen.getAllByRole("button", { name }).find((b) => !b.hasAttribute("aria-haspopup"))!;
+
+async function elegir(user: ReturnType<typeof userEvent.setup>, filtro: string, opcion: string) {
+  await user.click(filtroBtn(filtro));
+  await user.click(within(screen.getByRole("listbox", { name: filtro })).getByRole("option", { name: opcion }));
+}
+
 describe("MyProducts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -127,7 +137,7 @@ describe("MyProducts", () => {
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
 
-    await user.selectOptions(await screen.findByRole("option", { name: "Alacena" }).then(() => screen.getByLabelText("Ubicación")), "Alacena");
+    await elegir(user, "Ubicación", "Alacena");
 
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith("/me/products/stock-total", { params: expect.objectContaining({ ubicacion: "Alacena" }) }),
@@ -169,8 +179,7 @@ describe("MyProducts", () => {
       ),
     );
 
-    const categoriaSelect = screen.getByDisplayValue("Todas las categorías");
-    await user.selectOptions(categoriaSelect, "Almacén");
+    await elegir(user, "Categoría", "Almacén");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/me/products",
@@ -178,8 +187,7 @@ describe("MyProducts", () => {
       ),
     );
 
-    const vencidoSelect = screen.getByDisplayValue("Todos los vencimientos");
-    await user.selectOptions(vencidoSelect, "si");
+    await elegir(user, "Vencimiento", "Vencidos");
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/me/products",
@@ -494,12 +502,14 @@ describe("MyProducts · filtros, selección y eliminación", () => {
     renderWithProviders(<MyProducts />);
     await screen.findByText("Yerba Mate");
 
-    const selects = ["Categoría", "Marca", "Ubicación", "Vencimiento"].map((name) => screen.getByLabelText(name));
-    selects.forEach((select) => {
-      expect(select.className).toContain("w-full");
-      expect(select.className).toContain("truncate");
+    const filtros = ["Categoría", "Marca", "Ubicación", "Vencimiento"].map((name) => filtroBtn(name));
+    filtros.forEach((filtro) => {
+      expect(filtro.className).toContain("w-full");
+      expect(filtro.className).toContain("h-10");
+      expect(filtro.querySelector("span")!.className).toContain("truncate");
     });
     expect(screen.getByPlaceholderText("Buscar por nombre o marca…").className).toContain("md:col-span-4");
+    await userEvent.setup().click(filtroBtn("Categoría"));
     const option = await screen.findByRole("option", { name: `${"Z".repeat(50)}...` });
     expect(option).toHaveAttribute("title", largo);
   });
@@ -514,7 +524,7 @@ describe("MyProducts · filtros, selección y eliminación", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByLabelText("Marca")).toHaveValue("La Merced"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Marca" })).toHaveTextContent("La Merced"));
     expect(api.get).toHaveBeenCalledWith("/me/products", { params: expect.objectContaining({ marca: "La Merced" }) });
     expect(api.get).toHaveBeenCalledWith("/me/products/stock-total", { params: expect.objectContaining({ marca: "La Merced" }) });
   });
@@ -740,11 +750,34 @@ describe("MyProducts · encabezado, filtros y eliminar", () => {
     expect(within(dialog).getByRole("button", { name: /Historial/ })).toBeInTheDocument();
   });
 
+  it("los desplegables del inventario muestran 10 opciones y se desplazan para llegar al resto", async () => {
+    const user = userEvent.setup();
+    const marcas = Array.from({ length: 30 }, (_, i) => `Marca ${i}`);
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/me/products/filters/options") return { data: { categorias: [], ubicaciones: [], marcas } };
+      if (url === "/me/products") return { data: paginated([product()]) };
+      if (url === "/me/products/stock-total") return { data: { stock_total: 5, products: 1 } };
+      if (url === "/me/alerts/") return { data: { items: [], summary: {} } };
+      if (url === "/me/profile") return { data: PERFIL };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<MyProducts />);
+    await screen.findByText("Yerba Mate");
+
+    await user.click(filtroBtn("Marca"));
+
+    const menu = screen.getByRole("listbox", { name: "Marca" });
+    expect(menu.style.maxHeight).toBe("25rem");
+    expect(menu.className).toContain("overflow-y-auto");
+    expect(within(menu).getAllByRole("option")).toHaveLength(31);
+  });
+
   it("el filtro de vencimiento dice «Todos los vencimientos»", async () => {
     mockGets([product()]);
     renderWithProviders(<MyProducts />);
 
-    expect(await screen.findByRole("option", { name: "Todos los vencimientos" })).toBeInTheDocument();
+    await screen.findByText("Yerba Mate");
+    expect(filtroBtn("Vencimiento")).toHaveTextContent("Todos los vencimientos");
     expect(screen.queryByText("Vencimiento: todos")).not.toBeInTheDocument();
   });
 

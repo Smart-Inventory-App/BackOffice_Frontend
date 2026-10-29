@@ -77,6 +77,7 @@ export default function Register() {
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <Field
+          centerMessages
           label="Email"
           type="email"
           value={email}
@@ -103,6 +104,7 @@ export default function Register() {
           </p>
         )}
         <PasswordField
+          centerMessages
           label="Contraseña"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -112,13 +114,14 @@ export default function Register() {
           help="Mínimo 8 caracteres, con una mayúscula, una minúscula y un número."
         />
         <PasswordField
+          centerMessages
           label="Repetir contraseña"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
           placeholder="Repetí la contraseña"
         />
-        {error && <Notice tone="error">{error}</Notice>}
+        {error && <Notice tone="error" center>{error}</Notice>}
         <Button type="submit" className="w-full" disabled={loading || emailBlocked}>
           {loading ? "Creando cuenta…" : "Crear cuenta"}
         </Button>
