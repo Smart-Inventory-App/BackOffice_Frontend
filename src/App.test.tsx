@@ -167,7 +167,7 @@ describe("App", () => {
   it("un administrador ve las tendencias de toda la plataforma", async () => {
     mockAdmin(ADMIN);
     renderApp(["/metricas"]);
-    expect(await screen.findByText("Cuánto se consume y cuánto ingresa en toda la plataforma")).toBeInTheDocument();
+    expect(await screen.findByText("Cuánto se consume y cuánto ingresa en todo Smart Inventory")).toBeInTheDocument();
   });
 });
 

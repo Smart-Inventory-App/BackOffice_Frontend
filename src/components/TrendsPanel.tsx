@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, Equal } from "lucide-react";
 import { api } from "@/lib/api";
-import type { MyMetrics, MyProduct, Paginated } from "@/lib/types";
+import type { AdminProduct, MyMetrics, MyProduct, Paginated } from "@/lib/types";
 import { formatThousands } from "@/lib/format";
 import {
   TREND_PERIODS,
@@ -258,7 +258,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
 
       {kind === "consumo" && (
       <Card className="!p-4">
-        <h3 className="mb-3 text-center text-sm font-semibold text-ink">Más consumidos</h3>
+        <h3 className="mb-3 text-center text-sm font-semibold text-ink">Productos más consumidos</h3>
         {data.top_productos.length === 0 ? (
           <EmptyState>Todavía no hay suficiente historial.</EmptyState>
         ) : (
@@ -274,6 +274,7 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
                     </span>
                     <span className="shrink-0 text-muted">{unitsText(product.cantidad)}</span>
                   </div>
+                  {audience === "platform" && <OwnerEmail email={product.owner_email} testId={`trends-top-owner-${i}`} />}
                   <div className="ml-7 mt-1 h-2 rounded-full bg-canvas">
                     <div
                       data-testid={`trends-top-bar-${i}`}
@@ -292,13 +293,24 @@ export default function TrendsPanel({ endpoint = "/me/metrics", audience = "user
   );
 }
 
-/** Los 5 productos con más unidades en stock hoy (los del usuario o, para un administrador, los de toda la plataforma). */
+/** El mail del usuario al que pertenece el producto, debajo de su nombre (solo en los rankings de toda la plataforma). */
+function OwnerEmail({ email, testId }: { email?: string | null; testId: string }) {
+  return (
+    <p data-testid={testId} className="ml-7 truncate text-xs text-muted" title={email ?? undefined}>
+      {email ?? "Usuario sin cuenta"}
+    </p>
+  );
+}
+
+/** Los productos con más unidades en stock hoy: 5 los del usuario y 10 los de toda la plataforma (administrador). */
 function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) {
-  const url = endpoint === "/admin/metrics" ? "/admin/products/" : "/me/products";
+  const platform = endpoint === "/admin/metrics";
+  const url = platform ? "/admin/products/" : "/me/products";
+  const limit = platform ? 10 : 5;
   const top = useQuery({
     queryKey: ["top-stock", url],
     queryFn: async () =>
-      (await api.get<Paginated<MyProduct>>(url, { params: { sort_by: "stock", sort_dir: "desc", limit: 5 } })).data.items,
+      (await api.get<Paginated<MyProduct | AdminProduct>>(url, { params: { sort_by: "stock", sort_dir: "desc", limit } })).data.items,
   });
   const items = (top.data ?? []).filter((product) => product.stock > 0).sort((a, b) => b.stock - a.stock);
   const highest = items[0]?.stock ?? 1;
@@ -320,6 +332,7 @@ function TopStock({ endpoint }: { endpoint: "/me/metrics" | "/admin/metrics" }) 
                 </span>
                 <span className="shrink-0 text-muted">{unitsText(product.stock)}</span>
               </div>
+              {platform && <OwnerEmail email={"owner" in product ? product.owner.email : null} testId={`incomes-top-stock-owner-${i}`} />}
               <div className="ml-7 mt-1 h-2 rounded-full bg-canvas">
                 <div className="h-2 rounded-full bg-[#1B3A8F]" style={{ width: `${Math.round((product.stock / highest) * 100)}%` }} />
               </div>

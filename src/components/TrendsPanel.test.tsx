@@ -307,7 +307,29 @@ describe("TrendsPanel · más consumidos", () => {
     expect(screen.getByTestId("trends-top-bar-0").style.width).toBe("100%");
     expect(screen.getByTestId("trends-top-bar-1").style.width).toBe("50%");
     expect(screen.queryByText("Menos usados")).not.toBeInTheDocument();
-    expect(screen.getByText("Más consumidos")).toBeInTheDocument();
+    expect(screen.getByText("Productos más consumidos")).toBeInTheDocument();
+  });
+
+  it("para un administrador muestra el mail del usuario debajo del nombre de cada producto más consumido", async () => {
+    serve({
+      current: {
+        top_productos: [
+          { product_id: 1, nombre: "Leche", cantidad: 8, owner_email: "ana@test.com" },
+          { product_id: 2, nombre: "Pan", cantidad: 4, owner_email: null },
+        ],
+      },
+    });
+    await open("/admin/metrics", "platform");
+
+    expect(screen.getByTestId("trends-top-owner-0")).toHaveTextContent("ana@test.com");
+    expect(screen.getByTestId("trends-top-owner-1")).toHaveTextContent("Usuario sin cuenta");
+  });
+
+  it("para un usuario no muestra mails en los más consumidos", async () => {
+    serve();
+    await open();
+
+    expect(screen.queryByTestId("trends-top-owner-0")).not.toBeInTheDocument();
   });
 
   it("muestra hasta cinco productos distintos", async () => {
@@ -381,7 +403,7 @@ describe("TrendsPanel · ingresos", () => {
     expect(screen.getByTestId("incomes-peak")).toHaveTextContent("10");
     expect(screen.getByTestId("incomes-peak-label")).toHaveTextContent("Día de mayor ingreso: 22 de octubre");
     expect(screen.queryByTestId("trends-consumed")).not.toBeInTheDocument();
-    expect(screen.queryByText("Más consumidos")).not.toBeInTheDocument();
+    expect(screen.queryByText("Productos más consumidos")).not.toBeInTheDocument();
     expect(screen.getByText("Ingresos por día")).toBeInTheDocument();
   });
 
@@ -483,8 +505,27 @@ describe("TrendsPanel · productos con más stock", () => {
 
     await screen.findByTestId("incomes-top-stock");
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/admin/products/", { params: { sort_by: "stock", sort_dir: "desc", limit: 5 } }),
+      expect(api.get).toHaveBeenCalledWith("/admin/products/", { params: { sort_by: "stock", sort_dir: "desc", limit: 10 } }),
     );
+  });
+
+  it("para un administrador muestra, debajo del nombre, el mail del usuario de cada producto", async () => {
+    serveWithTop([
+      { id: 1, nombre: "Arroz", stock: 40, owner: { user_id: "u1", email: "ana@test.com" } },
+      { id: 2, nombre: "Fideos", stock: 10, owner: { user_id: "u2", email: null } },
+    ] as any);
+    renderWithProviders(<TrendsPanel kind="ingresos" endpoint="/admin/metrics" audience="platform" />);
+
+    expect(await screen.findByTestId("incomes-top-stock-owner-0")).toHaveTextContent("ana@test.com");
+    expect(screen.getByTestId("incomes-top-stock-owner-1")).toHaveTextContent("Usuario sin cuenta");
+  });
+
+  it("para un usuario no muestra mails", async () => {
+    serveWithTop();
+    renderWithProviders(<TrendsPanel kind="ingresos" />);
+
+    await screen.findByTestId("incomes-top-stock-0");
+    expect(screen.queryByTestId("incomes-top-stock-owner-0")).not.toBeInTheDocument();
   });
 
   it("sin productos con stock lo dice, y el consumo no muestra esta tarjeta", async () => {
@@ -521,7 +562,7 @@ describe("TrendsPanel · títulos y tarjetas centrados", () => {
     expect(screen.getByTestId("trends-peak").parentElement!.className).toContain("text-center");
     expect(screen.getByTestId("trends-change").className).toContain("justify-center");
     expect(screen.getByText("Consumo por día").className).toContain("text-center");
-    expect(screen.getByText("Más consumidos").className).toContain("text-center");
+    expect(screen.getByText("Productos más consumidos").className).toContain("text-center");
   });
 
   it("en los ingresos también: el título, las tarjetas y «Productos con más stock»", async () => {

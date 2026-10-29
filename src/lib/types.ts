@@ -286,6 +286,8 @@ export interface ProductoConsumo {
   product_id: number;
   nombre: string;
   cantidad: number;
+  /** Solo en el ranking de toda la plataforma: el usuario al que pertenece el producto. */
+  owner_email?: string | null;
 }
 
 export interface MyMetrics {
@@ -318,6 +320,7 @@ export interface ActivityEntry {
     | "login"
     | "registered"
     | "product_created"
+    | "product_exit"
     | "product_updated"
     | "product_deleted";
   actor_email: string | null;

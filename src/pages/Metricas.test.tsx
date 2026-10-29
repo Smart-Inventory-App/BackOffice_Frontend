@@ -52,7 +52,8 @@ describe("Metricas (Tendencias)", () => {
     auth.effectiveIsAdmin = true;
     renderWithProviders(<Metricas />);
 
-    expect(await screen.findByText("Cuánto se consume y cuánto ingresa en toda la plataforma")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Tendencias de la Plataforma" })).toBeInTheDocument();
+    expect(screen.getByText("Cuánto se consume y cuánto ingresa en todo Smart Inventory")).toBeInTheDocument();
     await screen.findByTestId("trends-panel");
     await screen.findByTestId("incomes-panel");
     expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });

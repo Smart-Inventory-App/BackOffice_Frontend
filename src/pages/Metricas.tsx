@@ -18,9 +18,9 @@ export default function Metricas() {
       {/* Título y descripción a la izquierda y el selector de período a la derecha, alineados verticalmente */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Tendencias</h1>
+          <h1 className="text-2xl font-bold text-ink">{effectiveIsAdmin ? "Tendencias de la Plataforma" : "Tendencias"}</h1>
           <p className="mt-1 text-sm text-muted">
-            {effectiveIsAdmin ? "Cuánto se consume y cuánto ingresa en toda la plataforma" : "Mirá cuánto consumís y cuánto ingresás"}
+            {effectiveIsAdmin ? "Cuánto se consume y cuánto ingresa en todo Smart Inventory" : "Mirá cuánto consumís y cuánto ingresás"}
           </p>
         </div>
         <div data-testid="trends-period-picker" className="[&>div]:mb-0">

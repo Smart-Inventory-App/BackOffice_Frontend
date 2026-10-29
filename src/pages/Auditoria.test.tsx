@@ -73,7 +73,7 @@ describe("Auditoria", () => {
     renderWithProviders(<Auditoria />);
     await screen.findByText("user@test.com inició sesión");
 
-    await user.click(screen.getByRole("button", { name: "Producto cargado" }));
+    await user.click(screen.getByRole("button", { name: "Entrada de producto" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/activity/",
@@ -97,14 +97,18 @@ describe("Auditoria", () => {
         entry({ id: "4", kind: "product_deleted", description: "Borró un producto" }),
         entry({ id: "5", kind: "status", description: "Cambió de estado" }),
         entry({ id: "6", kind: "role", description: "Cambió de rol" }),
+        entry({ id: "7", kind: "product_exit", description: "Sacó un producto" }),
       ]),
     });
     renderWithProviders(<Auditoria />);
 
     expect(await screen.findByText("Usuario nuevo")).toBeInTheDocument();
-    expect(screen.getByText("Producto cargado")).toBeInTheDocument();
-    expect(screen.getByText("Producto editado")).toBeInTheDocument();
-    expect(screen.getByText("Producto eliminado")).toBeInTheDocument();
+    expect(screen.getByText("Salida de producto")).toBeInTheDocument();
+    expect(screen.getByText("Edición de producto")).toBeInTheDocument();
+    expect(screen.getByText("Eliminación de producto")).toBeInTheDocument();
+    // «Entrada de producto» está también como filtro, ahora justo antes de «Salida de producto»
+    const filtros = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(filtros.indexOf("Salida de producto")).toBe(filtros.indexOf("Entrada de producto") + 1);
     expect(screen.getByText("Habilitación")).toBeInTheDocument();
     expect(screen.getByText("Rol de admin")).toBeInTheDocument();
   });

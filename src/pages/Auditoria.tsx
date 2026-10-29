@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { LogIn, ShieldCheck, Trash2, ToggleLeft, PackagePlus, PackageCheck, UserPlus2, type LucideIcon } from "lucide-react";
+import { LogIn, ShieldCheck, Trash2, ToggleLeft, PackagePlus, PackageMinus, PackageCheck, UserPlus2, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ActivityEntry, Paginated } from "@/lib/types";
 import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
@@ -13,9 +13,10 @@ const KIND_LABELS: Record<ActivityEntry["kind"], string> = {
   role: "Rol de admin",
   login: "Inicio de sesión",
   registered: "Usuario nuevo",
-  product_created: "Producto cargado",
-  product_updated: "Producto editado",
-  product_deleted: "Producto eliminado",
+  product_created: "Entrada de producto",
+  product_exit: "Salida de producto",
+  product_updated: "Edición de producto",
+  product_deleted: "Eliminación de producto",
 };
 
 const KIND_ICONS: Record<ActivityEntry["kind"], LucideIcon> = {
@@ -24,6 +25,7 @@ const KIND_ICONS: Record<ActivityEntry["kind"], LucideIcon> = {
   login: LogIn,
   registered: UserPlus2,
   product_created: PackagePlus,
+  product_exit: PackageMinus,
   product_updated: PackageCheck,
   product_deleted: Trash2,
 };
@@ -34,6 +36,7 @@ const KIND_TONES: Record<ActivityEntry["kind"], "ok" | "off" | "warn" | "neutral
   login: "neutral",
   registered: "ok",
   product_created: "ok",
+  product_exit: "warn",
   product_updated: "neutral",
   product_deleted: "off",
 };
@@ -70,7 +73,7 @@ export default function Auditoria() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         {(
-          ["", "registered", "login", "product_created", "product_updated", "product_deleted", "status", "role"] as const
+          ["", "registered", "login", "product_created", "product_exit", "product_updated", "product_deleted", "status", "role"] as const
         ).map((k) => (
           <button
             key={k}
