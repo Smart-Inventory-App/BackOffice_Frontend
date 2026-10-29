@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>Política de privacidad — Smart Inventory</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; font: 16px/1.6 system-ui, "Segoe UI", sans-serif; background: #f5f7fa; color: #1c1c1e; }
+      main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+      h1 { font-size: 28px; margin: 0 0 4px; }
+      h2 { font-size: 19px; margin: 32px 0 8px; color: #1b3a8f; }
+      p, li { margin: 8px 0; }
+      ul { padding-left: 22px; }
+      .meta { color: #6e6e6e; font-size: 14px; }
+      a { color: #1b3a8f; }
+      footer { margin-top: 40px; font-size: 14px; color: #6e6e6e; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #121417; color: #e8eaed; }
+        h2, a { color: #7fb0ff; }
+        .meta, footer { color: #9aa0a6; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Política de privacidad</h1>
+      <p class="meta">Smart Inventory · Última actualización: 29 de octubre de 2026</p>
+
+      <p>
+        Smart Inventory es una aplicación (para Android y web) y un dashboard para llevar el inventario de tus productos,
+        con alertas de vencimiento y de stock bajo. Es un proyecto del equipo de desarrollo de Smart Inventory (Trabajo
+        Profesional, FIUBA). Esta política explica qué datos usamos, para qué y qué control tenés sobre ellos.
+      </p>
+
+      <h2>1. Qué datos recopilamos</h2>
+      <ul>
+        <li><strong>De tu cuenta:</strong> tu correo electrónico, tu contraseña (la guardamos cifrada con un hash; no podemos leerla) y, si los completás, tu nombre, apellido y nombre de usuario.</li>
+        <li><strong>Si ingresás con Google:</strong> recibimos de Google tu correo electrónico (verificado) y tu nombre y apellido. No recibimos tu contraseña de Google ni accedemos a otros datos de tu cuenta de Google.</li>
+        <li><strong>De tu inventario:</strong> los productos que cargás (nombre, marca, categoría, stock, vencimiento, ubicación, código de barras, descripción, imagen) y los movimientos de stock (entradas, salidas y correcciones) con su fecha.</li>
+        <li><strong>Tus preferencias:</strong> las reglas de alerta, la hora del chequeo diario y el tipo de uso (individuo o comercio).</li>
+        <li><strong>Para las notificaciones:</strong> un identificador del dispositivo (token de Firebase Cloud Messaging), para poder enviarte avisos.</li>
+        <li><strong>Fotos para escanear:</strong> las fotos que sacás para leer una etiqueta, un vencimiento, un código de barras o un comprobante se procesan en memoria y <strong>no se guardan</strong>. Solo queda un registro de auditoría con tu correo, el tipo de escaneo, el tiempo, la confianza y un resumen recortado de lo leído.</li>
+        <li><strong>Imágenes de productos:</strong> si subís una foto a un producto, se guarda en un servicio de almacenamiento de imágenes.</li>
+        <li><strong>Actividad de uso:</strong> registros de inicios de sesión y de cambios en tu inventario, que usamos para la seguridad y el funcionamiento del servicio.</li>
+      </ul>
+
+      <h2>2. Para qué los usamos</h2>
+      <ul>
+        <li>Para crear y mantener tu cuenta e iniciar tu sesión.</li>
+        <li>Para mostrarte tu inventario y calcular las alertas de vencimiento y de stock bajo, incluidas las predicciones de consumo.</li>
+        <li>Para enviarte notificaciones y correos sobre esas alertas, la recuperación de tu contraseña y un mensaje de bienvenida.</li>
+        <li>Para leer las fotos que escaneás y completar los datos de tus productos.</li>
+        <li>Para la administración, la seguridad y la mejora del servicio.</li>
+      </ul>
+      <p>No vendemos tus datos ni los usamos para publicidad.</p>
+
+      <h2>3. Con quién los compartimos</h2>
+      <p>Usamos proveedores que procesan datos por cuenta nuestra, solo para que el servicio funcione:</p>
+      <ul>
+        <li><strong>Railway</strong>, para alojar los servidores y la base de datos.</li>
+        <li><strong>Google</strong> (Inicio de sesión con Google y Firebase Cloud Messaging), para el ingreso con tu cuenta de Google y las notificaciones.</li>
+        <li><strong>Cloudinary</strong>, para almacenar las imágenes de productos.</li>
+        <li>Un <strong>proveedor de correo electrónico (SMTP)</strong>, para enviar los mails del servicio.</li>
+      </ul>
+      <p>Los administradores del servicio pueden ver los datos de las cuentas y los inventarios para dar soporte y controlar el funcionamiento.</p>
+
+      <h2>4. Cuánto tiempo los conservamos</h2>
+      <p>
+        Conservamos tus datos mientras tu cuenta esté activa. Si querés que eliminemos tu cuenta y tus datos, escribinos
+        (ver el punto 7) y lo hacemos.
+      </p>
+
+      <h2>5. Seguridad</h2>
+      <p>
+        La comunicación con nuestros servidores va cifrada (HTTPS), las contraseñas se guardan con hash y el acceso
+        administrativo está restringido. Ningún sistema es infalible: si detectamos un incidente que afecte tus datos, te
+        avisaremos.
+      </p>
+
+      <h2>6. Tus derechos</h2>
+      <p>
+        Podés acceder, corregir o pedir la eliminación de tus datos personales. Desde la app podés editar tu perfil y tus
+        productos. Según la Ley 25.326 de Protección de los Datos Personales (Argentina), la Agencia de Acceso a la
+        Información Pública es el órgano de control y tiene la atribución de atender las denuncias y reclamos de quienes
+        vean afectados sus derechos.
+      </p>
+
+      <h2>7. Contacto</h2>
+      <p>Para consultas o pedidos sobre tus datos: <a href="mailto:gspagnolo@fi.uba.ar">gspagnolo@fi.uba.ar</a>.</p>
+
+      <h2>8. Cambios en esta política</h2>
+      <p>Si la actualizamos, cambiamos la fecha de arriba. Los cambios importantes los avisaremos dentro de la aplicación.</p>
+
+      <footer>
+        <a href="/terminos.html">Condiciones del servicio</a> · <a href="/">Volver a Smart Inventory</a>
+      </footer>
+    </main>
+  </body>
+</html>
