@@ -14,7 +14,7 @@ export default function Metricas() {
   const endpoint = effectiveIsAdmin ? "/admin/metrics" : "/me/metrics";
   const audience = effectiveIsAdmin ? "platform" : "user";
   return (
-    <div className="mx-auto max-w-6xl">
+    <div>
       {/* Título y descripción a la izquierda y el selector de período a la derecha, alineados verticalmente */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>

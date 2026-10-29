@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestQueryClient } from "@/test/test-utils";
 import { AuthProvider } from "@/context/AuthContext";
 import AdminShell from "./AdminShell";
@@ -33,9 +33,18 @@ function renderShell(initialEntries = ["/"]) {
   );
 }
 
+const realLocation = window.location;
+
 describe("AdminShell", () => {
+  const assign = vi.fn();
   beforeEach(() => {
     vi.clearAllMocks();
+    // Cambiar de vista recarga la página: acá solo se anota a dónde iría
+    delete (window as any).location;
+    (window as any).location = { ...realLocation, assign };
+  });
+  afterEach(() => {
+    (window as any).location = realLocation;
   });
 
   it("para un admin, muestra la navegación completa y el botón de ver como usuario", async () => {
@@ -77,6 +86,24 @@ describe("AdminShell", () => {
     await user.click(screen.getByRole("button", { name: /Ver como admin/ }));
     expect(screen.queryByText("Viendo como usuario")).not.toBeInTheDocument();
     expect(screen.getByText("Viendo como administrador")).toBeInTheDocument();
+  });
+
+  it("cada vez que cambia de vista recarga la página en el dashboard, esté donde esté", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getToken).mockReturnValue("tok");
+    vi.mocked(api.get).mockResolvedValue({ data: ADMIN });
+    renderShell(["/usuarios/abc"]);
+    await screen.findByText("admin@test.com");
+
+    await user.click(screen.getByRole("button", { name: /Ver como usuario/ }));
+    expect(assign).toHaveBeenLastCalledWith("/");
+    // la vista elegida queda guardada para que la página recargada la use
+    expect(localStorage.getItem("backoffice_view_as_user")).toBe("1");
+
+    await user.click(screen.getByRole("button", { name: /Ver como admin/ }));
+    expect(assign).toHaveBeenCalledTimes(2);
+    expect(assign).toHaveBeenLastCalledWith("/");
+    expect(localStorage.getItem("backoffice_view_as_user")).toBeNull();
   });
 
   it("cierra sesión tras confirmar, y cancelar no cierra sesión", async () => {

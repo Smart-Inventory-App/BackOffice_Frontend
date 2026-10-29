@@ -66,6 +66,12 @@ export default function AdminShell({ children }: { children: ReactNode }) {
     };
   }, [admin, effectiveIsAdmin, pathname]);
 
+  // Al cambiar de vista se recarga la página y se vuelve al dashboard de la vista elegida, estuviera donde estuviera
+  const switchView = () => {
+    setViewAsUser(!viewAsUser); // queda guardado: al recargar sigue la vista elegida
+    window.location.assign("/");
+  };
+
   const isActive = (to: string) => (to === "/" ? pathname === "/" : pathname.startsWith(to));
 
   return (
@@ -137,7 +143,7 @@ export default function AdminShell({ children }: { children: ReactNode }) {
           </div>
           {admin?.is_admin && (
             <button
-              onClick={() => setViewAsUser(!viewAsUser)}
+              onClick={switchView}
               className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:bg-canvas hover:text-primaryDark"
             >
               {viewAsUser ? (

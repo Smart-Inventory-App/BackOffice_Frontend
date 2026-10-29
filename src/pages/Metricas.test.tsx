@@ -59,6 +59,17 @@ describe("Metricas (Tendencias)", () => {
     expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });
   });
 
+  it("la página ocupa todo el ancho, como las demás: sin un ancho máximo ni centrada", async () => {
+    renderWithProviders(<Metricas />);
+
+    const titulo = await screen.findByRole("heading", { name: "Tendencias" });
+    const raiz = titulo.closest("div.mb-6")!.parentElement!;
+    expect(raiz.className).not.toContain("max-w");
+    expect(raiz.className).not.toContain("mx-auto");
+    // el título y la descripción a la izquierda y los botones de días a la derecha, en la misma fila
+    expect(titulo.closest("div.mb-6")!.className).toContain("justify-between");
+  });
+
   it("el período se elige una sola vez y vale para las dos mitades", async () => {
     const user = userEvent.setup();
     vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => {
