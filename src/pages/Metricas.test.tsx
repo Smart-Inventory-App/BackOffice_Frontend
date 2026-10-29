@@ -1,71 +1,165 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import Metricas from "./Metricas";
-import type { MyMetrics } from "@/lib/types";
 
 vi.mock("@/lib/api", () => ({
   api: { get: vi.fn() },
 }));
 
+const auth = vi.hoisted(() => ({ effectiveIsAdmin: false }));
+vi.mock("@/context/AuthContext", () => ({
+  useAuth: () => auth,
+}));
+
 import { api } from "@/lib/api";
 
-function metrics(overrides: Partial<MyMetrics> = {}): MyMetrics {
-  return {
-    period_days: 30,
-    total_consumido: 12,
-    total_entradas: 20,
-    consumo_por_dia: [{ day: "2026-01-01", quantity: 3 }],
-    top_productos: [{ product_id: 1, nombre: "Yerba Mate", cantidad: 8 }],
-    productos_menos_usados: [{ product_id: 2, nombre: "Sal", cantidad: 1 }],
-    ...overrides,
-  };
+function serve() {
+  vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+    data: {
+      period_days: config.params.period,
+      total_consumido: 0,
+      total_entradas: 0,
+      total_ingresos: 0,
+      consumo_por_dia: [],
+      ingresos_por_dia: [],
+      top_productos: [],
+    },
+  }));
 }
 
-describe("Metricas", () => {
+describe("Metricas (Tendencias)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
   });
 
-  it("muestra el consumo del período y permite cambiarlo", async () => {
+  it("para un usuario muestra las tendencias de su inventario", async () => {
+    renderWithProviders(<Metricas />);
+
+    expect(await screen.findByRole("heading", { name: "Tendencias de consumo" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tendencias de ingresos" })).toBeInTheDocument();
+    expect(screen.getByText("Mirá cuánto consumís y cuánto ingresás")).toBeInTheDocument();
+    await screen.findByTestId("trends-panel");
+    await screen.findByTestId("incomes-panel");
+    expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 14 } });
+    expect(api.get).not.toHaveBeenCalledWith("/admin/metrics", expect.anything());
+  });
+
+  it("para un administrador muestra el consumo y los ingresos de toda la plataforma", async () => {
+    auth.effectiveIsAdmin = true;
+    renderWithProviders(<Metricas />);
+
+    expect(await screen.findByRole("heading", { name: "Tendencias de la Plataforma" })).toBeInTheDocument();
+    expect(screen.getByText("Cuánto se consume y cuánto ingresa en todo Smart Inventory")).toBeInTheDocument();
+    await screen.findByTestId("trends-panel");
+    await screen.findByTestId("incomes-panel");
+    expect(api.get).toHaveBeenCalledWith("/admin/metrics", { params: { period: 14 } });
+  });
+
+  it("para el administrador, lo que pasó cada día es «entre todos los usuarios de la plataforma»; para un usuario, no", async () => {
+    const dias = Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(9 + i).padStart(2, "0")}`, quantity: i === 13 ? 4 : 0 }));
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => ({
+      data: {
+        period_days: config.params.period,
+        total_consumido: 4,
+        total_entradas: 4,
+        total_ingresos: 4,
+        consumo_por_dia: dias,
+        ingresos_por_dia: dias,
+        top_productos: [],
+      },
+    }));
+
+    auth.effectiveIsAdmin = true;
+    const admin = renderWithProviders(<Metricas />);
+    expect(await screen.findByTestId("trends-day-units")).toHaveTextContent("Se consumieron 4 unidades entre todos los usuarios de la plataforma");
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent("Ingresaron 4 unidades entre todos los usuarios de la plataforma");
+    admin.unmount();
+
+    auth.effectiveIsAdmin = false;
+    renderWithProviders(<Metricas />);
+    expect(await screen.findByTestId("trends-day-units")).toHaveTextContent(/^Se consumieron 4 unidades$/);
+    expect(screen.getByTestId("incomes-day-units")).toHaveTextContent(/^Ingresaron 4 unidades$/);
+  });
+
+  it("la página ocupa todo el ancho, como las demás: sin un ancho máximo ni centrada", async () => {
+    renderWithProviders(<Metricas />);
+
+    const titulo = await screen.findByRole("heading", { name: "Tendencias" });
+    const raiz = titulo.closest("div.mb-6")!.parentElement!;
+    expect(raiz.className).not.toContain("max-w");
+    expect(raiz.className).not.toContain("mx-auto");
+    // el título y la descripción a la izquierda y los botones de días a la derecha, en la misma fila
+    expect(titulo.closest("div.mb-6")!.className).toContain("justify-between");
+  });
+
+  it("el período se elige una sola vez y vale para las dos mitades", async () => {
     const user = userEvent.setup();
-    vi.mocked(api.get).mockResolvedValue({ data: metrics() });
-    renderWithProviders(<Metricas />);
-
-    expect(await screen.findByText("12")).toBeInTheDocument();
-    expect(screen.getByText("Consumido en el período")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "7 días" }));
-    await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 7 } }),
-    );
-  });
-
-  it("si falla la carga, muestra el mensaje de error", async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error("fallo"));
-    renderWithProviders(<Metricas />);
-    expect(await screen.findByText("No se pudieron cargar las métricas.")).toBeInTheDocument();
-  });
-
-  it("sin consumo, sin top productos, muestra los estados vacíos correspondientes", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: metrics({ total_consumido: 0, top_productos: [], productos_menos_usados: [] }),
+    vi.mocked(api.get).mockImplementation(async (_url: string, config?: any) => {
+      const series = Array.from({ length: config.params.period }, (_, i) => ({ day: `2026-01-${String((i % 28) + 1).padStart(2, "0")}`, quantity: 1 }));
+      return {
+        data: { period_days: config.params.period, total_consumido: 0, total_entradas: 0, total_ingresos: 0, consumo_por_dia: series, ingresos_por_dia: series, top_productos: [] },
+      };
     });
     renderWithProviders(<Metricas />);
+    await screen.findByTestId("incomes-panel");
 
-    expect(await screen.findByText("Sin consumo registrado todavía")).toBeInTheDocument();
-    expect(screen.getAllByText("Sin datos todavía").length).toBe(2);
+    expect(screen.getAllByTestId("trends-period-90")).toHaveLength(1);
+    await user.click(screen.getByTestId("trends-period-90"));
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/me/metrics", { params: { period: 90 } }));
+    const consumo = within(screen.getByTestId("trends-section-consumo"));
+    const ingresos = within(screen.getByTestId("trends-section-ingresos"));
+    expect(await consumo.findByTestId("trends-bar-89")).toBeInTheDocument();
+    expect(await ingresos.findByTestId("incomes-bar-89")).toBeInTheDocument();
+  });
+});
+
+describe("Metricas · encabezado", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
   });
 
-  it("con top productos pero sin datos suficientes para comparar, lo indica", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      data: metrics({ productos_menos_usados: [] }),
-    });
+  it("el selector de días va a la derecha, en la misma fila y centrado con el título y su descripción", async () => {
     renderWithProviders(<Metricas />);
-    expect(
-      await screen.findByText("No hay suficientes productos para comparar"),
-    ).toBeInTheDocument();
+
+    const picker = await screen.findByTestId("trends-period-picker");
+    const row = picker.parentElement!;
+    expect(row.className).toContain("justify-between");
+    expect(row.className).toContain("items-center");
+    expect(within(row).getByRole("heading", { name: "Tendencias" })).toBeInTheDocument();
+    expect(within(row).getByText("Mirá cuánto consumís y cuánto ingresás")).toBeInTheDocument();
+    [7, 14, 30, 90].forEach((n) => expect(within(picker).getByTestId(`trends-period-${n}`)).toBeInTheDocument());
+  });
+
+  it("los títulos de las dos mitades están centrados", async () => {
+    renderWithProviders(<Metricas />);
+
+    expect((await screen.findByRole("heading", { name: "Tendencias de consumo" })).className).toContain("text-center");
+    expect(screen.getByRole("heading", { name: "Tendencias de ingresos" }).className).toContain("text-center");
+  });
+});
+
+describe("Metricas · separación entre las dos mitades", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.effectiveIsAdmin = false;
+    serve();
+  });
+
+  it("una línea vertical tenue separa las tendencias de consumo de las de ingresos", async () => {
+    renderWithProviders(<Metricas />);
+
+    const consumo = await screen.findByTestId("trends-section-consumo");
+    const ingresos = screen.getByTestId("trends-section-ingresos");
+    expect(ingresos.className).toContain("lg:border-l");
+    expect(ingresos.className).toContain("border-line/60");
+    expect(consumo.className).not.toContain("border-l");
+    expect(consumo.parentElement!.className).toContain("lg:gap-0");
   });
 });

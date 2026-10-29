@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getToken, setToken } from "@/lib/api";
 import type { Admin } from "@/lib/types";
+import { signOutFromGoogle } from "@/lib/google";
+import { markJustLoggedIn } from "@/lib/welcome";
 
 const VIEW_AS_USER_KEY = "backoffice_view_as_user";
 
@@ -8,7 +10,11 @@ interface AuthState {
   admin: Admin | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Ingreso (y registro, si es la primera vez) con Google: se manda el idToken que dio Google. */
+  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => void;
+  /** Vuelve a pedir los datos de la sesión (por ejemplo, después de cambiar la contraseña). */
+  refresh: () => Promise<void>;
   viewAsUser: boolean;
   setViewAsUser: (value: boolean) => void;
   effectiveIsAdmin: boolean;
@@ -51,9 +57,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const me = await api.get<Admin>("/admin/auth/me");
     setAdmin(me.data);
     setViewAsUser(false);
+    markJustLoggedIn();
+  };
+
+  const loginWithGoogle = async (idToken: string) => {
+    const { data } = await api.post<{ access_token: string }>("/admin/auth/google", { id_token: idToken });
+    setToken(data.access_token);
+    const me = await api.get<Admin>("/admin/auth/me");
+    setAdmin(me.data);
+    setViewAsUser(false);
+    markJustLoggedIn();
+  };
+
+  const refresh = async () => {
+    const me = await api.get<Admin>("/admin/auth/me");
+    setAdmin(me.data);
   };
 
   const logout = () => {
+    // Google no tiene que volver a entrar solo con la misma cuenta
+    signOutFromGoogle();
     setToken(null);
     setAdmin(null);
     setViewAsUser(false);
@@ -63,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ admin, loading, login, logout, viewAsUser, setViewAsUser, effectiveIsAdmin }}
+      value={{ admin, loading, login, loginWithGoogle, logout, refresh, viewAsUser, setViewAsUser, effectiveIsAdmin }}
     >
       {children}
     </AuthContext.Provider>

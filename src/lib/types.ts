@@ -4,6 +4,8 @@ export interface Admin {
   full_name: string | null;
   is_admin: boolean;
   is_active: boolean;
+  /** Ingresó con una contraseña inicial que le dio un administrador: antes de seguir tiene que cambiarla. */
+  must_change_password?: boolean;
 }
 
 export interface Paginated<T> {
@@ -27,32 +29,6 @@ export interface CategoryCount {
   count: number;
 }
 
-export interface DayCount {
-  day: string;
-  count: number;
-}
-
-export interface UserProductCount {
-  user_id: string;
-  email: string | null;
-  count: number;
-}
-
-export interface DashboardStats {
-  total_users: number;
-  active_users: number;
-  inactive_users: number;
-  new_users_last_7d: number;
-  total_products: number;
-  products_with_image: number;
-  low_stock_products: number;
-  expiring_soon_products: number;
-  expired_products: number;
-  products_by_category: CategoryCount[];
-  top_users_by_products: UserProductCount[];
-  products_per_day_last_14d: DayCount[];
-}
-
 export interface AppUser {
   id: string;
   email: string | null;
@@ -68,6 +44,8 @@ export interface AppUser {
 export interface ProductOwner {
   user_id: string;
   email: string | null;
+  /** false si la cuenta del usuario está deshabilitada. */
+  is_active?: boolean;
 }
 
 export interface AdminProduct {
@@ -81,7 +59,14 @@ export interface AdminProduct {
   imagen_url: string | null;
   ubicacion: string | null;
   codigo_barras: string | null;
+  stock_minimo?: number | null;
+  dias_alerta_vencimiento?: number | null;
   created_at: string | null;
+  /** La alerta más grave que tiene hoy el producto, y de qué tipos son. */
+  alert_level?: AlertLevel | null;
+  alert_types?: AlertType[];
+  /** Las alertas del producto con todo lo necesario para mostrarlas. */
+  alerts?: AlertOut[];
   owner: ProductOwner;
 }
 
@@ -100,15 +85,83 @@ export interface AdminProductGroupDetail extends AdminProductGroupSummary {
 
 export interface AppUserDetail extends AppUser {
   products: AdminProduct[];
+  total_units: number;
+  critical_alerts: number;
+  warning_alerts: number;
+  consumed_last_30d: number;
+  restocked_last_30d: number;
+  alerts: AlertOut[];
+}
+
+export type AlertLevel = "critical" | "warning";
+export type AlertType = "expiry" | "stock_low_coverage" | "slow_pace";
+
+/** Una alerta de un producto, con lo necesario para mostrarla y explicarla (las reglas son las de la app). */
+export interface AlertOut {
+  key: string;
+  product_id: number;
+  type: AlertType;
+  level: AlertLevel;
+  /** «rule»: sale de una regla del usuario; «system»: la genera el sistema por el consumo. */
+  origin: "rule" | "system";
+  days_to_expiry: number | null;
+  days_until_stockout: number | null;
+  units_wasted: number | null;
+  suggested_qty: number | null;
+  limit_days: number | null;
+  rule_scope: "product" | "general" | null;
+  /** Las del modelo predictivo llevan la marca «Predicción». */
+  predictive: boolean;
+  product_name: string;
+  product_brand: string | null;
+  product_category: string | null;
+  product_location: string | null;
+  product_stock: number;
+  product_expiry: string | null;
+  image_url: string | null;
+  user_id: string | null;
+}
+
+export interface AlertSummary {
+  critical: number;
+  warning: number;
+  total: number;
+  /** Productos con alertas de «Vencimiento» (vencimiento y ritmo lento) y de «Stock», de cualquier nivel: lo mismo que el inicio de la app. */
+  expiring: number;
+  low_stock: number;
+}
+
+export interface AlertList {
+  items: AlertOut[];
+  summary: AlertSummary;
+}
+
+export interface StockChange {
+  id: string;
+  kind: "entrada" | "salida" | "modificacion";
+  stock_before: number;
+  stock_after: number;
+  quantity: number;
+  occurred_at: string;
+  producto: MyProduct;
 }
 
 export interface MyStats {
   total_products: number;
+  total_units: number;
   products_with_image: number;
   low_stock_products: number;
   expiring_soon_products: number;
   expired_products: number;
+  critical_alerts: number;
+  warning_alerts: number;
   products_by_category: CategoryCount[];
+  /** Unidades en stock por categoría, productos por ubicación y cuándo vencen: los gráficos del dashboard. */
+  stock_by_category: CategoryCount[];
+  products_by_location: CategoryCount[];
+  /** Unidades en stock por marca (solo los productos que tienen marca). */
+  stock_by_brand: CategoryCount[];
+  expiry_buckets: CategoryCount[];
 }
 
 export interface MyProduct {
@@ -138,6 +191,8 @@ export interface ProductSuggestion {
   stock: number;
   stock_minimo: number | null;
   dias_alerta_vencimiento: number | null;
+  codigo_barras?: string | null;
+  imagen_url?: string | null;
 }
 
 export interface MyDefaults {
@@ -150,8 +205,13 @@ export interface MyProfile {
   first_name: string | null;
   last_name: string | null;
   username: string | null;
+  /** Días de cobertura mínimos (stock mínimo) para todos los productos. */
   stock_minimo: number;
+  /** Días de anticipación del aviso de vencimiento para todos los productos. */
   dias_alerta_vencimiento: number;
+  /** Hora argentina (0 a 23) del chequeo diario de alertas. */
+  alert_check_hour: number;
+  user_type: "individuo" | "comercio";
 }
 
 export interface BulkProductRow {
@@ -198,6 +258,8 @@ export interface ProductoConsumo {
   product_id: number;
   nombre: string;
   cantidad: number;
+  /** Solo en el ranking de toda la plataforma: el usuario al que pertenece el producto. */
+  owner_email?: string | null;
 }
 
 export interface MyMetrics {
@@ -206,7 +268,9 @@ export interface MyMetrics {
   total_entradas: number;
   consumo_por_dia: ConsumoPorDia[];
   top_productos: ProductoConsumo[];
-  productos_menos_usados: ProductoConsumo[];
+  /** Todo lo que ingresó al stock: reposiciones y el stock con el que se cargaron los productos nuevos. */
+  total_ingresos: number;
+  ingresos_por_dia: ConsumoPorDia[];
 }
 
 export interface ConsumptionEvent {
@@ -228,6 +292,7 @@ export interface ActivityEntry {
     | "login"
     | "registered"
     | "product_created"
+    | "product_exit"
     | "product_updated"
     | "product_deleted";
   actor_email: string | null;
@@ -380,4 +445,44 @@ export interface SalidaOCRResult {
   procesados: number;
   fallidos: number;
   errores: string[];
+}
+
+/** El resumen de la plataforma que arma el dashboard del administrador. */
+export interface PlatformOverview {
+  period_days: number;
+  users: {
+    total: number;
+    /** Con la cuenta habilitada. */
+    active: number;
+    new_in_period: number;
+    active_in_period: number;
+    with_products: number;
+    registrations_per_day: { day: string; count: number }[];
+  };
+  activity_per_day: { day: string; logins: number; entradas: number; salidas: number }[];
+  inventory: {
+    products: number;
+    units: number;
+    with_image: number;
+    without_expiry: number;
+  };
+  most_active_users: {
+    user_id: string;
+    email: string | null;
+    name: string | null;
+    username: string | null;
+    movements: number;
+    entries: number;
+    exits: number;
+    products: number;
+    units: number;
+    is_active: boolean;
+  }[];
+  ocr: {
+    runs: number;
+    succeeded: number;
+    avg_ms: number | null;
+    avg_confidence: number | null;
+    by_type: { doc_type: string; ejecuciones: number; exitosas: number; fallidas: number }[];
+  };
 }

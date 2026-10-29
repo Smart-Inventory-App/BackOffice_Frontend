@@ -1,4 +1,5 @@
 import axios from "axios";
+import { markSessionExpired } from "@/lib/sessionExpired";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
 const TOKEN_KEY = "backoffice_token";
@@ -30,6 +31,8 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401) {
+      // Un 401 con una sesión abierta es una sesión vencida; sin sesión es, por ejemplo, una contraseña incorrecta
+      if (getToken()) markSessionExpired();
       setToken(null);
       if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";

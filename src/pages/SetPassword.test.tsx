@@ -42,7 +42,7 @@ describe("SetPassword", () => {
     const user = userEvent.setup();
     renderSetPassword();
 
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
     await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "abc");
@@ -77,7 +77,7 @@ describe("SetPassword", () => {
   it("si las contraseñas no coinciden, lo avisa", async () => {
     const user = userEvent.setup();
     renderSetPassword();
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
     await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
@@ -91,7 +91,7 @@ describe("SetPassword", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderSetPassword("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
     await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
@@ -115,7 +115,7 @@ describe("SetPassword", () => {
       throw err;
     });
     renderSetPassword();
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
     await user.type(inviteInput(), "codigo-123");
 
     await user.type(pw, "Abcdefg1");
@@ -141,7 +141,7 @@ describe("SetPassword", () => {
   it("sin el código no llama al backend", async () => {
     const user = userEvent.setup();
     renderSetPassword();
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(pw, "Abcdefg1");
     await user.type(confirm, "Abcdefg1");
@@ -154,7 +154,7 @@ describe("SetPassword", () => {
     const user = userEvent.setup();
     vi.mocked(api.post).mockResolvedValue({ data: {} });
     renderSetPassword("nuevo@test.com");
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(inviteInput(), "  codigo-pegado  ");
     await user.type(pw, "Abcdefg1");
@@ -180,7 +180,7 @@ describe("SetPassword", () => {
       throw err;
     });
     renderSetPassword();
-    const [pw, confirm] = screen.getAllByPlaceholderText("••••••••");
+    const [pw, confirm] = [screen.getByLabelText("Nueva contraseña"), screen.getByLabelText("Repetir contraseña")];
 
     await user.type(inviteInput(), "vencido");
     await user.type(pw, "Abcdefg1");
@@ -196,5 +196,13 @@ describe("SetPassword", () => {
 
     expect(inviteInput()).toHaveAttribute("autocomplete", "off");
     expect(inviteInput()).toHaveAttribute("spellcheck", "false");
+  });
+});
+
+describe("SetPassword · el ojo de la contraseña", () => {
+  it("hay un ojo en cada campo de contraseña", () => {
+    renderSetPassword("nuevo@test.com");
+
+    expect(screen.getAllByRole("button", { name: "Mostrar contraseña" })).toHaveLength(2);
   });
 });

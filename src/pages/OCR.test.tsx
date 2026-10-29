@@ -99,12 +99,13 @@ describe("OCR · panel de administración", () => {
 
     renderWithProviders(<OCR />);
 
-    expect(await screen.findByText("operativo")).toBeInTheDocument();
-    expect(screen.getByText("motor por defecto: hybrid")).toBeInTheDocument();
+    expect(await screen.findByText("Operativo")).toBeInTheDocument();
+    expect(screen.getByText("motor por defecto: híbrido")).toBeInTheDocument();
+    expect(screen.queryByText(/hybrid/)).not.toBeInTheDocument();
     const estadoCard = withinCard("Estado del módulo");
     expect(estadoCard.getByText("tesseract")).toBeInTheDocument();
-    expect(estadoCard.getByText("disponible")).toBeInTheDocument();
-    expect(estadoCard.getByText("caído")).toBeInTheDocument();
+    expect(estadoCard.getByText("Disponible")).toBeInTheDocument();
+    expect(estadoCard.getByText("Caído")).toBeInTheDocument();
     expect(estadoCard.getByText("2 instancias (se reparten por turno)")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Actualizar/ }));
@@ -126,7 +127,7 @@ describe("OCR · panel de administración", () => {
 
     renderWithProviders(<OCR />);
 
-    expect(await screen.findByText("no disponible")).toBeInTheDocument();
+    expect(await screen.findByText("No disponible")).toBeInTheDocument();
     expect(
       screen.getByText(/El coordinador no responde o alguno de sus chequeos está en rojo/),
     ).toBeInTheDocument();
@@ -198,7 +199,7 @@ describe("OCR · panel de administración", () => {
     vi.mocked(api.post).mockImplementation(async () => ({ data: { purged: 0 } }));
 
     renderWithProviders(<OCR />);
-    await screen.findByText("operativo");
+    await screen.findByText("Operativo");
     await user.click(screen.getByRole("button", { name: /Limpiar temporales/ }));
 
     expect(
@@ -219,10 +220,69 @@ describe("OCR · panel de administración", () => {
     const statsTable = screen.getAllByRole("table")[0];
     expect(within(statsTable).getByText("Etiqueta")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Último día" }));
+    // las mismas opciones que en tendencias y en el dashboard
+    const picker = screen.getByTestId("ocr-period-picker");
+    [7, 14, 30, 90].forEach((n) => expect(within(picker).getByTestId(`trends-period-${n}`)).toBeInTheDocument());
+    expect(within(picker).queryByText("Último día")).not.toBeInTheDocument();
+    expect(within(picker).getByTestId("trends-period-7")).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(within(picker).getByTestId("trends-period-90"));
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/admin/ocr/stats", { params: { dias: 1 } }),
+      expect(api.get).toHaveBeenCalledWith("/admin/ocr/stats", { params: { dias: 90 } }),
     );
+  });
+
+  it("la tabla de «Cómo viene funcionando» centra todo menos el tipo de documento, y la confianza va a la derecha", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findAllByText("Ejecuciones");
+
+    const tabla = screen.getAllByRole("table")[0];
+    const titulos = within(tabla).getAllByRole("columnheader");
+    expect(titulos.map((h) => h.textContent)).toEqual([
+      "Tipo de documento",
+      "Ejecuciones",
+      "Fallidas",
+      "Tiempo promedio",
+      "Peor tiempo",
+      "Confianza",
+    ]);
+    expect(titulos[0].closest("tr")!.className).toContain("text-center");
+    expect(titulos[0].className).toContain("text-left");
+    titulos.slice(1, 5).forEach((h) => expect(h.className).not.toContain("text-right"));
+    expect(titulos[5].className).toContain("text-right");
+
+    const celdas = within(within(tabla).getAllByRole("row")[1]).getAllByRole("cell");
+    expect(celdas[0].className).not.toContain("text-center");
+    celdas.slice(1, 5).forEach((c) => expect(c.className).toContain("text-center"));
+    expect(celdas[5].className).toContain("text-right");
+    expect(celdas[5].firstElementChild!.className).toContain("justify-end");
+  });
+
+  it("ya no aparece la nota sobre los tiempos y la confianza de las ejecuciones reales", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findAllByText("Ejecuciones");
+
+    expect(screen.queryByText(/Los tiempos y la confianza salen de las ejecuciones reales/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/por eso se los mira separados/)).not.toBeInTheDocument();
+  });
+
+  it("«Probar el módulo» termina en «La foto no se guarda en ningún lado.», en negrita, y no tiene el renglón de abajo", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findByText("Probar el módulo");
+
+    const tarjeta = withinCard("Probar el módulo");
+    const negrita = tarjeta.getByText("La foto no se guarda en ningún lado.");
+    expect(negrita.tagName).toBe("STRONG");
+    expect(negrita.className).toContain("font-bold");
+    expect(negrita.parentElement).toHaveTextContent(
+      "Subí una foto y mirá exactamente qué leyó: campo por campo, con su confianza, qué motor ganó y cuánto tardó. La foto no se guarda en ningún lado.",
+    );
+    expect(screen.queryByText(/Es la forma de averiguar por qué una foto sale mal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Va directo al/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/renglón de auditoría/)).not.toBeInTheDocument();
   });
 
   it("sin ejecuciones en el período, muestra el estado vacío de la tabla", async () => {
@@ -276,7 +336,7 @@ describe("OCR · panel de administración", () => {
     await user.upload(screen.getByLabelText(/Elegí una foto/), file);
     await user.click(screen.getByRole("button", { name: "Escanear" }));
 
-    expect(await screen.findByText("lectura confiable")).toBeInTheDocument();
+    expect(await screen.findByText("Lectura confiable")).toBeInTheDocument();
     const playground = withinCard("Probar el módulo");
     expect(playground.getByText("tesseract")).toBeInTheDocument();
     expect(playground.getByText("Yerba Mate")).toBeInTheDocument();
@@ -350,7 +410,7 @@ describe("OCR · panel de administración", () => {
     await user.upload(screen.getByLabelText(/Elegí una foto/), file);
     await user.click(screen.getByRole("button", { name: "Escanear" }));
 
-    expect(await screen.findByText("necesita revisión")).toBeInTheDocument();
+    expect(await screen.findByText("Necesita revisión")).toBeInTheDocument();
     expect(screen.getByText("Fideos")).toBeInTheDocument();
     expect(screen.getByText("Advertencias del procesamiento")).toBeInTheDocument();
     expect(screen.getByText("baja iluminación")).toBeInTheDocument();
@@ -395,7 +455,8 @@ describe("OCR · panel de administración", () => {
     const auditCard = within(
       screen.getByText("Auditoría de escaneos").closest("section") as HTMLElement,
     );
-    await user.selectOptions(auditCard.getByDisplayValue("Todos los tipos"), "receipt");
+    await user.click(auditCard.getByRole("button", { name: "Tipo de escaneo" }));
+    await user.click(screen.getByRole("option", { name: "Comprobante" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/ocr/audit",
@@ -403,13 +464,141 @@ describe("OCR · panel de administración", () => {
       ),
     );
 
-    await user.selectOptions(auditCard.getByDisplayValue("Todos los orígenes"), "panel");
+    await user.click(auditCard.getByRole("button", { name: "Origen" }));
+    await user.click(screen.getByRole("option", { name: "Panel" }));
     await waitFor(() =>
       expect(api.get).toHaveBeenCalledWith(
         "/admin/ocr/audit",
         expect.objectContaining({ params: expect.objectContaining({ origen: "panel" }) }),
       ),
     );
+  });
+
+  it("la auditoría tiene las columnas FECHA, USUARIO, ORIGEN y TIPO DE ESCANEO, todas centradas", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findByText("Yerba Mate 1kg");
+
+    const tabla = screen.getAllByRole("table")[1];
+    const titulos = within(tabla).getAllByRole("columnheader");
+    expect(titulos.map((h) => h.textContent)).toEqual([
+      "Fecha",
+      "Usuario",
+      "Origen",
+      "Tipo de escaneo",
+      "Motor",
+      "Tiempo",
+      "Confianza",
+      "Lectura del escaneo",
+    ]);
+    expect(titulos[0].closest("tr")!.className).toContain("text-center");
+    expect(titulos[0].closest("tr")!.className).toContain("uppercase");
+    // todo centrado, salvo «Lectura del escaneo», que va a la izquierda
+    titulos.slice(0, 7).forEach((h) => expect(h.className).not.toMatch(/text-(left|right)/));
+    expect(titulos[7].className).toContain("text-left");
+    const celdas = within(within(tabla).getAllByRole("row")[1]).getAllByRole("cell");
+    expect(celdas[0].closest("tr")!.className).toContain("text-center");
+    celdas.slice(0, 7).forEach((c) => expect(c.className).not.toMatch(/text-(left|right)/));
+    expect(celdas[7].className).toContain("text-left");
+    expect(celdas[7]).toHaveTextContent("Yerba Mate 1kg");
+    expect(celdas[1]).toHaveTextContent("user@test.com");
+    expect(celdas[1]).not.toHaveTextContent("App");
+    expect(celdas[2]).toHaveTextContent("App");
+    expect(within(celdas[6]).getByText("90 %").parentElement!.className).toContain("justify-center");
+  });
+
+  it("el origen se muestra con la primera letra en mayúscula, y «App» en celeste verdoso", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/ocr/status") return { data: serviceStatus() };
+      if (url === "/admin/ocr/stats") return { data: stats() };
+      if (url === "/admin/ocr/audit") {
+        return { data: { items: [auditEntry({ id: 1, origen: "app" }), auditEntry({ id: 2, origen: "panel" })], total: 2 } };
+      }
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<OCR />);
+    const app = await screen.findByTestId("origen-app");
+
+    expect(app).toHaveTextContent("App");
+    expect(app.className).toContain("bg-[#CDEFF0]");
+    const panel = screen.getByText("Panel");
+    expect(panel).toBeInTheDocument();
+    expect(panel.className).not.toContain("bg-[#CDEFF0]");
+    expect(screen.queryByText("panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("app")).not.toBeInTheDocument();
+  });
+
+  it("la descripción de la auditoría termina en «el resumen viene recortado.»", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findByText("Auditoría de escaneos");
+
+    expect(
+      screen.getByText(
+        "Un renglón por ejecución, con quién la pidió y qué salió. Es lo único que queda de cada escaneo: las fotos se descartan apenas termina el procesamiento, así que el resumen viene recortado.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/alcanza para reconocer de qué lectura se trata/)).not.toBeInTheDocument();
+  });
+
+  it("el buscador y los dos filtros de la auditoría ocupan todo el ancho de la lista", async () => {
+    mockDefaultGets();
+    renderWithProviders(<OCR />);
+    await screen.findByText("Yerba Mate 1kg");
+
+    const filtros = screen.getByTestId("ocr-audit-filters");
+    const buscador = within(filtros).getByPlaceholderText("Filtrar por usuario");
+    expect(buscador.className).toContain("flex-1");
+    // el buscador se estira y los desplegables son anchos (w-64), sin dejar espacio vacío a la derecha
+    expect(buscador.className).toContain("basis-64");
+    const [tipo, origen] = within(filtros).getAllByRole("button");
+    expect(tipo.parentElement!.parentElement!.className).toContain("sm:w-64");
+    expect(origen.parentElement!.parentElement!.className).toContain("sm:w-64");
+    expect(filtros.lastElementChild).toBe(origen.parentElement!.parentElement);
+  });
+
+  it("la auditoría pide 10 por página y los muestra todos juntos, sin desplazarse", async () => {
+    const entradas = Array.from({ length: 10 }, (_, i) => auditEntry({ id: i + 1, resumen: `Lectura ${i + 1}` }));
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/ocr/status") return { data: serviceStatus() };
+      if (url === "/admin/ocr/stats") return { data: stats() };
+      if (url === "/admin/ocr/audit") return { data: { items: entradas, total: 25 } };
+      throw new Error(`GET no mockeado: ${url}`);
+    });
+    renderWithProviders(<OCR />);
+    await screen.findByText("Lectura 1");
+
+    expect(api.get).toHaveBeenCalledWith("/admin/ocr/audit", { params: { limit: 10, offset: 0 } });
+    const lista = screen.getByTestId("ocr-audit-list");
+    expect(within(lista).getAllByRole("row")).toHaveLength(11); // los títulos y los 10 escaneos
+    expect(lista.className).not.toContain("max-h");
+    expect(lista.className).not.toContain("overflow-y");
+    expect(lista.className).not.toContain("overflow-auto");
+    // con la paginación de siempre, como las demás listas
+    expect(screen.getByText(/1–10 de 25|1-10 de 25|de 25/)).toBeInTheDocument();
+  });
+
+  it("la foto que se adjunta para escanear se puede ampliar con un clic, y se cierra", async () => {
+    const user = userEvent.setup();
+    mockDefaultGets();
+    const crear = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:foto");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    renderWithProviders(<OCR />);
+    await screen.findByText("Probar el módulo");
+    expect(screen.queryByRole("button", { name: "Ampliar la foto a escanear" })).not.toBeInTheDocument();
+
+    await user.upload(screen.getByLabelText(/Elegí una foto/), new File(["foto"], "etiqueta.png", { type: "image/png" }));
+    const ampliar = await screen.findByRole("button", { name: "Ampliar la foto a escanear" });
+    expect(ampliar.className).toContain("cursor-zoom-in");
+    expect(crear).toHaveBeenCalled();
+
+    await user.click(ampliar);
+
+    const visor = screen.getAllByAltText("Foto a escanear");
+    expect(visor.length).toBe(2); // la miniatura y la imagen grande
+    expect(visor.some((img) => img.getAttribute("src") === "blob:foto")).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.getAllByAltText("Foto a escanear")).toHaveLength(1);
   });
 
   it("permite elegir un motor específico en el playground", async () => {
