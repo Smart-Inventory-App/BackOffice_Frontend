@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
@@ -111,6 +111,89 @@ describe("Auditoria", () => {
     expect(filtros.indexOf("Salida de producto")).toBe(filtros.indexOf("Entrada de producto") + 1);
     expect(screen.getByText("Habilitación")).toBeInTheDocument();
     expect(screen.getByText("Rol de admin")).toBeInTheDocument();
+  });
+
+  function serveWithUsers(items: ActivityEntry[] = [entry()]) {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/admin/activity/filters/options") {
+        return {
+          data: {
+            users: [
+              { user_id: "u1", email: "ana@test.com" },
+              { user_id: "u2", email: "beto@test.com" },
+            ],
+          },
+        };
+      }
+      return { data: paginated(items) };
+    });
+  }
+
+  it("arriba a la derecha, paralelo al título y la descripción, está el filtro «Todos los usuarios», más angosto que en Productos", async () => {
+    serveWithUsers();
+    renderWithProviders(<Auditoria />);
+
+    const titulo = await screen.findByRole("heading", { name: "Auditoría de Eventos" });
+    const encabezado = titulo.parentElement!.parentElement!;
+    const filtro = screen.getByTestId("audit-user-filter");
+    expect(encabezado.className).toContain("justify-between");
+    expect(encabezado.firstElementChild).toContainElement(titulo);
+    expect(encabezado.lastElementChild).toBe(filtro);
+    expect(filtro.className).toContain("w-56");
+    expect(within(filtro).getByRole("button", { name: "Usuario" })).toHaveTextContent("Todos los usuarios");
+  });
+
+  it("filtra todas las entradas por usuario, y «Todos los usuarios» quita el filtro", async () => {
+    const user = userEvent.setup();
+    serveWithUsers();
+    renderWithProviders(<Auditoria />);
+    await screen.findByText("user@test.com inició sesión");
+
+    await user.click(screen.getByRole("button", { name: "Usuario" }));
+    expect(within(screen.getByRole("listbox", { name: "Usuario" })).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Todos los usuarios",
+      "ana@test.com",
+      "beto@test.com",
+    ]);
+    await user.click(screen.getByRole("option", { name: "beto@test.com" }));
+
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(
+        "/admin/activity/",
+        expect.objectContaining({ params: expect.objectContaining({ user_id: "u2" }) }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Usuario" })).toHaveTextContent("beto@test.com");
+
+    // se combina con el tipo de evento
+    await user.click(screen.getByRole("button", { name: "Inicio de sesión" }));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(
+        "/admin/activity/",
+        expect.objectContaining({ params: expect.objectContaining({ user_id: "u2", kind: "login" }) }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Usuario" }));
+    await user.click(screen.getByRole("option", { name: "Todos los usuarios" }));
+    await waitFor(() => {
+      const llamadas = vi.mocked(api.get).mock.calls.filter((c) => c[0] === "/admin/activity/");
+      expect((llamadas[llamadas.length - 1][1] as any).params.user_id).toBeUndefined();
+    });
+  });
+
+  it("la lista ocupa el alto que queda de la pantalla y se desplaza por dentro, igual que la de productos", async () => {
+    serveWithUsers();
+    renderWithProviders(<Auditoria />);
+    await screen.findByText("user@test.com inició sesión");
+
+    const contenedor = screen.getByRole("table").parentElement!;
+    expect(contenedor.className).toContain("overflow-auto");
+    expect(contenedor.className).toContain("md:flex-1");
+    expect(contenedor.className).toContain("md:max-h-none");
+    expect(contenedor.className).toContain("max-h-[60vh]");
+    expect(contenedor.parentElement!.className).toContain("md:flex-1");
+    expect(contenedor.parentElement!.parentElement!.className).toContain("md:h-[calc(100vh-4.5rem)]");
   });
 
   it("un evento sin fecha muestra el guion largo", async () => {

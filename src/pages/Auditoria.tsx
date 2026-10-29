@@ -3,7 +3,8 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { LogIn, ShieldCheck, Trash2, ToggleLeft, PackagePlus, PackageMinus, PackageCheck, UserPlus2, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ActivityEntry, Paginated } from "@/lib/types";
-import { Badge, Card, PageHeader, Spinner } from "@/components/ui";
+import { Badge, Card, Spinner } from "@/components/ui";
+import FilterDropdown from "@/components/FilterDropdown";
 import { PAGE_SIZE } from "@/lib/constants";
 import Pagination from "@/components/Pagination";
 import { formatDateTime } from "@/lib/format";
@@ -44,18 +45,27 @@ const KIND_TONES: Record<ActivityEntry["kind"], "ok" | "off" | "warn" | "neutral
 
 export default function Auditoria() {
   const [kind, setKind] = useState<"" | ActivityEntry["kind"]>("");
+  const [userId, setUserId] = useState("");
   const [page, setPage] = useState(0);
 
-  useEffect(() => setPage(0), [kind]);
+  useEffect(() => setPage(0), [kind, userId]);
+
+  // Los usuarios por los que se puede filtrar, como en Productos
+  const { data: filterOptions } = useQuery({
+    queryKey: ["activity-filter-options"],
+    queryFn: async () =>
+      (await api.get<{ users: { user_id: string; email: string | null }[] }>("/admin/activity/filters/options")).data,
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["activity", kind, page],
+    queryKey: ["activity", kind, userId, page],
     queryFn: async () => {
       const params: Record<string, string | number> = {
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       };
       if (kind) params.kind = kind;
+      if (userId) params.user_id = userId;
       return (await api.get<Paginated<ActivityEntry>>("/admin/activity/", { params })).data;
     },
     placeholderData: keepPreviousData,
@@ -65,11 +75,26 @@ export default function Auditoria() {
   const total = data?.total ?? 0;
 
   return (
-    <div>
-      <PageHeader
-        title="Auditoría de Eventos"
-        subtitle="Actividad de usuarios de la plataforma: altas, productos cargados/editados/eliminados, logins y cambios de rol desde la app y el dashboard."
-      />
+    // En pantallas anchas todo entra sin desplazar la página: solo se desplaza la lista, que ocupa el alto que queda (como en Productos)
+    <div className="md:flex md:h-[calc(100vh-4.5rem)] md:flex-col">
+      {/* El título y la descripción a la izquierda y, a la derecha, el filtro por usuario */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">Auditoría de Eventos</h1>
+          <p className="mt-1 text-sm text-muted">
+            Actividad de usuarios de la plataforma: altas, productos cargados/editados/eliminados, logins y cambios de rol desde la app y el dashboard.
+          </p>
+        </div>
+        <div data-testid="audit-user-filter" className="w-56 shrink-0">
+          <FilterDropdown
+            label="Usuario"
+            allLabel="Todos los usuarios"
+            value={userId}
+            options={(filterOptions?.users ?? []).map((u) => ({ value: u.user_id, label: u.email ?? u.user_id }))}
+            onChange={setUserId}
+          />
+        </div>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-1">
         {(
@@ -90,8 +115,8 @@ export default function Auditoria() {
       {isLoading ? (
         <Spinner />
       ) : (
-        <Card className="p-0">
-          <div className="max-h-[65vh] overflow-auto">
+        <Card className="flex min-h-0 flex-col p-0 md:flex-1">
+          <div className="max-h-[60vh] min-h-0 overflow-auto md:max-h-none md:flex-1">
             <table className="w-full table-fixed text-sm">
               {/* Anchos fijos: la columna «Evento» mide lo mismo sea cual sea el tipo de evento que se filtre */}
               <colgroup>
