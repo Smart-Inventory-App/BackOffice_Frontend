@@ -506,7 +506,7 @@ function ManualForm({ prefill, onPrefillUsed }: { prefill?: Prefill | null; onPr
           label="Ubicación de guardado"
           value={form.ubicacion}
           options={ubicacionOptions}
-          addPlaceholder="Ej. Heladera, Alacena A, Freezer"
+          addPlaceholder="Opcional"
           maxLength={OPTION_MAX}
           onChange={(v) => {
             setForm((f) => ({ ...f, ubicacion: v }));
@@ -1186,7 +1186,7 @@ function BulkUpload({ direction }: { direction: "entrada" | "salida" }) {
                       value={active.data.ubicacion ?? ""}
                       options={ubicacionOptions}
                       emptyLabel="Ej. Heladera, Alacena A, Freezer"
-                      addPlaceholder="Ej. Heladera, Alacena A, Freezer"
+                      addPlaceholder="Opcional"
                       onChange={(v) => {
                         updateRow(active.key, { ubicacion: v || null });
                         setUbicacionOptions((prev) => addIfMissing(prev, v));
